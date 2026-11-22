@@ -170,9 +170,26 @@ impl AudioPlayback {
             let _ = shutdown_rx.recv();
         });
 
-        let handle = init_rx.recv().map_err(|_| {
-            PicoError::Audio("Playback worker thread terminated unexpectedly".into())
-        })??;
+        let handle = match init_rx.recv() {
+            Ok(Ok(h)) => h,
+            Ok(Err(e)) => {
+                info!(
+                    "Hardware audio playback unavailable ({}); falling back to null audio sink",
+                    e
+                );
+                PlaybackHandle {
+                    buffer: Arc::new(Mutex::new(VecDeque::new())),
+                    is_playing: Arc::new(AtomicBool::new(false)),
+                }
+            }
+            Err(_) => {
+                info!("Playback worker thread terminated; falling back to null audio sink");
+                PlaybackHandle {
+                    buffer: Arc::new(Mutex::new(VecDeque::new())),
+                    is_playing: Arc::new(AtomicBool::new(false)),
+                }
+            }
+        };
 
         Ok(Self {
             handle,

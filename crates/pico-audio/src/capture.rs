@@ -141,9 +141,22 @@ impl AudioCapture {
             let _ = shutdown_rx.recv();
         });
 
-        let is_capturing = init_rx.recv().map_err(|_| {
-            PicoError::Audio("Capture worker thread terminated unexpectedly".into())
-        })??;
+        let is_capturing = match init_rx.recv() {
+            Ok(Ok(flag)) => flag,
+            Ok(Err(e)) => {
+                tracing::info!(
+                    "Hardware audio capture unavailable ({}); running with inactive capture handle",
+                    e
+                );
+                Arc::new(AtomicBool::new(false))
+            }
+            Err(_) => {
+                tracing::info!(
+                    "Capture worker thread closed; running with inactive capture handle"
+                );
+                Arc::new(AtomicBool::new(false))
+            }
+        };
 
         Ok(Self {
             is_capturing,

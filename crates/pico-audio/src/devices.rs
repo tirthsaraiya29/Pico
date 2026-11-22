@@ -1,5 +1,5 @@
 use cpal::traits::{DeviceTrait, HostTrait};
-use pico_core::error::{PicoError, Result};
+use pico_core::error::Result;
 use tracing::info;
 
 #[derive(Debug, Clone)]
@@ -20,9 +20,16 @@ impl AudioDeviceManager {
             .and_then(|d| d.name().ok())
             .unwrap_or_default();
 
-        let devices = host
-            .input_devices()
-            .map_err(|e| PicoError::Audio(format!("Failed to enumerate input devices: {}", e)))?;
+        let devices = match host.input_devices() {
+            Ok(d) => d,
+            Err(e) => {
+                info!(
+                    "No audio input devices found or audio service unavailable: {}",
+                    e
+                );
+                return Ok(Vec::new());
+            }
+        };
 
         let mut list = Vec::new();
         for dev in devices {
@@ -52,9 +59,16 @@ impl AudioDeviceManager {
             .and_then(|d| d.name().ok())
             .unwrap_or_default();
 
-        let devices = host
-            .output_devices()
-            .map_err(|e| PicoError::Audio(format!("Failed to enumerate output devices: {}", e)))?;
+        let devices = match host.output_devices() {
+            Ok(d) => d,
+            Err(e) => {
+                info!(
+                    "No audio output devices found or audio service unavailable: {}",
+                    e
+                );
+                return Ok(Vec::new());
+            }
+        };
 
         let mut list = Vec::new();
         for dev in devices {
