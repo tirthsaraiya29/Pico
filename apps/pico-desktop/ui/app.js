@@ -144,7 +144,7 @@ function setCoreState(state) {
     case 'THINKING':
       targetColor = new THREE.Color(0xf59e0b); // Amber
       targetScale = 0.95;
-      badge.textContent = 'REASONING • LLM STREAM';
+      badge.textContent = 'EVALUATING • DECISION RANKING';
       break;
     case 'TOOL':
       targetColor = new THREE.Color(0x10b981); // Emerald Matrix
@@ -246,6 +246,26 @@ function handleServerEvent(event) {
       setCoreState('THINKING');
       break;
 
+    case 'DecisionStarted':
+      setCoreState('THINKING');
+      showCancelButton(true);
+      break;
+
+    case 'DecisionSelected':
+      if (payload.action) {
+        document.getElementById('telemetry-model').textContent = payload.action;
+      }
+      document.getElementById('telemetry-latency').textContent = `${Math.round(payload.confidence * 100)}% conf (${payload.latency_ms} ms)`;
+      showCancelButton(false);
+      if (coreState !== 'SPEAKING') setCoreState('IDLE');
+      break;
+
+    case 'ClarificationRequested':
+      appendClarificationCard(payload.question, payload.candidates);
+      setCoreState('IDLE');
+      showCancelButton(false);
+      break;
+
     case 'InferenceStarted':
       setCoreState('THINKING');
       showCancelButton(true);
@@ -264,6 +284,11 @@ function handleServerEvent(event) {
     case 'ToolCallRequested':
       setCoreState('TOOL');
       appendToolCallBadge(payload.call);
+      break;
+
+    case 'ToolPermissionPrompt':
+      setCoreState('TOOL');
+      appendConfirmationCard(payload.call_id, payload.tool, payload.arguments, payload.reason);
       break;
 
     case 'ToolExecutionFinished':
@@ -349,6 +374,65 @@ function appendToolResultBadge(result) {
       <span>${result.execution_duration_ms}ms</span>
     </div>
     <div class="tool-card-output">${escapeHtml(JSON.stringify(result.content, null, 2))}</div>
+  `;
+  messagesContainer.appendChild(el);
+  messagesContainer.scrollTop = messagesContainer.scrollHeight;
+}
+
+function appendConfirmationCard(requestId, toolName, args, reason) {
+  const el = document.createElement('div');
+  el.className = 'tool-card confirmation-card';
+  el.id = `confirm-${requestId}`;
+  el.style.borderColor = '#f59e0b';
+  el.innerHTML = `
+    <div class="tool-card-header" style="color:#f59e0b">
+      <span>⚠️ PERMISSION REQUIRED: ${escapeHtml(toolName)}</span>
+    </div>
+    <div class="tool-card-output">
+      <p style="margin-bottom:6px">${escapeHtml(reason || 'This tool requires user approval before execution.')}</p>
+      <pre style="background:rgba(0,0,0,0.3);padding:6px;border-radius:4px;overflow-x:auto">${escapeHtml(JSON.stringify(args, null, 2))}</pre>
+      <div style="margin-top:10px;display:flex;gap:8px" id="actions-${requestId}">
+        <button class="btn btn-primary" id="btn-approve-${requestId}">Approve</button>
+        <button class="btn btn-danger" id="btn-deny-${requestId}">Deny</button>
+      </div>
+    </div>
+  `;
+  messagesContainer.appendChild(el);
+  messagesContainer.scrollTop = messagesContainer.scrollHeight;
+
+  const btnApprove = document.getElementById(`btn-approve-${requestId}`);
+  if (btnApprove) {
+    btnApprove.addEventListener('click', () => {
+      if (socket && socket.readyState === WebSocket.OPEN) {
+        socket.send(JSON.stringify({ action: 'confirm', request_id: requestId, approved: true }));
+      }
+      const actionsDiv = document.getElementById(`actions-${requestId}`);
+      if (actionsDiv) actionsDiv.innerHTML = '<span style="color:#10b981;font-weight:bold">✔ Execution Approved</span>';
+    });
+  }
+
+  const btnDeny = document.getElementById(`btn-deny-${requestId}`);
+  if (btnDeny) {
+    btnDeny.addEventListener('click', () => {
+      if (socket && socket.readyState === WebSocket.OPEN) {
+        socket.send(JSON.stringify({ action: 'confirm', request_id: requestId, approved: false }));
+      }
+      const actionsDiv = document.getElementById(`actions-${requestId}`);
+      if (actionsDiv) actionsDiv.innerHTML = '<span style="color:#ef4444;font-weight:bold">✖ Execution Declined</span>';
+    });
+  }
+}
+
+function appendClarificationCard(question, candidates) {
+  const el = document.createElement('div');
+  el.className = 'msg-bubble assistant';
+  el.innerHTML = `
+    <div class="msg-avatar">?</div>
+    <div class="msg-body" style="border-color:#3b82f6">
+      <div class="msg-author" style="color:#3b82f6">CLARIFICATION NEEDED</div>
+      <div class="msg-text">${escapeHtml(question)}</div>
+      ${candidates && candidates.length ? `<div style="margin-top:8px;font-size:0.85em;color:#94a3b8">Candidates: ${escapeHtml(candidates.join(', '))}</div>` : ''}
+    </div>
   `;
   messagesContainer.appendChild(el);
   messagesContainer.scrollTop = messagesContainer.scrollHeight;

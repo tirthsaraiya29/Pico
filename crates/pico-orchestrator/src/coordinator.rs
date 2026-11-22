@@ -9,7 +9,9 @@ use pico_learning::{
     EvaluationMetrics, LabelQuality, LearningManager, ModelCheckpoint, ObservationRecord,
 };
 use pico_memory::MemoryManager;
-use pico_security::{AuditLogger, PathSandbox, SecurityPolicy};
+use pico_security::{
+    AuditLogger, ChannelConfirmationManager, ConfirmationProvider, PathSandbox, SecurityPolicy,
+};
 use pico_tools::{build_default_registry, ToolRegistry};
 use pico_voice::VoicePipeline;
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -24,6 +26,7 @@ pub struct PicoRuntime {
     decision: Arc<DecisionEngine>,
     learning: Arc<LearningManager>,
     registry: Arc<ToolRegistry>,
+    confirmation_mgr: Arc<ChannelConfirmationManager>,
     memory: Arc<MemoryManager>,
     voice: Arc<VoicePipeline>,
     event_tx: broadcast::Sender<PicoEvent>,
@@ -49,10 +52,25 @@ impl PicoRuntime {
             Some(Arc::new(AuditLogger::new(&config.security.audit_log_path)))
         };
 
-        let policy = SecurityPolicy::new(
+        let mut policy = SecurityPolicy::new(
             config.security.policy_mode == "Strict",
             config.security.require_confirmation_for_shell,
         );
+
+        let confirmation_timeout =
+            std::time::Duration::from_secs(config.security.command_timeout_seconds.max(10));
+        let mut confirmation_mgr = ChannelConfirmationManager::new(confirmation_timeout);
+        let ev_sender = event_tx.clone();
+        confirmation_mgr.set_prompt_callback(Arc::new(move |req_id, tool, args| {
+            let _ = ev_sender.send(PicoEvent::ToolPermissionPrompt {
+                call_id: req_id.to_string(),
+                tool: tool.to_string(),
+                arguments: args.clone(),
+                reason: format!("Action '{}' requires user confirmation", tool),
+            });
+        }));
+        let confirmation_mgr = Arc::new(confirmation_mgr);
+        policy.set_confirmation_provider(confirmation_mgr.clone());
 
         // Tool Registry
         let registry = Arc::new(build_default_registry(policy, sandbox, audit_logger));
@@ -134,6 +152,7 @@ impl PicoRuntime {
             decision,
             learning,
             registry,
+            confirmation_mgr,
             memory,
             voice,
             event_tx,
@@ -141,6 +160,16 @@ impl PicoRuntime {
             active_turn_cancel,
             last_observation_id,
         })
+    }
+
+    /// Delivers an interactive confirmation response for a pending confirmation request.
+    pub async fn respond_confirmation(&self, request_id: &str, approved: bool) -> Result<()> {
+        self.confirmation_mgr.respond(request_id, approved).await
+    }
+
+    /// Sets a custom asynchronous confirmation provider (e.g. for interactive CLI terminal prompts).
+    pub async fn set_confirmation_provider(&self, provider: Arc<dyn ConfirmationProvider>) {
+        self.registry.set_confirmation_provider(provider).await;
     }
 
     /// Subscribes to the runtime's real-time event bus.

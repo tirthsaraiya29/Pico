@@ -411,6 +411,24 @@ async fn handle_socket(socket: WebSocket, state: AppState) {
                                 let _ = rt_clone.rollback_model(version.as_deref()).await;
                             });
                         }
+                        "confirm" => {
+                            if let Some(request_id) = req.get("request_id").and_then(|v| v.as_str())
+                            {
+                                let approved = req
+                                    .get("approved")
+                                    .and_then(|v| v.as_bool())
+                                    .unwrap_or(false);
+                                let rt_clone = rt.clone();
+                                let req_id_str = request_id.to_string();
+                                tokio::spawn(async move {
+                                    if let Err(e) =
+                                        rt_clone.respond_confirmation(&req_id_str, approved).await
+                                    {
+                                        warn!(error = %e, request_id = %req_id_str, "Failed to deliver confirmation response");
+                                    }
+                                });
+                            }
+                        }
                         _ => {}
                     }
                 }

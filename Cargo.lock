@@ -1493,6 +1493,7 @@ dependencies = [
 name = "pico-cli"
 version = "0.1.0"
 dependencies = [
+ "async-trait",
  "clap",
  "colored",
  "pico-audio",
@@ -1646,6 +1647,7 @@ dependencies = [
 name = "pico-security"
 version = "0.1.0"
 dependencies = [
+ "async-trait",
  "chrono",
  "pico-core",
  "regex",
@@ -1653,6 +1655,7 @@ dependencies = [
  "serde_json",
  "tokio",
  "tracing",
+ "uuid",
 ]
 
 [[package]]

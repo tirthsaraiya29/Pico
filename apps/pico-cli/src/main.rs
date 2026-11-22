@@ -386,12 +386,48 @@ async fn run_doctor(config_path: &PathBuf) -> Result<(), Box<dyn std::error::Err
     Ok(())
 }
 
+struct CliConfirmationProvider;
+
+#[async_trait::async_trait]
+impl pico_security::ConfirmationProvider for CliConfirmationProvider {
+    async fn request_confirmation(
+        &self,
+        _request_id: &str,
+        tool_name: &str,
+        arguments: &serde_json::Value,
+    ) -> pico_core::error::Result<bool> {
+        let tool = tool_name.to_string();
+        let args = arguments.clone();
+        tokio::task::spawn_blocking(move || {
+            print!(
+                "\n{} Action '{}' requires explicit confirmation with parameters: {}\nApprove execution? [y/N]: ",
+                "[CONFIRM]".magenta().bold(),
+                tool.bold(),
+                args
+            );
+            let _ = io::stdout().flush();
+            let mut line = String::new();
+            if io::stdin().read_line(&mut line).is_ok() {
+                let ans = line.trim().to_lowercase();
+                Ok(ans == "y" || ans == "yes")
+            } else {
+                Ok(false)
+            }
+        })
+        .await
+        .map_err(|e| pico_core::error::PicoError::Security(format!("Confirmation prompt panicked: {}", e)))?
+    }
+}
+
 async fn run_chat_loop(
     config_path: &PathBuf,
     speak: bool,
 ) -> Result<(), Box<dyn std::error::Error>> {
     let config = load_or_default_config(config_path);
     let runtime = PicoRuntime::new(config)?;
+    runtime
+        .set_confirmation_provider(Arc::new(CliConfirmationProvider))
+        .await;
 
     println!(
         "{}",

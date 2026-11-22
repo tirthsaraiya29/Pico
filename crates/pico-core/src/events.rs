@@ -89,6 +89,7 @@ pub enum PicoEvent {
     ToolPermissionPrompt {
         call_id: String,
         tool: String,
+        arguments: serde_json::Value,
         reason: String,
     },
 

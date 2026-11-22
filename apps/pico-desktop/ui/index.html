@@ -27,11 +27,11 @@
         <span id="runtime-status-text">CORE ONLINE</span>
       </div>
       <div class="telemetry-pill">
-        <span class="label">MODEL</span>
-        <span class="val" id="telemetry-model">granite4.2:latest</span>
+        <span class="label">DECISION</span>
+        <span class="val" id="telemetry-model">pico-decision-v1.0.0</span>
       </div>
       <div class="telemetry-pill">
-        <span class="label">LATENCY</span>
+        <span class="label">METRICS</span>
         <span class="val" id="telemetry-latency">-- ms</span>
       </div>
     </div>
@@ -96,7 +96,7 @@
           <div class="msg-body">
             <div class="msg-author">PICO CORE</div>
             <div class="msg-text">
-              Pico is ready. Real-time voice pipeline, local GGUF/OpenAI inference, and OS tool execution framework are active. Speak naturally or type your command.
+              Pico is ready. Real-time voice pipeline, non-generative probabilistic decision intelligence, and OS tool execution framework are active. Speak naturally or type your command.
             </div>
           </div>
         </div>
@@ -128,20 +128,18 @@
     </div>
     <div class="drawer-body">
       <div class="setting-group">
-        <label>Inference Provider</label>
-        <select id="setting-provider">
-          <option value="ollama">Ollama (Local Native / v1)</option>
-          <option value="llamacpp">llama.cpp / Vulkan Server</option>
-          <option value="openai">OpenAI Compatible HTTP</option>
+        <label>Decision Intelligence Architecture</label>
+        <select id="setting-provider" disabled>
+          <option value="decision" selected>Probabilistic Decision Model (Non-Generative)</option>
         </select>
       </div>
       <div class="setting-group">
-        <label>Model Tag</label>
-        <input type="text" id="setting-model" value="granite4.2:latest" />
+        <label>Model Version</label>
+        <input type="text" id="setting-model" value="pico-decision-v1.0.0" readonly />
       </div>
       <div class="setting-group">
-        <label>Endpoint URL</label>
-        <input type="text" id="setting-endpoint" value="http://127.0.0.1:11434" />
+        <label>Candidate Ranking Retrieval</label>
+        <input type="text" id="setting-endpoint" value="BM25 Inverted Index + Dense Semantic Cross-Encoder" readonly />
       </div>
       <div class="setting-group">
         <label>VAD Sensitivity (0.005 - 0.05)</label>

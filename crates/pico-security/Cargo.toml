@@ -12,6 +12,9 @@ serde_json = { workspace = true }
 chrono = { workspace = true }
 tracing = { workspace = true }
 regex = { workspace = true }
+async-trait = { workspace = true }
+uuid = { workspace = true }
+tokio = { workspace = true }
 
 [dev-dependencies]
 tokio = { workspace = true }

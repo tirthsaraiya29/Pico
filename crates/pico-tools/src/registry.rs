@@ -1,15 +1,16 @@
 use pico_core::error::PicoError;
 use pico_core::session::ToolResult;
 use pico_core::traits::Tool;
-use pico_security::{AuditLogger, SecurityPolicy};
+use pico_security::{AuditLogger, ConfirmationProvider, SecurityPolicy};
 use std::collections::HashMap;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
+use tokio::sync::RwLock;
 use tracing::{debug, error, info, warn};
 
 pub struct ToolRegistry {
     tools: HashMap<String, Arc<dyn Tool>>,
-    security_policy: SecurityPolicy,
+    security_policy: RwLock<SecurityPolicy>,
     audit_logger: Option<Arc<AuditLogger>>,
     default_timeout: Duration,
 }
@@ -18,10 +19,16 @@ impl ToolRegistry {
     pub fn new(security_policy: SecurityPolicy, audit_logger: Option<Arc<AuditLogger>>) -> Self {
         Self {
             tools: HashMap::new(),
-            security_policy,
+            security_policy: RwLock::new(security_policy),
             audit_logger,
             default_timeout: Duration::from_secs(30),
         }
+    }
+
+    /// Dynamically sets an asynchronous confirmation provider.
+    pub async fn set_confirmation_provider(&self, provider: Arc<dyn ConfirmationProvider>) {
+        let mut policy = self.security_policy.write().await;
+        policy.set_confirmation_provider(provider);
     }
 
     /// Registers a tool in the registry.
@@ -108,11 +115,12 @@ impl ToolRegistry {
         let tier_str = format!("{:?}", tier);
 
         // Security permission check
-        if let Err(e) = self
-            .security_policy
-            .verify_permission(tool_name, tier, &arguments)
-            .await
-        {
+        let verify_res = {
+            let policy = self.security_policy.read().await;
+            policy.verify_permission(tool_name, tier, &arguments).await
+        };
+
+        if let Err(e) = verify_res {
             let err_msg = e.to_string();
             warn!(tool = %tool_name, error = %err_msg, "Tool execution denied by security policy");
             if let Some(ref audit) = self.audit_logger {
