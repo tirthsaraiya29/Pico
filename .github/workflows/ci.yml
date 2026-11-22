@@ -39,18 +39,38 @@ jobs:
       - name: Clippy Linter
         run: cargo clippy --workspace --all-targets --all-features -- -D warnings
 
-      - name: Run Test Suite
-        shell: pwsh
-        run: |
-          cargo test --workspace --all-features -- --nocapture 2>&1 | Tee-Object -FilePath test_log.txt
-          $testExit = $LASTEXITCODE
-          if ($testExit -ne 0) {
-            "### Test Suite Failure Report" | Out-File -FilePath $env:GITHUB_STEP_SUMMARY -Encoding utf8
-            "```text" | Out-File -FilePath $env:GITHUB_STEP_SUMMARY -Append -Encoding utf8
-            Get-Content test_log.txt -Tail 150 | Out-File -FilePath $env:GITHUB_STEP_SUMMARY -Append -Encoding utf8
-            "```" | Out-File -FilePath $env:GITHUB_STEP_SUMMARY -Append -Encoding utf8
-            exit $testExit
-          }
+      - name: Test pico-core
+        run: cargo test -p pico-core --all-features
+
+      - name: Test pico-security
+        run: cargo test -p pico-security --all-features
+
+      - name: Test pico-platform
+        run: cargo test -p pico-platform --all-features
+
+      - name: Test pico-inference
+        run: cargo test -p pico-inference --all-features
+
+      - name: Test pico-decision
+        run: cargo test -p pico-decision --all-features
+
+      - name: Test pico-learning
+        run: cargo test -p pico-learning --all-features
+
+      - name: Test pico-memory
+        run: cargo test -p pico-memory --all-features
+
+      - name: Test pico-tools
+        run: cargo test -p pico-tools --all-features
+
+      - name: Test pico-audio
+        run: cargo test -p pico-audio --all-features
+
+      - name: Test pico-voice
+        run: cargo test -p pico-voice --all-features
+
+      - name: Test pico-orchestrator
+        run: cargo test -p pico-orchestrator --all-features
 
       - name: Build Release
         run: cargo build --workspace --release
