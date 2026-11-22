@@ -70,7 +70,7 @@ jobs:
         run: cargo test -p pico-voice --all-features
 
       - name: Test pico-orchestrator
-        run: cargo test -p pico-orchestrator --all-features
+        run: cargo test -p pico-orchestrator --all-features -- --nocapture --test-threads=1
 
       - name: Build Release
         run: cargo build --workspace --release
