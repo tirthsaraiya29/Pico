@@ -85,4 +85,29 @@ mod tests {
         let stats_after = manager.stats().unwrap();
         assert_eq!(stats_after.active_version, "pico-model-v1.0.0");
     }
+
+    #[test]
+    fn test_evaluator_across_all_22_domains() {
+        let evaluator = ModelEvaluator::new();
+        assert!(
+            evaluator.sample_count() >= 44,
+            "Benchmark must contain at least 44 test cases across all domains, got {}",
+            evaluator.sample_count()
+        );
+
+        let weights = RankingWeights::default();
+        let metrics = evaluator.evaluate(&weights, 0.70).unwrap();
+
+        assert!(
+            metrics.top1_accuracy >= 0.70,
+            "Top-1 accuracy should meet target threshold, got {}",
+            metrics.top1_accuracy
+        );
+        assert!(
+            metrics.top3_recall >= 0.85,
+            "Top-3 recall should be >= 85%, got {}",
+            metrics.top3_recall
+        );
+        assert!(metrics.passed_promotion);
+    }
 }
