@@ -1,5 +1,5 @@
-use crate::stt::WindowsSpeechRecognizer;
-use crate::tts::NativeWindowsSynthesizer;
+use crate::stt::PlatformSpeechRecognizer;
+use crate::tts::PlatformSpeechSynthesizer;
 use crate::vad::{VadProcessor, VadState};
 use pico_audio::{AudioCapture, AudioPlayback, PlaybackHandle};
 use pico_core::config::VoiceConfig;
@@ -27,8 +27,8 @@ impl VoicePipeline {
     pub fn new(config: VoiceConfig, event_sender: broadcast::Sender<PicoEvent>) -> Result<Self> {
         let playback_engine = Arc::new(AudioPlayback::start(None)?);
         let playback = playback_engine.handle();
-        let recognizer = Arc::new(WindowsSpeechRecognizer::new(None));
-        let synthesizer = Arc::new(NativeWindowsSynthesizer::new(
+        let recognizer = Arc::new(PlatformSpeechRecognizer::new(None));
+        let synthesizer = Arc::new(PlatformSpeechSynthesizer::new(
             config.voice_name.clone(),
             config.speech_rate,
         ));

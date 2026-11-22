@@ -131,10 +131,139 @@ impl SpeechSynthesizer for NativeWindowsSynthesizer {
             speech_rate: self.speech_rate,
         };
 
-        // Run synthesis on blocking threadpool so Tokio workers remain free
         tokio::task::spawn_blocking(move || synth.synthesize_sync(&text_owned))
             .await
             .map_err(|e| PicoError::SpeechSynthesis(format!("Synthesis thread panic: {}", e)))?
+    }
+}
+
+/// Linux Native espeak-ng / speech-dispatcher ultra-low latency Speech Synthesizer.
+pub struct NativeLinuxSynthesizer {
+    voice_name: Option<String>,
+    speech_rate: u32,
+}
+
+impl NativeLinuxSynthesizer {
+    pub fn new(voice_name: Option<String>, speech_rate_multiplier: f32) -> Self {
+        let rate = ((175.0 * speech_rate_multiplier) as u32).clamp(80, 450);
+        Self {
+            voice_name,
+            speech_rate: rate,
+        }
+    }
+
+    pub fn synthesize_sync(&self, text: &str) -> Result<Vec<u8>> {
+        #[cfg(target_os = "linux")]
+        {
+            use std::io::Write;
+            use std::process::Stdio;
+
+            if text.trim().is_empty() {
+                return Ok(Vec::new());
+            }
+
+            let mut cmd = Command::new("espeak-ng");
+            cmd.arg("--stdout");
+            cmd.arg("-s").arg(self.speech_rate.to_string());
+            if let Some(ref voice) = self.voice_name {
+                cmd.arg("-v").arg(voice);
+            }
+            cmd.stdin(Stdio::piped());
+            cmd.stdout(Stdio::piped());
+            cmd.stderr(Stdio::piped());
+
+            let mut child = match cmd.spawn() {
+                Ok(c) => c,
+                Err(_) => {
+                    let mut fallback = Command::new("espeak");
+                    fallback.arg("--stdout");
+                    fallback.arg("-s").arg(self.speech_rate.to_string());
+                    if let Some(ref voice) = self.voice_name {
+                        fallback.arg("-v").arg(voice);
+                    }
+                    fallback.stdin(Stdio::piped());
+                    fallback.stdout(Stdio::piped());
+                    fallback.stderr(Stdio::piped());
+                    match fallback.spawn() {
+                        Ok(c) => c,
+                        Err(e) => {
+                            warn!("Neither espeak-ng nor espeak available on Linux: {}", e);
+                            return Ok(Vec::new());
+                        }
+                    }
+                }
+            };
+
+            if let Some(mut stdin) = child.stdin.take() {
+                let _ = stdin.write_all(text.as_bytes());
+            }
+
+            let output = child.wait_with_output().map_err(|e| {
+                PicoError::SpeechSynthesis(format!("espeak process execution failed: {}", e))
+            })?;
+
+            if output.status.success() && !output.stdout.is_empty() {
+                return Ok(output.stdout);
+            }
+
+            Ok(Vec::new())
+        }
+        #[cfg(not(target_os = "linux"))]
+        {
+            let _ = text;
+            Ok(Vec::new())
+        }
+    }
+}
+
+#[async_trait]
+impl SpeechSynthesizer for NativeLinuxSynthesizer {
+    async fn synthesize(&self, text: &str) -> Result<Vec<u8>> {
+        let text_owned = text.to_string();
+        let synth = NativeLinuxSynthesizer {
+            voice_name: self.voice_name.clone(),
+            speech_rate: self.speech_rate,
+        };
+
+        tokio::task::spawn_blocking(move || synth.synthesize_sync(&text_owned))
+            .await
+            .map_err(|e| PicoError::SpeechSynthesis(format!("Synthesis thread panic: {}", e)))?
+    }
+}
+
+/// Unified cross-platform speech synthesizer dispatching to native Windows or Linux engines.
+pub struct PlatformSpeechSynthesizer {
+    #[allow(dead_code)]
+    windows_synth: NativeWindowsSynthesizer,
+    #[allow(dead_code)]
+    linux_synth: NativeLinuxSynthesizer,
+}
+
+impl PlatformSpeechSynthesizer {
+    pub fn new(voice_name: Option<String>, speech_rate: f32) -> Self {
+        Self {
+            windows_synth: NativeWindowsSynthesizer::new(voice_name.clone(), speech_rate),
+            linux_synth: NativeLinuxSynthesizer::new(voice_name, speech_rate),
+        }
+    }
+}
+
+#[async_trait]
+impl SpeechSynthesizer for PlatformSpeechSynthesizer {
+    async fn synthesize(&self, text: &str) -> Result<Vec<u8>> {
+        #[cfg(target_os = "windows")]
+        {
+            self.windows_synth.synthesize(text).await
+        }
+        #[cfg(target_os = "linux")]
+        {
+            self.linux_synth.synthesize(text).await
+        }
+        #[cfg(not(any(target_os = "windows", target_os = "linux")))]
+        {
+            let _ = text;
+            Ok(Vec::new())
+        }
     }
 }
 
@@ -188,28 +317,26 @@ mod tests {
 
     #[tokio::test]
     async fn test_native_tts_synthesis() {
-        let synth = NativeWindowsSynthesizer::new(None, 1.0);
+        let synth = PlatformSpeechSynthesizer::new(None, 1.0);
         let audio = synth.synthesize("Pico online.").await;
         assert!(audio.is_ok());
     }
 
     #[tokio::test]
     async fn test_malicious_tts_inputs_do_not_inject() {
-        // Voice synthesizer should handle backticks, quotes, dollar signs, and newlines safely without script injection
         let malicious_payloads = [
             "Hello `whoami` world",
             "Test with \"double quotes\" and 'single quotes'",
             "Dangerous $(calc.exe) expression and $env:COMPUTERNAME",
             "Multi\r\nline\ntext\rwith\ttabs",
             "Unicode test: 你好 世界! 🚀✨ Русская речь",
-            &"A".repeat(2000), // Long payload
+            &"A".repeat(2000),
         ];
 
         let synth =
-            NativeWindowsSynthesizer::new(Some("NonExistentVoice'; calc.exe; '".into()), 1.0);
+            PlatformSpeechSynthesizer::new(Some("NonExistentVoice'; calc.exe; '".into()), 1.0);
         for payload in malicious_payloads {
             let res = synth.synthesize(payload).await;
-            // Synthesis either succeeds generating speech or returns cleanly without shell execution
             assert!(res.is_ok());
         }
     }
