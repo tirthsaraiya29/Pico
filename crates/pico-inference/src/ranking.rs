@@ -1,6 +1,6 @@
 //! Cross-encoder ranking layer combining semantic, lexical, intent, and historical signals.
 
-use crate::calibration::Calibrator;
+use crate::calibration::{Calibrator, PlattParameters};
 use crate::embeddings::SemanticEmbedder;
 use pico_core::traits::{CandidateAction, CandidateScore};
 use serde::{Deserialize, Serialize};
@@ -135,18 +135,23 @@ impl CrossEncoderRanker {
 
         let logit_scale = 16.0f32;
         let scaled_logits: Vec<f32> = raw_scores.iter().map(|&s| s * logit_scale).collect();
-        let probabilities = Calibrator::softmax_calibrate(&scaled_logits, temperature);
+        let softmax_probs = Calibrator::softmax_calibrate(&scaled_logits, temperature);
+        let platt = PlattParameters::default();
 
         let mut results: Vec<CandidateScore> = intermediate
             .into_iter()
-            .map(|(i, raw, sem, lex, intent, hist)| CandidateScore {
-                action_name: candidates[i].name.clone(),
-                raw_score: raw,
-                probability: probabilities[i],
-                intent_match: intent,
-                lexical_match: lex,
-                semantic_match: sem,
-                historical_success_rate: hist,
+            .map(|(i, raw, sem, lex, intent, hist)| {
+                let platt_conf = Calibrator::platt_calibrate(raw, &platt);
+                let calibrated_prob = (softmax_probs[i] * platt_conf).clamp(0.0, 1.0);
+                CandidateScore {
+                    action_name: candidates[i].name.clone(),
+                    raw_score: raw,
+                    probability: calibrated_prob,
+                    intent_match: intent,
+                    lexical_match: lex,
+                    semantic_match: sem,
+                    historical_success_rate: hist,
+                }
             })
             .collect();
 

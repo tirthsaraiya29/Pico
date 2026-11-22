@@ -21,7 +21,7 @@ pub struct ToolEntry {
 #[derive(Debug, Clone, Default)]
 pub struct ToolIndex {
     tools: Vec<ToolEntry>,
-    inverted_index: HashMap<String, Vec<usize>>,
+    inverted_index: HashMap<String, Vec<(usize, u32)>>,
     category_index: HashMap<String, Vec<usize>>,
     doc_lengths: Vec<usize>,
     avg_doc_length: f32,
@@ -67,9 +67,16 @@ impl ToolIndex {
             .or_default()
             .push(idx);
 
-        let unique_tokens: HashSet<String> = tokens.into_iter().collect();
-        for token in unique_tokens {
-            self.inverted_index.entry(token).or_default().push(idx);
+        let mut term_counts: HashMap<String, u32> = HashMap::new();
+        for token in tokens {
+            *term_counts.entry(token).or_insert(0) += 1;
+        }
+
+        for (token, count) in term_counts {
+            self.inverted_index
+                .entry(token)
+                .or_default()
+                .push((idx, count));
         }
 
         self.tools.push(entry);
@@ -109,10 +116,10 @@ impl ToolIndex {
         for token in &query_tokens {
             if let Some(postings) = self.inverted_index.get(token) {
                 let df = postings.len() as f32;
-                // Standard BM25 IDF formulation
+                // Standard BM25 IDF formulation: ln((N - df + 0.5) / (df + 0.5) + 1.0)
                 let idf = ((n_docs - df + 0.5) / (df + 0.5) + 1.0).ln();
 
-                for &doc_idx in postings {
+                for &(doc_idx, tf_count) in postings {
                     let tool = &self.tools[doc_idx];
                     // OS compatibility filter
                     if tool.os != "all" && tool.os != target_os {
@@ -121,7 +128,7 @@ impl ToolIndex {
 
                     let doc_len = self.doc_lengths[doc_idx] as f32;
                     let norm_len = 1.0 - B + B * (doc_len / self.avg_doc_length.max(1.0));
-                    let tf = 1.5; // approximated term frequency
+                    let tf = tf_count as f32;
                     let score = idf * (tf * (K1 + 1.0)) / (tf + K1 * norm_len);
 
                     *scores.entry(doc_idx).or_insert(0.0) += score;
@@ -147,27 +154,33 @@ impl ToolIndex {
         ranked_indices.sort_by(|a, b| b.1.partial_cmp(&a.1).unwrap_or(std::cmp::Ordering::Equal));
 
         let mut candidates = Vec::with_capacity(limit);
-        let mut included = HashSet::new();
+        let mut seen_names = HashSet::new();
 
-        for (idx, _) in ranked_indices.into_iter().take(limit) {
-            included.insert(idx);
+        for (idx, _) in ranked_indices.into_iter() {
             let entry = &self.tools[idx];
-            candidates.push(CandidateAction {
-                name: entry.name.clone(),
-                description: entry.description.clone(),
-                category: entry.category.clone(),
-                permission_tier: entry.permission_tier,
-                parameters_schema: entry.parameters_schema.clone(),
-            });
-        }
-
-        // 4. If fewer than limit, backfill with OS-compatible tools
-        if candidates.len() < limit {
-            for (i, entry) in self.tools.iter().enumerate() {
+            if seen_names.insert(entry.name.clone()) {
+                candidates.push(CandidateAction {
+                    name: entry.name.clone(),
+                    description: entry.description.clone(),
+                    category: entry.category.clone(),
+                    permission_tier: entry.permission_tier,
+                    parameters_schema: entry.parameters_schema.clone(),
+                });
                 if candidates.len() >= limit {
                     break;
                 }
-                if (entry.os == "all" || entry.os == target_os) && !included.contains(&i) {
+            }
+        }
+
+        // 4. If fewer than limit, backfill with OS-compatible tools (deduplicating by name)
+        if candidates.len() < limit {
+            for entry in &self.tools {
+                if candidates.len() >= limit {
+                    break;
+                }
+                if (entry.os == "all" || entry.os == target_os)
+                    && seen_names.insert(entry.name.clone())
+                {
                     candidates.push(CandidateAction {
                         name: entry.name.clone(),
                         description: entry.description.clone(),
@@ -175,7 +188,6 @@ impl ToolIndex {
                         permission_tier: entry.permission_tier,
                         parameters_schema: entry.parameters_schema.clone(),
                     });
-                    included.insert(i);
                 }
             }
         }

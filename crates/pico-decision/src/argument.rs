@@ -9,6 +9,12 @@ static RE_PATH_WIN: LazyLock<Regex> = LazyLock::new(|| {
     Regex::new(r#"(?:[a-zA-Z]:\\[^"<>|?*\r\n\t]+)|(?:[a-zA-Z]:/[^"<>|?*\r\n\t]+)"#).unwrap()
 });
 
+static RE_PATH_POSIX: LazyLock<Regex> =
+    LazyLock::new(|| Regex::new(r#"(?:/[a-zA-Z0-9_\.\-]+)+"#).unwrap());
+
+static RE_PATH_REL: LazyLock<Regex> =
+    LazyLock::new(|| Regex::new(r#"(?:\.{1,2}[\\/][a-zA-Z0-9_\.\-\\/]+)"#).unwrap());
+
 static RE_QUOTED: LazyLock<Regex> = LazyLock::new(|| Regex::new(r#"["']([^"']+)["']"#).unwrap());
 
 static RE_URL: LazyLock<Regex> =
@@ -50,85 +56,145 @@ pub fn resolve_arguments(query: &str, tool_name: &str, schema: &Value) -> Argume
     let properties = schema.get("properties").and_then(|p| p.as_object());
 
     // Domain-specific extraction heuristics based on tool name and schema
-    match tool_name {
-        "calculator" | "math_eval" => {
-            // Extract the mathematical expression
-            let expr = extract_math_expression(query_clean);
-            args.insert("expression".to_string(), json!(expr));
-        }
-        "file_read" | "file_write" | "file_delete" | "fs_stat" => {
-            if let Some(path) = extract_path(query_clean) {
-                args.insert("path".to_string(), json!(path));
+    if tool_name == "calculator" || tool_name == "math_eval" || tool_name.contains("math") {
+        let expr = extract_math_expression(query_clean);
+        args.insert("expression".to_string(), json!(expr));
+    } else if tool_name.contains("filesystem")
+        || tool_name == "read_file"
+        || tool_name == "write_file"
+        || tool_name == "list_directory"
+        || tool_name == "file_read"
+        || tool_name == "file_write"
+        || tool_name == "file_delete"
+        || tool_name == "fs_stat"
+    {
+        // Source and destination for copy/move operations
+        if schema
+            .get("properties")
+            .and_then(|p| p.get("source"))
+            .is_some()
+            && schema
+                .get("properties")
+                .and_then(|p| p.get("destination"))
+                .is_some()
+        {
+            let (src, dst) = extract_source_destination(query_clean);
+            if let Some(s) = src {
+                args.insert("source".to_string(), json!(s));
             }
-            if tool_name == "file_write" {
-                if let Some(content) = extract_content_payload(query_clean) {
-                    args.insert("content".to_string(), json!(content));
+            if let Some(d) = dst {
+                args.insert("destination".to_string(), json!(d));
+            }
+        } else if let Some(path) = extract_path(query_clean) {
+            args.insert("path".to_string(), json!(path));
+        } else if query_clean.contains("current directory")
+            || query_clean.contains("current folder")
+            || query_clean.contains("here")
+            || query_clean.contains(" .")
+            || query_clean.ends_with('.')
+        {
+            args.insert("path".to_string(), json!("."));
+        }
+
+        if tool_name.contains("write") || tool_name.contains("append") {
+            if let Some(content) = extract_content_payload(query_clean) {
+                args.insert("content".to_string(), json!(content));
+            }
+        }
+
+        if tool_name.contains("head") || tool_name.contains("tail") || tool_name.contains("read") {
+            if let Some(lines) = extract_number(query_clean) {
+                if lines > 0 {
+                    args.insert("lines".to_string(), json!(lines));
+                    args.insert("max_lines".to_string(), json!(lines));
                 }
             }
         }
-        "kill_process" | "process_terminate" => {
-            if let Some(pid) = extract_pid(query_clean) {
-                args.insert("pid".to_string(), json!(pid));
-            } else if let Some(proc_name) = extract_target_process_name(query_clean) {
-                args.insert("name".to_string(), json!(proc_name));
-            }
+    } else if tool_name.contains("process")
+        || tool_name == "kill_process"
+        || tool_name == "process_terminate"
+    {
+        if let Some(pid) = extract_pid(query_clean) {
+            args.insert("pid".to_string(), json!(pid));
+        } else if let Some(proc_name) = extract_target_process_name(query_clean) {
+            args.insert("name".to_string(), json!(proc_name));
         }
-        "set_volume" | "audio_volume" => {
-            if let Some(pct) = extract_percentage_or_number(query_clean) {
-                args.insert("level".to_string(), json!(pct));
-            }
+    } else if tool_name.contains("audio")
+        || tool_name == "set_volume"
+        || tool_name == "audio_volume"
+    {
+        if let Some(pct) = extract_percentage_or_number(query_clean) {
+            args.insert("level".to_string(), json!(pct));
         }
-        "set_timer" | "timer_create" => {
-            if let Some(secs) = extract_duration_seconds(query_clean) {
-                args.insert("seconds".to_string(), json!(secs));
-            }
-            let label = extract_timer_label(query_clean);
-            args.insert("label".to_string(), json!(label));
+    } else if tool_name.contains("timer") || tool_name == "set_timer" || tool_name == "timer_create"
+    {
+        if let Some(secs) = extract_duration_seconds(query_clean) {
+            args.insert("seconds".to_string(), json!(secs));
         }
-        "web_fetch" | "http_get" => {
-            if let Some(url) = extract_url(query_clean) {
-                args.insert("url".to_string(), json!(url));
-            }
+        let label = extract_timer_label(query_clean);
+        args.insert("label".to_string(), json!(label));
+    } else if tool_name.contains("network") || tool_name == "web_fetch" || tool_name == "http_get" {
+        if let Some(url) = extract_url(query_clean) {
+            args.insert("url".to_string(), json!(url));
         }
-        "open_application" | "app_launch" => {
-            let app = extract_app_target(query_clean);
-            args.insert("target".to_string(), json!(app));
-        }
-        "clipboard_set" => {
-            let text = extract_quoted_or_trailing(query_clean, &["copy", "clipboard", "set"]);
-            args.insert("text".to_string(), json!(text));
-        }
-        _ => {
-            // General schema-driven extraction
-            if let Some(props) = properties {
-                for (prop_name, prop_def) in props {
-                    let prop_type = prop_def
-                        .get("type")
-                        .and_then(|t| t.as_str())
-                        .unwrap_or("string");
+    } else if tool_name == "open_application" || tool_name == "app_launch" {
+        let app = extract_app_target(query_clean);
+        args.insert("target".to_string(), json!(app));
+    } else if tool_name == "clipboard_set" {
+        let text = extract_quoted_or_trailing(query_clean, &["copy", "clipboard", "set"]);
+        args.insert("text".to_string(), json!(text));
+    }
 
-                    match prop_type {
-                        "integer" | "number" => {
-                            if let Some(num) = extract_number(query_clean) {
-                                args.insert(prop_name.clone(), json!(num));
-                            }
+    // General schema-driven fallback / augmentation
+    if let Some(props) = properties {
+        for (prop_name, prop_def) in props {
+            if args.contains_key(prop_name) {
+                continue;
+            }
+
+            let prop_type = prop_def
+                .get("type")
+                .and_then(|t| t.as_str())
+                .unwrap_or("string");
+
+            match prop_type {
+                "integer" | "number" => {
+                    if prop_name.contains("pid") {
+                        if let Some(pid) = extract_pid(query_clean) {
+                            args.insert(prop_name.clone(), json!(pid));
                         }
-                        "boolean" => {
-                            let val = query_clean.contains("true")
-                                || query_clean.contains("enable")
-                                || query_clean.contains("on");
-                            args.insert(prop_name.clone(), json!(val));
+                    } else if prop_name.contains("second") || prop_name.contains("duration") {
+                        if let Some(secs) = extract_duration_seconds(query_clean) {
+                            args.insert(prop_name.clone(), json!(secs));
                         }
-                        _ => {
-                            if prop_name.contains("path") || prop_name.contains("file") {
-                                if let Some(path) = extract_path(query_clean) {
-                                    args.insert(prop_name.clone(), json!(path));
-                                }
-                            } else if prop_name.contains("url") {
-                                if let Some(url) = extract_url(query_clean) {
-                                    args.insert(prop_name.clone(), json!(url));
-                                }
-                            }
+                    } else if let Some(num) = extract_number(query_clean) {
+                        args.insert(prop_name.clone(), json!(num));
+                    }
+                }
+                "boolean" => {
+                    let val = query_clean.contains("true")
+                        || query_clean.contains("enable")
+                        || query_clean.contains("on");
+                    args.insert(prop_name.clone(), json!(val));
+                }
+                _ => {
+                    if prop_name.contains("path")
+                        || prop_name.contains("file")
+                        || prop_name.contains("dir")
+                    {
+                        if let Some(path) = extract_path(query_clean) {
+                            args.insert(prop_name.clone(), json!(path));
+                        }
+                    } else if prop_name.contains("url") {
+                        if let Some(url) = extract_url(query_clean) {
+                            args.insert(prop_name.clone(), json!(url));
+                        }
+                    } else if prop_name.contains("expression") {
+                        let expr = extract_math_expression(query_clean);
+                        args.insert(prop_name.clone(), json!(expr));
+                    } else if prop_name.contains("name") {
+                        if let Some(proc_name) = extract_target_process_name(query_clean) {
+                            args.insert(prop_name.clone(), json!(proc_name));
                         }
                     }
                 }
@@ -182,8 +248,9 @@ pub fn extract_math_expression(query: &str) -> String {
     expr.trim_end_matches('?').trim().to_string()
 }
 
-/// Extracts a filesystem path from quotes or regex.
+/// Extracts a filesystem path from quotes, platform regex, or token analysis.
 pub fn extract_path(query: &str) -> Option<String> {
+    // 1. Quoted paths or file names
     if let Some(caps) = RE_QUOTED.captures(query) {
         let p = caps[1].trim();
         if p.contains('\\') || p.contains('/') || p.contains('.') {
@@ -191,11 +258,97 @@ pub fn extract_path(query: &str) -> Option<String> {
         }
     }
 
+    // 2. Windows absolute paths: C:\dir\file.txt or D:/dir/file.txt
     if let Some(mat) = RE_PATH_WIN.find(query) {
         return Some(mat.as_str().trim().to_string());
     }
 
+    // 3. Relative paths starting with ./ or ../
+    if let Some(mat) = RE_PATH_REL.find(query) {
+        return Some(mat.as_str().trim().to_string());
+    }
+
+    // 4. POSIX absolute paths: /etc/hosts, /home/user/...
+    if let Some(mat) = RE_PATH_POSIX.find(query) {
+        let p = mat.as_str().trim();
+        let start = mat.start();
+        if (start == 0 || query.as_bytes()[start - 1] != b'.')
+            && p.len() > 1
+            && !p.starts_with("//")
+        {
+            return Some(p.to_string());
+        }
+    }
+
+    // 5. Look for filename tokens after contextual keywords
+    let lower = query.to_lowercase();
+    let keywords = [
+        "file ",
+        "path ",
+        "folder ",
+        "read ",
+        "cat ",
+        "delete ",
+        "remove ",
+        "open ",
+        "view ",
+        "show ",
+        "write to ",
+        "append to ",
+        "in ",
+        "from ",
+    ];
+
+    for kw in keywords {
+        if let Some(pos) = lower.find(kw) {
+            let remainder = query[pos + kw.len()..].trim();
+            let first_word = remainder.split_whitespace().next().unwrap_or("");
+            let clean_word = first_word.trim_matches(|c: char| {
+                c == '"' || c == '\'' || c == ',' || c == '?' || c == ';' || c == '(' || c == ')'
+            });
+            if (clean_word.contains('.') || clean_word.contains('/') || clean_word.contains('\\'))
+                && !clean_word.starts_with("http://")
+                && !clean_word.starts_with("https://")
+                && clean_word.len() > 1
+            {
+                return Some(clean_word.to_string());
+            }
+        }
+    }
+
+    // 6. Any standalone token ending with a common file extension
+    for word in query.split_whitespace() {
+        let clean = word.trim_matches(|c: char| {
+            c == '"' || c == '\'' || c == ',' || c == '?' || c == ';' || c == '(' || c == ')'
+        });
+        let lower_clean = clean.to_lowercase();
+        let common_exts = [
+            ".txt", ".json", ".rs", ".py", ".md", ".log", ".toml", ".csv", ".yaml", ".yml", ".sh",
+            ".ps1", ".html", ".css", ".js", ".pdf",
+        ];
+        if common_exts.iter().any(|ext| lower_clean.ends_with(ext)) {
+            return Some(clean.to_string());
+        }
+    }
+
     None
+}
+
+/// Extracts source and destination paths from copy/move commands.
+pub fn extract_source_destination(query: &str) -> (Option<String>, Option<String>) {
+    let lower = query.to_lowercase();
+    for kw in &[" to ", " into "] {
+        if let Some(pos) = lower.find(kw) {
+            let left = &query[..pos];
+            let right = &query[pos + kw.len()..];
+            let src = extract_path(left);
+            let dst = extract_path(right);
+            if src.is_some() && dst.is_some() {
+                return (src, dst);
+            }
+        }
+    }
+    (extract_path(query), None)
 }
 
 /// Extracts URL from query.
@@ -265,7 +418,6 @@ pub fn extract_timer_label(query: &str) -> String {
     let lower = query.to_lowercase();
     if let Some(pos) = lower.find("for ") {
         let remainder = query[pos + 4..].trim();
-        // Remove trailing duration
         let words: Vec<&str> = remainder.split_whitespace().collect();
         return words.join(" ");
     }
@@ -330,8 +482,24 @@ mod tests {
 
     #[test]
     fn test_extract_path() {
-        let p = extract_path(r#"read file "C:\Users\test\document.txt""#).unwrap();
-        assert_eq!(p, r#"C:\Users\test\document.txt"#);
+        let p_win = extract_path(r#"read file "C:\Users\test\document.txt""#).unwrap();
+        assert_eq!(p_win, r#"C:\Users\test\document.txt"#);
+
+        let p_posix = extract_path("cat /var/log/syslog").unwrap();
+        assert_eq!(p_posix, "/var/log/syslog");
+
+        let p_rel = extract_path("inspect ./src/main.rs").unwrap();
+        assert_eq!(p_rel, "./src/main.rs");
+
+        let p_ext = extract_path("view Cargo.toml please").unwrap();
+        assert_eq!(p_ext, "Cargo.toml");
+    }
+
+    #[test]
+    fn test_extract_source_destination() {
+        let (src, dst) = extract_source_destination("copy file.txt to backup.txt");
+        assert_eq!(src, Some("file.txt".to_string()));
+        assert_eq!(dst, Some("backup.txt".to_string()));
     }
 
     #[test]

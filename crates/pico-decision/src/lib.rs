@@ -66,6 +66,46 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn test_missing_required_argument_triggers_clarification() {
+        let config = DecisionConfig::default();
+        let engine = DecisionEngine::new(config);
+
+        // Register file_write tool requiring path and content
+        {
+            let tool_idx = engine.tool_index();
+            let mut idx = tool_idx.write().unwrap();
+            idx.add_entry(ToolEntry {
+                name: "file_write".to_string(),
+                description: "Writes content to a file on disk".to_string(),
+                category: "filesystem".to_string(),
+                os: "all".to_string(),
+                permission_tier: PermissionTier::LowRisk,
+                parameters_schema: json!({
+                    "type": "object",
+                    "properties": {
+                        "path": { "type": "string" },
+                        "content": { "type": "string" }
+                    },
+                    "required": ["path", "content"]
+                }),
+            });
+        }
+
+        // Query with missing content
+        let result = engine.decide("write to file notes.txt").await.unwrap();
+        match result {
+            DecisionResult::ClarificationRequired {
+                prompt,
+                top_candidates,
+            } => {
+                assert!(prompt.contains("content") || prompt.contains("file_write"));
+                assert!(!top_candidates.is_empty());
+            }
+            _ => panic!("Expected ClarificationRequired, got {:?}", result),
+        }
+    }
+
+    #[tokio::test]
     async fn test_direct_conversation_flow() {
         let config = DecisionConfig::default();
         let engine = DecisionEngine::new(config);

@@ -5,7 +5,7 @@ pub mod calibration;
 pub mod embeddings;
 pub mod ranking;
 
-pub use calibration::Calibrator;
+pub use calibration::{CalibrationMetrics, Calibrator, PlattParameters};
 pub use embeddings::{EmbeddingVector, SemanticEmbedder, EMBEDDING_DIM};
 pub use ranking::{CrossEncoderRanker, RankingWeights};
 
