@@ -1,3 +1,4 @@
+pub mod calculator_parser;
 pub mod command_tools;
 pub mod filesystem_tools;
 pub mod registry;

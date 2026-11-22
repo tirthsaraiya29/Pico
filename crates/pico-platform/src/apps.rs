@@ -12,25 +12,44 @@ pub struct ProcessInfo {
 pub struct PlatformApps;
 
 impl PlatformApps {
-    /// Launches an application or document safely.
+    /// Launches an application or document safely without shell interpreters.
     pub fn open_application(app_or_path: &str) -> Result<()> {
+        let trimmed = app_or_path.trim();
+        if trimmed.is_empty() {
+            return Err(PicoError::Platform(
+                "Target application or URL cannot be empty".into(),
+            ));
+        }
+
+        // Strictly reject shell chaining metacharacters
+        if trimmed.contains('&')
+            || trimmed.contains('|')
+            || trimmed.contains(';')
+            || trimmed.contains('\n')
+            || trimmed.contains('\r')
+            || trimmed.contains('`')
+            || trimmed.contains('$')
+        {
+            return Err(PicoError::Security(format!(
+                "Target '{}' contains prohibited shell metacharacters",
+                trimmed
+            )));
+        }
+
         #[cfg(target_os = "windows")]
         {
-            // Use explorer / start to launch application safely without elevation
-            let status = Command::new("cmd")
-                .args(["/c", "start", "", app_or_path])
+            // Launch directly via Windows shell handler (explorer) without invoking cmd.exe /c start
+            let status = Command::new("explorer")
+                .arg(trimmed)
                 .status()
                 .map_err(|e| {
-                    PicoError::Platform(format!(
-                        "Failed to start application '{}': {}",
-                        app_or_path, e
-                    ))
+                    PicoError::Platform(format!("Failed to start target '{}': {}", trimmed, e))
                 })?;
 
             if !status.success() {
                 return Err(PicoError::Platform(format!(
-                    "Application launch for '{}' exited with status: {}",
-                    app_or_path, status
+                    "Target launch for '{}' exited with status: {}",
+                    trimmed, status
                 )));
             }
             Ok(())
@@ -38,16 +57,11 @@ impl PlatformApps {
         #[cfg(not(target_os = "windows"))]
         {
             let status = Command::new("xdg-open")
-                .arg(app_or_path)
+                .arg(trimmed)
                 .status()
-                .map_err(|e| {
-                    PicoError::Platform(format!("Failed to open '{}': {}", app_or_path, e))
-                })?;
+                .map_err(|e| PicoError::Platform(format!("Failed to open '{}': {}", trimmed, e)))?;
             if !status.success() {
-                return Err(PicoError::Platform(format!(
-                    "Failed to open '{}'",
-                    app_or_path
-                )));
+                return Err(PicoError::Platform(format!("Failed to open '{}'", trimmed)));
             }
             Ok(())
         }

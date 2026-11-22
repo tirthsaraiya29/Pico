@@ -122,7 +122,10 @@ async fn test_e2e_live_turn_with_ollama() {
 
     let runtime = PicoRuntime::new(config).expect("Runtime initialization failed");
     match runtime
-        .process_turn("What is 25 * 4? Calculate this using the calculator tool.", false)
+        .process_turn(
+            "What is 25 * 4? Calculate this using the calculator tool.",
+            false,
+        )
         .await
     {
         Ok(reply) => {

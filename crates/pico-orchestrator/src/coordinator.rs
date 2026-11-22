@@ -23,6 +23,7 @@ pub struct PicoRuntime {
     voice: Arc<VoicePipeline>,
     event_tx: broadcast::Sender<PicoEvent>,
     is_cancelled: Arc<AtomicBool>,
+    active_turn_cancel: Arc<Mutex<Option<Arc<AtomicBool>>>>,
 }
 
 impl PicoRuntime {
@@ -61,6 +62,7 @@ impl PicoRuntime {
 
         let session_id = Arc::new(Mutex::new(SessionId::new()));
         let is_cancelled = Arc::new(AtomicBool::new(false));
+        let active_turn_cancel = Arc::new(Mutex::new(None));
 
         info!(
             provider = %inference.provider_name(),
@@ -77,6 +79,7 @@ impl PicoRuntime {
             voice,
             event_tx,
             is_cancelled,
+            active_turn_cancel,
         })
     }
 
@@ -103,6 +106,11 @@ impl PicoRuntime {
 
     /// Processes a text input turn from the user.
     pub async fn process_turn(&self, user_input: &str, speak_response: bool) -> Result<String> {
+        let turn_cancel = Arc::new(AtomicBool::new(false));
+        {
+            let mut lock = self.active_turn_cancel.lock().await;
+            *lock = Some(turn_cancel.clone());
+        }
         self.is_cancelled.store(false, Ordering::Relaxed);
         let sid = self.current_session_id().await;
         let t_start = Instant::now();
@@ -144,7 +152,7 @@ impl PicoRuntime {
         let mut final_text = String::new();
 
         while current_turn_depth < max_turn_depth {
-            if self.is_cancelled.load(Ordering::Relaxed) {
+            if turn_cancel.load(Ordering::Relaxed) || self.is_cancelled.load(Ordering::Relaxed) {
                 return Err(PicoError::Cancelled("Turn was cancelled by user".into()));
             }
 
@@ -218,7 +226,12 @@ impl PicoRuntime {
 
     /// Triggers immediate cancellation of active generation, tool tasks, or audio playback.
     pub fn cancel(&self) {
-        self.is_cancelled.store(true, Ordering::Relaxed);
+        self.is_cancelled.store(true, Ordering::SeqCst);
+        if let Ok(lock) = self.active_turn_cancel.try_lock() {
+            if let Some(ref turn_cancel) = *lock {
+                turn_cancel.store(true, Ordering::SeqCst);
+            }
+        }
         self.voice.interrupt_playback();
         info!("PicoRuntime turn cancelled");
     }

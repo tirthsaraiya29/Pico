@@ -35,7 +35,8 @@ mod tests {
     #[tokio::test]
     async fn test_live_ollama_call() {
         use pico_core::traits::InferenceProvider;
-        let provider = OllamaProvider::new("http://127.0.0.1:11434", "granite4.2:latest", 0.2, None);
+        let provider =
+            OllamaProvider::new("http://127.0.0.1:11434", "granite4.2:latest", 0.2, None);
         let msgs = vec![pico_core::session::Message::new_user(
             pico_core::session::SessionId::new(),
             "Respond with the word PICO_TEST_OK and nothing else",

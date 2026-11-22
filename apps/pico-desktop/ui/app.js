@@ -205,7 +205,9 @@ function initAudioWaveform() {
 function initWebSocket() {
   const host = window.location.host;
   const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-  socket = new WebSocket(`${protocol}//${host}/ws`);
+  const token = window.PICO_AUTH_TOKEN || (document.querySelector('meta[name="pico-auth-token"]')?.getAttribute('content') || '');
+  const tokenQuery = token ? `?token=${encodeURIComponent(token)}` : '';
+  socket = new WebSocket(`${protocol}//${host}/ws${tokenQuery}`);
 
   socket.onopen = () => {
     document.getElementById('runtime-status-text').textContent = 'CORE ONLINE';
@@ -458,8 +460,10 @@ document.addEventListener('DOMContentLoaded', () => {
     setCoreState(isActive ? 'LISTENING' : 'IDLE');
   });
 
-  // Query diagnostic system status
-  fetch('/api/status')
+  // Query diagnostic system status with local auth token
+  const token = window.PICO_AUTH_TOKEN || (document.querySelector('meta[name="pico-auth-token"]')?.getAttribute('content') || '');
+  const authHeaders = token ? { 'Authorization': `Bearer ${token}` } : {};
+  fetch('/api/status', { headers: authHeaders })
     .then(r => r.json())
     .then(data => {
       if (data.system) {

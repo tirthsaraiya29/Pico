@@ -46,29 +46,27 @@ impl Tool for CalculatorTool {
                 message: "Missing 'expression' argument".into(),
             })?;
 
-        // Evaluate via a clean recursive descent or safe powershell computation
-        let clean_expr = expr.replace([';', '|', '&', '$', '`'], "");
-        let ps_cmd = format!("[math]::Round(([double]({})), 8)", clean_expr);
-
-        let output = std::process::Command::new("powershell")
-            .args(["-NoProfile", "-NonInteractive", "-Command", &ps_cmd])
-            .output()
-            .map_err(|e| PicoError::ToolExecution {
+        // Zero-shell arithmetic AST evaluation
+        let val = crate::calculator_parser::evaluate_expression(expr).map_err(|e| {
+            PicoError::ToolExecution {
                 tool: self.name().into(),
                 message: format!("Calculation failed: {}", e),
-            })?;
+            }
+        })?;
 
-        if !output.status.success() {
-            return Err(PicoError::ToolExecution {
-                tool: self.name().into(),
-                message: format!("Invalid arithmetic expression: {}", expr),
-            });
-        }
+        // Format result nicely (round to 8 decimal places if float, or display clean integer)
+        let formatted = if (val.fract()).abs() < 1e-10 {
+            format!("{}", val as i64)
+        } else {
+            format!("{:.8}", val)
+                .trim_end_matches('0')
+                .trim_end_matches('.')
+                .to_string()
+        };
 
-        let result_str = String::from_utf8_lossy(&output.stdout).trim().to_string();
         Ok(json!({
             "expression": expr,
-            "result": result_str
+            "result": formatted
         }))
     }
 }
@@ -200,7 +198,165 @@ impl Tool for ClipboardTool {
     }
 }
 
-/// Tool to fetch text from a URL.
+use std::net::{IpAddr, Ipv4Addr, Ipv6Addr};
+
+/// Evaluates whether an IP address is a safe public IP (rejects loopback, private RFC1918, link-local, cloud metadata, multicast, etc.).
+pub fn is_safe_public_ip(ip: IpAddr) -> bool {
+    match ip {
+        IpAddr::V4(v4) => is_safe_public_ipv4(v4),
+        IpAddr::V6(v6) => {
+            if let Some(v4) = v6.to_ipv4_mapped() {
+                is_safe_public_ipv4(v4)
+            } else {
+                is_safe_public_ipv6(v6)
+            }
+        }
+    }
+}
+
+fn is_safe_public_ipv4(ip: Ipv4Addr) -> bool {
+    let octets = ip.octets();
+    // 0.0.0.0/8 (Current network)
+    if octets[0] == 0 {
+        return false;
+    }
+    // 127.0.0.0/8 (Loopback)
+    if ip.is_loopback() {
+        return false;
+    }
+    // 10.0.0.0/8 (RFC 1918 Private)
+    if octets[0] == 10 {
+        return false;
+    }
+    // 172.16.0.0/12 (RFC 1918 Private)
+    if octets[0] == 172 && (16..=31).contains(&octets[1]) {
+        return false;
+    }
+    // 192.168.0.0/16 (RFC 1918 Private)
+    if octets[0] == 192 && octets[1] == 168 {
+        return false;
+    }
+    // 169.254.0.0/16 (Link-Local & Cloud Metadata AWS 169.254.169.254 / Azure / GCP)
+    if octets[0] == 169 && octets[1] == 254 {
+        return false;
+    }
+    // 100.64.0.0/10 (Shared Address Space / CGNAT)
+    if octets[0] == 100 && (octets[1] & 0xC0) == 64 {
+        return false;
+    }
+    // 192.0.0.0/24 (IETF Protocol Assignments)
+    if octets[0] == 192 && octets[1] == 0 && octets[2] == 0 {
+        return false;
+    }
+    // 192.0.2.0/24 (TEST-NET-1)
+    if octets[0] == 192 && octets[1] == 0 && octets[2] == 2 {
+        return false;
+    }
+    // 198.18.0.0/15 (Network benchmark tests)
+    if octets[0] == 198 && (octets[1] & 0xFE) == 18 {
+        return false;
+    }
+    // 198.51.100.0/24 (TEST-NET-2)
+    if octets[0] == 198 && octets[1] == 51 && octets[2] == 100 {
+        return false;
+    }
+    // 203.0.113.0/24 (TEST-NET-3)
+    if octets[0] == 203 && octets[1] == 0 && octets[2] == 113 {
+        return false;
+    }
+    // 224.0.0.0/4 (Multicast)
+    if ip.is_multicast() {
+        return false;
+    }
+    // 240.0.0.0/4 (Reserved) & 255.255.255.255 (Broadcast)
+    if octets[0] >= 240 {
+        return false;
+    }
+    true
+}
+
+fn is_safe_public_ipv6(ip: Ipv6Addr) -> bool {
+    // Loopback ::1
+    if ip.is_loopback() {
+        return false;
+    }
+    // Unspecified ::
+    if ip.is_unspecified() {
+        return false;
+    }
+    // Multicast ff00::/8
+    if ip.is_multicast() {
+        return false;
+    }
+    let segs = ip.segments();
+    // Unique Local fc00::/7 (RFC 4193 private)
+    if (segs[0] & 0xfe00) == 0xfc00 {
+        return false;
+    }
+    // Link-Local Unicast fe80::/10 (RFC 4291)
+    if (segs[0] & 0xffc0) == 0xfe80 {
+        return false;
+    }
+    true
+}
+
+async fn validate_url_ssrf(url_str: &str) -> Result<reqwest::Url> {
+    let parsed = reqwest::Url::parse(url_str)
+        .map_err(|e| PicoError::Security(format!("Invalid URL '{}': {}", url_str, e)))?;
+
+    if parsed.scheme() != "http" && parsed.scheme() != "https" {
+        return Err(PicoError::Security(format!(
+            "Scheme '{}' is not permitted. Only http and https are allowed.",
+            parsed.scheme()
+        )));
+    }
+
+    let host_str = parsed
+        .host_str()
+        .ok_or_else(|| PicoError::Security("URL must contain a valid host".into()))?;
+
+    if host_str.eq_ignore_ascii_case("localhost")
+        || host_str.ends_with(".local")
+        || host_str.ends_with(".internal")
+        || host_str.ends_with(".localhost")
+    {
+        return Err(PicoError::Security(format!(
+            "Host '{}' is an internal or local domain",
+            host_str
+        )));
+    }
+
+    let port = parsed.port_or_known_default().unwrap_or(80);
+    let socket_addrs = tokio::net::lookup_host((host_str, port))
+        .await
+        .map_err(|e| PicoError::ToolExecution {
+            tool: "fetch_web_content".into(),
+            message: format!("DNS resolution failed for '{}': {}", host_str, e),
+        })?;
+
+    let mut resolved_any = false;
+    for addr in socket_addrs {
+        resolved_any = true;
+        if !is_safe_public_ip(addr.ip()) {
+            return Err(PicoError::Security(format!(
+                "Host '{}' resolved to forbidden private/internal IP address '{}'",
+                host_str,
+                addr.ip()
+            )));
+        }
+    }
+
+    if !resolved_any {
+        return Err(PicoError::ToolExecution {
+            tool: "fetch_web_content".into(),
+            message: format!("No IP addresses resolved for '{}'", host_str),
+        });
+    }
+
+    Ok(parsed)
+}
+
+/// Tool to fetch text from a URL with robust anti-SSRF protections.
 pub struct FetchWebContentTool {
     client: reqwest::Client,
 }
@@ -215,6 +371,7 @@ impl FetchWebContentTool {
     pub fn new() -> Self {
         let client = reqwest::Client::builder()
             .timeout(Duration::from_secs(15))
+            .redirect(reqwest::redirect::Policy::none()) // Manual verified redirect validation
             .user_agent("Pico-Assistant/0.1.0")
             .build()
             .unwrap_or_default();
@@ -229,7 +386,7 @@ impl Tool for FetchWebContentTool {
     }
 
     fn description(&self) -> &str {
-        "Fetches and extracts text content from an HTTP/HTTPS URL."
+        "Fetches and extracts text content from a public HTTP/HTTPS URL with strict SSRF defense."
     }
 
     fn parameters_schema(&self) -> serde_json::Value {
@@ -238,7 +395,7 @@ impl Tool for FetchWebContentTool {
             "properties": {
                 "url": {
                     "type": "string",
-                    "description": "The HTTP or HTTPS URL to fetch"
+                    "description": "The public HTTP or HTTPS URL to fetch"
                 }
             },
             "required": ["url"],
@@ -251,59 +408,140 @@ impl Tool for FetchWebContentTool {
     }
 
     async fn execute(&self, arguments: serde_json::Value) -> Result<serde_json::Value> {
-        let url = arguments
+        let mut target_url_str = arguments
             .get("url")
             .and_then(|v| v.as_str())
             .ok_or_else(|| PicoError::ToolExecution {
                 tool: self.name().into(),
                 message: "Missing 'url' argument".into(),
-            })?;
+            })?
+            .to_string();
 
-        if !url.starts_with("http://") && !url.starts_with("https://") {
-            return Err(PicoError::Security(
-                "URL must start with http:// or https://".into(),
-            ));
+        let mut hops = 0;
+        let max_hops = 5;
+
+        loop {
+            let validated_url = validate_url_ssrf(&target_url_str).await?;
+
+            let resp = self
+                .client
+                .get(validated_url.clone())
+                .send()
+                .await
+                .map_err(|e| PicoError::ToolExecution {
+                    tool: self.name().into(),
+                    message: format!("HTTP request to '{}' failed: {}", target_url_str, e),
+                })?;
+
+            let status = resp.status();
+            if status.is_redirection() && hops < max_hops {
+                hops += 1;
+                if let Some(loc) = resp.headers().get(reqwest::header::LOCATION) {
+                    let loc_str = loc.to_str().map_err(|_| {
+                        PicoError::Security("Malformed redirect location header".into())
+                    })?;
+                    let next_url = validated_url
+                        .join(loc_str)
+                        .map_err(|e| PicoError::Security(format!("Invalid redirect URL: {}", e)))?;
+                    target_url_str = next_url.to_string();
+                    continue;
+                }
+            }
+
+            let status_code = status.as_u16();
+            let body = resp.text().await.unwrap_or_default();
+
+            // Basic HTML tag stripping for clean LLM consumption
+            let text_stripped = body
+                .split('<')
+                .filter_map(|chunk| chunk.split_once('>').map(|(_, text)| text))
+                .collect::<Vec<&str>>()
+                .join(" ");
+
+            let clean_text: String = text_stripped
+                .split_whitespace()
+                .collect::<Vec<&str>>()
+                .join(" ");
+
+            let truncated = clean_text.chars().take(2000).collect::<String>();
+
+            return Ok(json!({
+                "url": target_url_str,
+                "status": status_code,
+                "text": truncated
+            }));
         }
+    }
+}
 
-        // Prevent SSRF against localhost / 127.0.0.1 / internal AWS metadata
-        let url_lower = url.to_lowercase();
-        if url_lower.contains("169.254.169.254") || url_lower.contains("metadata.google") {
-            return Err(PicoError::Security(
-                "Requests to cloud instance metadata are forbidden".into(),
-            ));
-        }
+#[cfg(test)]
+mod tests {
+    use super::*;
 
-        let resp = self
-            .client
-            .get(url)
-            .send()
+    #[tokio::test]
+    async fn test_calculator_tool_ast() {
+        let calc = CalculatorTool;
+        let res = calc
+            .execute(json!({ "expression": "((10 + 5) * 2) / 3" }))
             .await
-            .map_err(|e| PicoError::ToolExecution {
-                tool: self.name().into(),
-                message: format!("HTTP request to '{}' failed: {}", url, e),
-            })?;
+            .unwrap();
+        assert_eq!(res["result"], "10");
 
-        let status = resp.status().as_u16();
-        let body = resp.text().await.unwrap_or_default();
+        let res2 = calc
+            .execute(json!({ "expression": "sqrt(16) + 2^3" }))
+            .await
+            .unwrap();
+        assert_eq!(res2["result"], "12");
 
-        // Basic HTML tag stripping for clean LLM consumption
-        let text_stripped = body
-            .split('<')
-            .filter_map(|chunk| chunk.split_once('>').map(|(_, text)| text))
-            .collect::<Vec<&str>>()
-            .join(" ");
+        // Malicious input attempts MUST fail cleanly without execution
+        assert!(calc
+            .execute(json!({ "expression": "cmd.exe /c calc" }))
+            .await
+            .is_err());
+        assert!(calc
+            .execute(json!({ "expression": "powershell whoami" }))
+            .await
+            .is_err());
+        assert!(calc
+            .execute(json!({ "expression": "5 / 0" }))
+            .await
+            .is_err());
+    }
 
-        let clean_text: String = text_stripped
-            .split_whitespace()
-            .collect::<Vec<&str>>()
-            .join(" ");
+    #[test]
+    fn test_ssrf_ip_filtering() {
+        use std::str::FromStr;
 
-        let truncated = clean_text.chars().take(2000).collect::<String>();
+        // Loopback addresses must be rejected
+        assert!(!is_safe_public_ip(IpAddr::from_str("127.0.0.1").unwrap()));
+        assert!(!is_safe_public_ip(IpAddr::from_str("127.1.2.3").unwrap()));
+        assert!(!is_safe_public_ip(IpAddr::from_str("::1").unwrap()));
 
-        Ok(json!({
-            "url": url,
-            "status": status,
-            "text": truncated
-        }))
+        // RFC 1918 Private addresses must be rejected
+        assert!(!is_safe_public_ip(IpAddr::from_str("10.0.0.1").unwrap()));
+        assert!(!is_safe_public_ip(IpAddr::from_str("172.16.5.10").unwrap()));
+        assert!(!is_safe_public_ip(IpAddr::from_str("192.168.1.1").unwrap()));
+
+        // Cloud metadata (169.254.169.254) & Link-local must be rejected
+        assert!(!is_safe_public_ip(
+            IpAddr::from_str("169.254.169.254").unwrap()
+        ));
+        assert!(!is_safe_public_ip(IpAddr::from_str("fe80::1").unwrap()));
+
+        // Public IPs should be allowed
+        assert!(is_safe_public_ip(IpAddr::from_str("8.8.8.8").unwrap()));
+        assert!(is_safe_public_ip(IpAddr::from_str("1.1.1.1").unwrap()));
+    }
+
+    #[tokio::test]
+    async fn test_ssrf_url_validation() {
+        // Localhost and private schemes must be rejected
+        assert!(validate_url_ssrf("http://localhost:8080").await.is_err());
+        assert!(validate_url_ssrf("http://127.0.0.1:8765").await.is_err());
+        assert!(validate_url_ssrf("http://169.254.169.254/latest/meta-data")
+            .await
+            .is_err());
+        assert!(validate_url_ssrf("ftp://example.com").await.is_err());
+        assert!(validate_url_ssrf("file:///etc/passwd").await.is_err());
     }
 }

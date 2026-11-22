@@ -1,7 +1,6 @@
 use pico_core::error::{PicoError, Result};
 use pico_core::traits::PermissionTier;
 use std::sync::Arc;
-use tokio::sync::Mutex;
 use tracing::warn;
 
 pub type ConfirmationCallback = Arc<dyn Fn(&str, &serde_json::Value) -> Result<bool> + Send + Sync>;
@@ -12,7 +11,6 @@ pub struct SecurityPolicy {
     strict_mode: bool,
     require_confirmation_for_shell: bool,
     confirmation_handler: Option<ConfirmationCallback>,
-    confirmed_actions_cache: Arc<Mutex<Vec<String>>>,
 }
 
 impl SecurityPolicy {
@@ -21,7 +19,6 @@ impl SecurityPolicy {
             strict_mode,
             require_confirmation_for_shell,
             confirmation_handler: None,
-            confirmed_actions_cache: Arc::new(Mutex::new(Vec::new())),
         }
     }
 
@@ -47,23 +44,11 @@ impl SecurityPolicy {
                 })
             }
             PermissionTier::ConfirmationRequired => {
-                // If strict mode is enabled, reject outright unless confirmed
-                let action_key = format!("{}:{}", tool_name, arguments);
-
-                // Check cache
-                {
-                    let cache = self.confirmed_actions_cache.lock().await;
-                    if cache.contains(&action_key) {
-                        return Ok(());
-                    }
-                }
-
-                // If a confirmation callback is installed, query it
+                // If a confirmation callback is installed, query it interactively for this single invocation
                 if let Some(ref handler) = self.confirmation_handler {
                     let approved = (handler)(tool_name, arguments)?;
                     if approved {
-                        let mut cache = self.confirmed_actions_cache.lock().await;
-                        cache.push(action_key);
+                        // Action approved once for this exact request - non-reusable
                         Ok(())
                     } else {
                         Err(PicoError::PermissionDenied {
