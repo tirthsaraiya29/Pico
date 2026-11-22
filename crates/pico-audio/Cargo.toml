@@ -1,0 +1,12 @@
+[package]
+name = "pico-audio"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+
+[dependencies]
+pico-core = { workspace = true }
+cpal = { workspace = true }
+tokio = { workspace = true }
+tracing = { workspace = true }

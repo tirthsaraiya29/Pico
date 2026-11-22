@@ -1,0 +1,47 @@
+# Pico System Configuration File
+# Optimized for local execution on Windows 11 x64 (Intel Core Ultra 7 356H, 32GB RAM)
+
+[inference]
+provider = "ollama"                         # Options: "ollama", "llamacpp", "openai"
+endpoint = "http://127.0.0.1:11434"         # Local Ollama endpoint
+model = "granite4.2:latest"                 # Default local GGUF model
+temperature = 0.2
+context_window = 8192
+timeout_seconds = 180
+system_prompt = "You are Pico, an ultra-fast, capable, local AI voice assistant. Answer concisely, directly, and naturally. When tools are necessary to complete a user task, select and call them directly."
+
+[voice]
+vad_threshold = 0.015                       # Energy threshold for voice detection
+silence_duration_ms = 700                   # Milliseconds of silence before speech finalization
+stt_engine = "whisper"                      # Options: "whisper", "local", "cloud"
+tts_engine = "native_sapi"                  # Options: "native_sapi", "piper", "cloud"
+speech_rate = 1.0                           # 0.5 to 2.0 playback rate
+push_to_talk = false                        # Set true for manual key trigger
+ptt_key = "Space"
+enable_barge_in = true                      # Immediately interrupts playback when user speaks
+
+[audio]
+sample_rate = 16000                         # 16kHz standard for speech processing
+channels = 1                                # Mono
+buffer_size = 512
+
+[security]
+policy_mode = "ConfirmationPrompt"          # Options: "Strict", "ConfirmationPrompt", "Permissive"
+allowed_directories = ["."]
+blocked_directories = [
+    "C:\\Windows",
+    "C:\\Windows\\System32"
+]
+require_confirmation_for_shell = true
+audit_log_path = "pico_audit.log"
+
+[memory]
+database_path = "pico_memory.sqlite"
+max_history_tokens = 4096
+context_budget = 8192
+auto_summarize_turns = 12
+
+[desktop]
+port = 3124
+bind_address = "127.0.0.1"
+auto_open_browser = true

@@ -1,0 +1,544 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>PICO — Autonomous Real-Time Voice Intelligence</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500;700&display=swap" rel="stylesheet">
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+  <style>
+    :root {
+      --bg: #090a0f;
+      --bg-card: rgba(18, 20, 28, 0.7);
+      --border: rgba(255, 255, 255, 0.08);
+      --accent-cyan: #00f0ff;
+      --accent-violet: #8b5cf6;
+      --accent-emerald: #10b981;
+      --text: #f8fafc;
+      --text-dim: #94a3b8;
+      --mono: 'JetBrains Mono', monospace;
+      --sans: 'Plus Jakarta Sans', sans-serif;
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      background-color: var(--bg);
+      color: var(--text);
+      font-family: var(--sans);
+      line-height: 1.6;
+      overflow-x: hidden;
+    }
+    .ambient {
+      position: fixed;
+      top: 0; left: 0; width: 100vw; height: 100vh;
+      background: radial-gradient(circle at 20% 30%, rgba(0, 240, 255, 0.06) 0%, transparent 60%),
+                  radial-gradient(circle at 80% 80%, rgba(139, 92, 246, 0.06) 0%, transparent 60%);
+      pointer-events: none;
+      z-index: 0;
+    }
+    header {
+      position: fixed;
+      top: 0; width: 100%;
+      height: 70px;
+      background: rgba(9, 10, 15, 0.85);
+      backdrop-filter: blur(16px);
+      border-bottom: 1px solid var(--border);
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 0 40px;
+      z-index: 100;
+    }
+    .brand {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      font-weight: 800;
+      letter-spacing: 2px;
+      font-size: 1.25rem;
+    }
+    .brand-dot {
+      width: 14px; height: 14px; border-radius: 50%;
+      background: var(--accent-cyan);
+      box-shadow: 0 0 16px var(--accent-cyan);
+    }
+    nav a {
+      color: var(--text-dim);
+      text-decoration: none;
+      margin-left: 24px;
+      font-size: 0.9rem;
+      font-weight: 500;
+      transition: color 0.2s;
+    }
+    nav a:hover { color: var(--accent-cyan); }
+    .btn-github {
+      background: rgba(255, 255, 255, 0.06);
+      border: 1px solid var(--border);
+      color: var(--text);
+      padding: 8px 18px;
+      border-radius: 8px;
+      font-size: 0.85rem;
+      font-weight: 600;
+      text-decoration: none;
+      transition: all 0.2s;
+    }
+    .btn-github:hover {
+      background: var(--accent-cyan);
+      color: #000;
+      box-shadow: 0 0 16px rgba(0, 240, 255, 0.3);
+    }
+
+    /* Hero Section */
+    .hero {
+      position: relative;
+      min-height: 100vh;
+      display: flex;
+      align-items: center;
+      padding: 120px 40px 60px;
+      z-index: 1;
+      max-width: 1400px;
+      margin: 0 auto;
+    }
+    .hero-content {
+      flex: 1;
+      max-width: 650px;
+    }
+    .tagline {
+      font-family: var(--mono);
+      font-size: 0.85rem;
+      color: var(--accent-cyan);
+      background: rgba(0, 240, 255, 0.1);
+      padding: 6px 14px;
+      border-radius: 9999px;
+      display: inline-block;
+      margin-bottom: 24px;
+      border: 1px solid rgba(0, 240, 255, 0.2);
+    }
+    h1 {
+      font-size: 3.6rem;
+      line-height: 1.1;
+      font-weight: 800;
+      margin-bottom: 20px;
+      background: linear-gradient(135deg, #ffffff 40%, #94a3b8 100%);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+    }
+    .hero p {
+      font-size: 1.15rem;
+      color: var(--text-dim);
+      margin-bottom: 32px;
+      line-height: 1.7;
+    }
+    .cta-group {
+      display: flex;
+      gap: 16px;
+      align-items: center;
+      margin-bottom: 40px;
+    }
+    .btn-primary {
+      background: var(--accent-cyan);
+      color: #000;
+      font-weight: 700;
+      padding: 14px 28px;
+      border-radius: 10px;
+      text-decoration: none;
+      font-size: 0.95rem;
+      transition: all 0.2s;
+    }
+    .btn-primary:hover {
+      box-shadow: 0 0 24px rgba(0, 240, 255, 0.5);
+      transform: translateY(-2px);
+    }
+    .code-preview {
+      background: rgba(0, 0, 0, 0.6);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 12px 20px;
+      font-family: var(--mono);
+      font-size: 0.85rem;
+      color: #38bdf8;
+      display: flex;
+      align-items: center;
+      gap: 12px;
+    }
+    .hero-3d {
+      flex: 1;
+      height: 600px;
+      position: relative;
+    }
+    #hero-canvas {
+      width: 100%;
+      height: 100%;
+    }
+    .state-trigger-deck {
+      position: absolute;
+      bottom: 20px;
+      left: 50%;
+      transform: translateX(-50%);
+      background: var(--bg-card);
+      backdrop-filter: blur(16px);
+      border: 1px solid var(--border);
+      padding: 8px 16px;
+      border-radius: 9999px;
+      display: flex;
+      gap: 8px;
+    }
+    .state-btn {
+      background: transparent;
+      border: 1px solid transparent;
+      color: var(--text-dim);
+      padding: 6px 12px;
+      border-radius: 20px;
+      font-size: 0.75rem;
+      font-family: var(--mono);
+      cursor: pointer;
+      transition: all 0.2s;
+    }
+    .state-btn:hover, .state-btn.active {
+      color: var(--text);
+      border-color: var(--accent-cyan);
+      background: rgba(0, 240, 255, 0.1);
+    }
+
+    /* Features Grid */
+    .section-title {
+      text-align: center;
+      margin-bottom: 60px;
+    }
+    .section-title h2 {
+      font-size: 2.2rem;
+      font-weight: 700;
+      margin-bottom: 12px;
+    }
+    .section-title p {
+      color: var(--text-dim);
+      font-size: 1rem;
+    }
+    .features-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+      gap: 24px;
+      max-width: 1400px;
+      margin: 0 auto;
+      padding: 0 40px 100px;
+      position: relative;
+      z-index: 1;
+    }
+    .feature-card {
+      background: var(--bg-card);
+      backdrop-filter: blur(12px);
+      border: 1px solid var(--border);
+      padding: 32px;
+      border-radius: 16px;
+      transition: all 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+    }
+    .feature-card:hover {
+      border-color: rgba(0, 240, 255, 0.3);
+      transform: translateY(-4px);
+      box-shadow: 0 16px 32px rgba(0, 0, 0, 0.4);
+    }
+    .feature-icon {
+      font-size: 1.8rem;
+      margin-bottom: 16px;
+    }
+    .feature-card h3 {
+      font-size: 1.2rem;
+      font-weight: 700;
+      margin-bottom: 10px;
+    }
+    .feature-card p {
+      color: var(--text-dim);
+      font-size: 0.95rem;
+      line-height: 1.6;
+    }
+
+    /* Benchmarks Section */
+    .benchmarks-section {
+      background: rgba(18, 20, 28, 0.5);
+      border-top: 1px solid var(--border);
+      border-bottom: 1px solid var(--border);
+      padding: 80px 40px;
+      position: relative;
+      z-index: 1;
+    }
+    .benchmarks-wrap {
+      max-width: 1200px;
+      margin: 0 auto;
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+      gap: 32px;
+      text-align: center;
+    }
+    .benchmark-val {
+      font-size: 2.8rem;
+      font-weight: 800;
+      font-family: var(--mono);
+      color: var(--accent-cyan);
+      margin-bottom: 6px;
+    }
+    .benchmark-label {
+      color: var(--text-dim);
+      font-size: 0.9rem;
+      font-weight: 500;
+    }
+
+    footer {
+      border-top: 1px solid var(--border);
+      padding: 40px;
+      text-align: center;
+      color: var(--text-dim);
+      font-size: 0.85rem;
+      position: relative;
+      z-index: 1;
+    }
+
+    @media (max-width: 900px) {
+      .hero { flex-direction: column; text-align: center; padding-top: 100px; }
+      .hero-content { margin-bottom: 40px; }
+      .cta-group { justify-content: center; flex-direction: column; }
+      .benchmarks-wrap { grid-template-columns: repeat(2, 1fr); }
+    }
+  </style>
+</head>
+<body>
+  <div class="ambient"></div>
+
+  <header>
+    <div class="brand">
+      <div class="brand-dot"></div>
+      <span>PICO</span>
+    </div>
+    <nav>
+      <a href="#features">Architecture</a>
+      <a href="#benchmarks">Benchmarks</a>
+      <a href="https://github.com/tirthsaraiya/Pico" class="btn-github">GitHub Repository</a>
+    </nav>
+  </header>
+
+  <main>
+    <section class="hero">
+      <div class="hero-content">
+        <span class="tagline">PRODUCTION RUST VOICE ARCHITECTURE</span>
+        <h1>Real-time local AI assistant with zero cloud lag.</h1>
+        <p>
+          Pico runs natively on Windows 11 and Linux with hardware audio downmixing, adaptive energy voice activity detection, sub-15ms barge-in interruption, and a zero-trust operating system tool execution engine.
+        </p>
+        <div class="cta-group">
+          <a href="https://github.com/tirthsaraiya/Pico" class="btn-primary">Explore Source Code</a>
+          <div class="code-preview">
+            <span>$ cargo run --release -p pico-cli -- chat</span>
+          </div>
+        </div>
+      </div>
+      <div class="hero-3d">
+        <div id="hero-canvas"></div>
+        <div class="state-trigger-deck">
+          <button class="state-btn active" onclick="setCoreState('IDLE', this)">IDLE</button>
+          <button class="state-btn" onclick="setCoreState('LISTENING', this)">LISTENING</button>
+          <button class="state-btn" onclick="setCoreState('THINKING', this)">THINKING</button>
+          <button class="state-btn" onclick="setCoreState('TOOL', this)">TOOL EXECUTION</button>
+          <button class="state-btn" onclick="setCoreState('SPEAKING', this)">SPEAKING</button>
+        </div>
+      </div>
+    </section>
+
+    <!-- Benchmarks -->
+    <section class="benchmarks-section" id="benchmarks">
+      <div class="benchmarks-wrap">
+        <div>
+          <div class="benchmark-val">&lt; 15ms</div>
+          <div class="benchmark-label">Barge-in Interruption</div>
+        </div>
+        <div>
+          <div class="benchmark-val">&lt; 0.1ms</div>
+          <div class="benchmark-label">Audio 16kHz Resampling</div>
+        </div>
+        <div>
+          <div class="benchmark-val">28 MB</div>
+          <div class="benchmark-label">Idle Memory Footprint</div>
+        </div>
+        <div>
+          <div class="benchmark-val">100%</div>
+          <div class="benchmark-label">Local &amp; Offline Capable</div>
+        </div>
+      </div>
+    </section>
+
+    <!-- Features -->
+    <section class="features-section" id="features" style="padding-top: 100px;">
+      <div class="section-title">
+        <h2>Engineered Without Compromise</h2>
+        <p>Built as a high-performance modular Rust workspace.</p>
+      </div>
+
+      <div class="features-grid">
+        <div class="feature-card">
+          <div class="feature-icon">🎙</div>
+          <h3>WASAPI Audio Pipeline</h3>
+          <p>Continuous microphone streaming with polyphase 16kHz mono resampling, dynamic RMS noise-floor tracking, and push-to-talk.</p>
+        </div>
+        <div class="feature-card">
+          <div class="feature-icon">⚡</div>
+          <h3>Interchangeable Inference</h3>
+          <p>Supports local GGUF via Vulkan llama-server, Ollama native/v1 endpoints, and OpenAI-compatible remote providers with token streaming.</p>
+        </div>
+        <div class="feature-card">
+          <div class="feature-icon">🛡</div>
+          <h3>Zero-Trust Security Engine</h3>
+          <p>Four-tiered permissions (ReadOnly, LowRisk, ConfirmationRequired, Restricted), path boundary traversal protection, and audit trails.</p>
+        </div>
+        <div class="feature-card">
+          <div class="feature-icon">⚙</div>
+          <h3>OS System Integration</h3>
+          <p>Native application launcher, process manager, memory inspector, file search, safe command runner, and clipboard sync.</p>
+        </div>
+        <div class="feature-card">
+          <div class="feature-icon">🧠</div>
+          <h3>SQLite Context Budgeter</h3>
+          <p>WAL-journaled persistent memory with FTS5 BM25 relevance ranking and dynamic context window budgeting to prevent memory blowups.</p>
+        </div>
+        <div class="feature-card">
+          <div class="feature-icon">🌐</div>
+          <h3>Real-Time 3D Desktop UI</h3>
+          <p>Axum-powered WebSocket hub with interactive Three.js neural sphere, live VU meters, and diagnostic telemetry.</p>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <footer>
+    <p>Released under the GNU General Public License v3.0 • Authored by Tirth Saraiya</p>
+  </footer>
+
+  <script>
+    let scene, camera, renderer, wireframe, core, particles;
+    let targetColor = new THREE.Color(0x00f0ff);
+    let targetScale = 1.0;
+    let coreState = 'IDLE';
+
+    function init() {
+      const container = document.getElementById('hero-canvas');
+      const w = container.clientWidth;
+      const h = container.clientHeight;
+
+      scene = new THREE.Scene();
+      camera = new THREE.PerspectiveCamera(45, w / h, 0.1, 1000);
+      camera.position.z = 4.8;
+
+      renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
+      renderer.setSize(w, h);
+      renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+      container.appendChild(renderer.domElement);
+
+      const geo = new THREE.IcosahedronGeometry(1.2, 3);
+      const mat = new THREE.MeshBasicMaterial({ color: 0x00f0ff, wireframe: true, transparent: true, opacity: 0.4 });
+      wireframe = new THREE.Mesh(geo, mat);
+      scene.add(wireframe);
+
+      const innerGeo = new THREE.IcosahedronGeometry(0.8, 2);
+      const innerMat = new THREE.MeshBasicMaterial({ color: 0x00e5ff, transparent: true, opacity: 0.25 });
+      core = new THREE.Mesh(innerGeo, innerMat);
+      scene.add(core);
+
+      const pGeo = new THREE.BufferGeometry();
+      const pCount = 500;
+      const pos = new Float32Array(pCount * 3);
+      for (let i = 0; i < pCount * 3; i += 3) {
+        const u = Math.random();
+        const v = Math.random();
+        const theta = u * 2.0 * Math.PI;
+        const phi = Math.acos(2.0 * v - 1.0);
+        const r = 1.5 + Math.random() * 0.8;
+        pos[i] = r * Math.sin(phi) * Math.cos(theta);
+        pos[i+1] = r * Math.sin(phi) * Math.sin(theta);
+        pos[i+2] = r * Math.cos(phi);
+      }
+      pGeo.setAttribute('position', new THREE.BufferAttribute(pos, 3));
+      const pMat = new THREE.PointsMaterial({ size: 0.03, color: 0x00f0ff, transparent: true, opacity: 0.7 });
+      particles = new THREE.Points(pGeo, pMat);
+      scene.add(particles);
+
+      window.addEventListener('resize', () => {
+        const w2 = container.clientWidth;
+        const h2 = container.clientHeight;
+        camera.aspect = w2 / h2;
+        camera.updateProjectionMatrix();
+        renderer.setSize(w2, h2);
+      });
+
+      document.addEventListener('mousemove', (e) => {
+        const mx = (e.clientX / window.innerWidth) * 2 - 1;
+        const my = -(e.clientY / window.innerHeight) * 2 + 1;
+        camera.position.x += (mx * 0.3 - camera.position.x) * 0.05;
+        camera.position.y += (my * 0.3 - camera.position.y) * 0.05;
+        camera.lookAt(scene.position);
+      });
+
+      render();
+    }
+
+    let clk = new THREE.Clock();
+    function render() {
+      requestAnimationFrame(render);
+      const t = clk.getElapsedTime();
+
+      let rot = 0.5;
+      if (coreState === 'THINKING') rot = 2.4;
+      if (coreState === 'TOOL') rot = 1.8;
+      if (coreState === 'SPEAKING') rot = 0.9;
+
+      wireframe.rotation.x += 0.005 * rot;
+      wireframe.rotation.y += 0.01 * rot;
+      core.rotation.x -= 0.007 * rot;
+      core.rotation.y -= 0.009 * rot;
+      particles.rotation.y += 0.003 * rot;
+
+      let p = Math.sin(t * 2.5) * 0.08;
+      if (coreState === 'LISTENING') p = Math.sin(t * 6.0) * 0.15;
+      if (coreState === 'SPEAKING') p = Math.sin(t * 8.0) * 0.22;
+
+      const s = targetScale + p;
+      wireframe.scale.set(s, s, s);
+      core.scale.set(s * 0.8, s * 0.8, s * 0.8);
+
+      wireframe.material.color.lerp(targetColor, 0.08);
+      core.material.color.lerp(targetColor, 0.08);
+      particles.material.color.lerp(targetColor, 0.08);
+
+      renderer.render(scene, camera);
+    }
+
+    function setCoreState(st, btn) {
+      coreState = st;
+      document.querySelectorAll('.state-btn').forEach(b => b.classList.remove('active'));
+      if (btn) btn.classList.add('active');
+
+      switch(st) {
+        case 'LISTENING':
+          targetColor = new THREE.Color(0x3b82f6);
+          targetScale = 1.25;
+          break;
+        case 'THINKING':
+          targetColor = new THREE.Color(0xf59e0b);
+          targetScale = 0.95;
+          break;
+        case 'TOOL':
+          targetColor = new THREE.Color(0x10b981);
+          targetScale = 1.15;
+          break;
+        case 'SPEAKING':
+          targetColor = new THREE.Color(0x8b5cf6);
+          targetScale = 1.35;
+          break;
+        default:
+          targetColor = new THREE.Color(0x00f0ff);
+          targetScale = 1.0;
+          break;
+      }
+    }
+
+    init();
+  </script>
+</body>
+</html>

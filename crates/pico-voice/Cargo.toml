@@ -1,0 +1,18 @@
+[package]
+name = "pico-voice"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+
+[dependencies]
+pico-core = { workspace = true }
+pico-audio = { workspace = true }
+tokio = { workspace = true }
+async-trait = { workspace = true }
+tracing = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+hound = { workspace = true }
+chrono = { workspace = true }
+uuid = { workspace = true }

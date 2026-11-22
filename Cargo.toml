@@ -1,0 +1,79 @@
+[workspace]
+members = [
+    "crates/pico-core",
+    "crates/pico-security",
+    "crates/pico-platform",
+    "crates/pico-inference",
+    "crates/pico-tools",
+    "crates/pico-audio",
+    "crates/pico-voice",
+    "crates/pico-memory",
+    "crates/pico-orchestrator",
+    "apps/pico-cli",
+    "apps/pico-desktop",
+]
+resolver = "2"
+
+[workspace.package]
+version = "0.1.0"
+edition = "2021"
+authors = ["Tirth Saraiya <tirthsaraiya29@gmail.com>"]
+license = "GPL-3.0-only"
+
+[workspace.dependencies]
+# Pico workspace crates
+pico-core = { path = "crates/pico-core" }
+pico-security = { path = "crates/pico-security" }
+pico-platform = { path = "crates/pico-platform" }
+pico-inference = { path = "crates/pico-inference" }
+pico-tools = { path = "crates/pico-tools" }
+pico-audio = { path = "crates/pico-audio" }
+pico-voice = { path = "crates/pico-voice" }
+pico-memory = { path = "crates/pico-memory" }
+pico-orchestrator = { path = "crates/pico-orchestrator" }
+
+# Async & Runtime
+tokio = { version = "1.41", features = ["full"] }
+async-trait = "0.1"
+futures = "0.3"
+futures-util = "0.3"
+
+# Serialization & Config
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+toml = "0.8"
+
+# Error Handling & Tracing
+thiserror = "2.0"
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter", "fmt", "json"] }
+
+# Network & HTTP
+reqwest = { version = "0.12", features = ["json", "stream"] }
+eventsource-stream = "0.2"
+
+# Utilities
+chrono = { version = "0.4", features = ["serde"] }
+uuid = { version = "1.11", features = ["v4", "serde"] }
+regex = "1.11"
+
+# Database & Storage
+rusqlite = { version = "0.32", features = ["bundled"] }
+
+# Audio
+cpal = "0.15"
+hound = "3.5"
+
+# CLI & Web
+clap = { version = "4.5", features = ["derive", "env"] }
+colored = "2.1"
+axum = { version = "0.7", features = ["ws"] }
+tower = { version = "0.5", features = ["util"] }
+tower-http = { version = "0.6", features = ["cors", "fs"] }
+
+[profile.release]
+opt-level = 3
+lto = "thin"
+codegen-units = 1
+panic = "abort"
+strip = true

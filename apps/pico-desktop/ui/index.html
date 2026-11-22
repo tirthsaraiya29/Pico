@@ -1,0 +1,167 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>PICO — Autonomous Real-Time Voice Intelligence</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="style.css" />
+  <!-- Three.js from unpkg/cdnjs -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+</head>
+<body class="theme-dark">
+  <div class="ambient-glow"></div>
+
+  <!-- Top Navigation Bar -->
+  <header class="app-header">
+    <div class="brand">
+      <div class="brand-orb"></div>
+      <span class="brand-title">PICO</span>
+      <span class="brand-badge">v0.1.0 • LOCAL</span>
+    </div>
+    <div class="header-status">
+      <div class="status-indicator online">
+        <span class="dot"></span>
+        <span id="runtime-status-text">CORE ONLINE</span>
+      </div>
+      <div class="telemetry-pill">
+        <span class="label">MODEL</span>
+        <span class="val" id="telemetry-model">granite4.2:latest</span>
+      </div>
+      <div class="telemetry-pill">
+        <span class="label">LATENCY</span>
+        <span class="val" id="telemetry-latency">-- ms</span>
+      </div>
+    </div>
+    <div class="header-actions">
+      <button class="btn btn-secondary btn-icon" id="btn-reset" title="New Session">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 12a9 9 0 0 1 15-6.7L21 8"/><path d="M3 4v4h4"/><path d="M21 12a9 9 0 0 1-15 6.7L3 16"/><path d="M21 20v-4h-4"/></svg>
+      </button>
+      <button class="btn btn-secondary btn-icon" id="btn-settings" title="Settings">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
+      </button>
+    </div>
+  </header>
+
+  <!-- Main Grid Layout -->
+  <main class="app-layout">
+    <!-- Left Column: 3D Core & Audio Radar -->
+    <section class="viewport-stage">
+      <div id="canvas-container"></div>
+      
+      <div class="stage-overlay">
+        <div class="core-state-badge" id="core-state-badge">
+          <span class="state-pulse"></span>
+          <span id="core-state-label">IDLE • LISTENING</span>
+        </div>
+
+        <!-- Audio Oscilloscope Waveform -->
+        <div class="audio-visualizer-card">
+          <canvas id="waveform-canvas" width="360" height="48"></canvas>
+          <div class="audio-levels">
+            <span class="audio-label">VAD SENSITIVITY</span>
+            <div class="vu-meter"><div class="vu-bar" id="vu-bar" style="width: 15%"></div></div>
+          </div>
+        </div>
+
+        <!-- Quick OS Tools Bar -->
+        <div class="quick-tools-bar">
+          <button class="quick-pill" onclick="sendQuickPrompt('Check current system hardware stats')">⚡ System Info</button>
+          <button class="quick-pill" onclick="sendQuickPrompt('List active processes sorted by memory')">📊 Processes</button>
+          <button class="quick-pill" onclick="sendQuickPrompt('What is the current time and battery level?')">🔋 Power</button>
+          <button class="quick-pill" onclick="sendQuickPrompt('Open Windows notepad')">📝 Notepad</button>
+        </div>
+      </div>
+    </section>
+
+    <!-- Right Column: Conversation Stream & Controls -->
+    <section class="timeline-panel">
+      <div class="timeline-header">
+        <h2>Live Interaction Stream</h2>
+        <div class="voice-toggle-wrap">
+          <label class="switch">
+            <input type="checkbox" id="voice-speak-toggle" checked>
+            <span class="slider round"></span>
+          </label>
+          <span class="switch-label">Spoken Audio (TTS)</span>
+        </div>
+      </div>
+
+      <div class="messages-container" id="messages-container">
+        <!-- Initial Welcome Message -->
+        <div class="msg-bubble assistant">
+          <div class="msg-avatar">P</div>
+          <div class="msg-body">
+            <div class="msg-author">PICO CORE</div>
+            <div class="msg-text">
+              Pico is ready. Real-time voice pipeline, local GGUF/OpenAI inference, and OS tool execution framework are active. Speak naturally or type your command.
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Turn Input Bar -->
+      <div class="input-deck">
+        <div class="input-controls">
+          <button class="btn btn-mic" id="btn-mic" title="Voice Input">
+            <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/><line x1="12" y1="19" x2="12" y2="23"/><line x1="8" y1="23" x2="16" y2="23"/></svg>
+          </button>
+          <input type="text" id="text-input" placeholder="Give Pico a task, ask a question, or control system..." autocomplete="off" />
+          <button class="btn btn-primary" id="btn-send">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg>
+          </button>
+          <button class="btn btn-danger btn-icon" id="btn-cancel" title="Interrupt / Cancel" style="display:none;">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="6" y="6" width="12" height="12"/></svg>
+          </button>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <!-- Settings Drawer Modal -->
+  <aside class="settings-drawer" id="settings-drawer">
+    <div class="drawer-header">
+      <h3>System Configuration</h3>
+      <button class="btn-close" id="btn-close-settings">&times;</button>
+    </div>
+    <div class="drawer-body">
+      <div class="setting-group">
+        <label>Inference Provider</label>
+        <select id="setting-provider">
+          <option value="ollama">Ollama (Local Native / v1)</option>
+          <option value="llamacpp">llama.cpp / Vulkan Server</option>
+          <option value="openai">OpenAI Compatible HTTP</option>
+        </select>
+      </div>
+      <div class="setting-group">
+        <label>Model Tag</label>
+        <input type="text" id="setting-model" value="granite4.2:latest" />
+      </div>
+      <div class="setting-group">
+        <label>Endpoint URL</label>
+        <input type="text" id="setting-endpoint" value="http://127.0.0.1:11434" />
+      </div>
+      <div class="setting-group">
+        <label>VAD Sensitivity (0.005 - 0.05)</label>
+        <input type="range" id="setting-vad" min="5" max="50" value="15" />
+      </div>
+      <div class="setting-group">
+        <label>Security Sandbox Tier</label>
+        <select id="setting-security">
+          <option value="ConfirmationPrompt">Confirmation Prompt (Recommended)</option>
+          <option value="Strict">Strict Sandbox</option>
+          <option value="Permissive">Permissive (Dev)</option>
+        </select>
+      </div>
+      <div class="setting-group">
+        <label>Audio Device</label>
+        <div id="device-list-container" class="device-list">Loading devices...</div>
+      </div>
+    </div>
+  </aside>
+
+  <script src="app.js"></script>
+</body>
+</html>
