@@ -20,9 +20,8 @@ impl SpeechNormalizer {
         }
 
         static FILLER_RE: OnceLock<Regex> = OnceLock::new();
-        let filler_re = FILLER_RE.get_or_init(|| {
-            Regex::new(r"(?i)\b(uh|um|er|err|ah|like|hmm)\b").unwrap()
-        });
+        let filler_re =
+            FILLER_RE.get_or_init(|| Regex::new(r"(?i)\b(uh|um|er|err|ah|like|hmm)\b").unwrap());
 
         // 1. Remove verbal filler tokens ("uh", "um", etc.)
         let no_fillers = filler_re.replace_all(trimmed, "");
@@ -57,6 +56,7 @@ impl SpeechNormalizer {
 
 /// Cross-platform Native Speech Recognition Engine and Whisper STT.
 pub struct PlatformSpeechRecognizer {
+    stt_engine: String,
     whisper_binary: Option<PathBuf>,
 }
 
@@ -64,7 +64,41 @@ pub type WindowsSpeechRecognizer = PlatformSpeechRecognizer;
 
 impl PlatformSpeechRecognizer {
     pub fn new(whisper_binary: Option<PathBuf>) -> Self {
-        Self { whisper_binary }
+        Self {
+            stt_engine: "whisper".into(),
+            whisper_binary,
+        }
+    }
+
+    pub fn from_config(config: &pico_core::config::VoiceConfig) -> Self {
+        let mut whisper_path = None;
+        if config.stt_engine.eq_ignore_ascii_case("whisper") {
+            let candidates = [
+                PathBuf::from("models/whisper/whisper-cli.exe"),
+                PathBuf::from("models/whisper/whisper-cli"),
+                PathBuf::from("whisper-cli.exe"),
+                PathBuf::from("whisper.exe"),
+            ];
+            for p in &candidates {
+                if p.exists() {
+                    whisper_path = Some(p.clone());
+                    break;
+                }
+            }
+        }
+
+        Self {
+            stt_engine: config.stt_engine.clone(),
+            whisper_binary: whisper_path,
+        }
+    }
+
+    pub fn stt_engine(&self) -> &str {
+        &self.stt_engine
+    }
+
+    pub fn whisper_binary(&self) -> Option<&Path> {
+        self.whisper_binary.as_deref()
     }
 
     /// Converts 16kHz mono PCM i16 samples to a standard WAV byte buffer in-memory.

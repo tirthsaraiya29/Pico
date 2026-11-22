@@ -27,11 +27,8 @@ impl VoicePipeline {
     pub fn new(config: VoiceConfig, event_sender: broadcast::Sender<PicoEvent>) -> Result<Self> {
         let playback_engine = Arc::new(AudioPlayback::start(None)?);
         let playback = playback_engine.handle();
-        let recognizer = Arc::new(PlatformSpeechRecognizer::new(None));
-        let synthesizer = Arc::new(PlatformSpeechSynthesizer::new(
-            config.voice_name.clone(),
-            config.speech_rate,
-        ));
+        let recognizer = Arc::new(PlatformSpeechRecognizer::from_config(&config));
+        let synthesizer = Arc::new(PlatformSpeechSynthesizer::from_config(&config));
 
         Ok(Self {
             config,

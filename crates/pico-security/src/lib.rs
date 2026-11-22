@@ -2,6 +2,7 @@ pub mod audit;
 pub mod policy;
 pub mod sandbox;
 pub mod sanitizer;
+pub mod voice_auth;
 
 pub use audit::{AuditLogger, AuditRecord};
 pub use policy::{
@@ -9,6 +10,7 @@ pub use policy::{
 };
 pub use sandbox::PathSandbox;
 pub use sanitizer::InputSanitizer;
+pub use voice_auth::{VoiceAuthDecision, VoiceAuthRequest, VoiceAuthorizer};
 
 #[cfg(test)]
 mod tests {
@@ -167,7 +169,10 @@ mod tests {
         let _ = mgr.respond(&req_id, true).await;
 
         let result = policy_task.await.unwrap();
-        assert!(result.is_ok(), "Dangerous command should be allowed when explicitly confirmed by user");
+        assert!(
+            result.is_ok(),
+            "Dangerous command should be allowed when explicitly confirmed by user"
+        );
     }
 
     #[test]

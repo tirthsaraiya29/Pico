@@ -63,14 +63,17 @@ enum LearnAction {
     },
 }
 
+type PendingConfirmation = Option<(String, String, oneshot::Sender<bool>)>;
+type SharedPendingConfirmation = Arc<Mutex<PendingConfirmation>>;
+
 /// Request-scoped interactive voice confirmation provider.
 /// Prompts the user verbally and routes spoken responses ("confirm" / "cancel") to authorize high-risk actions.
 struct VoiceConfirmationCoordinator {
-    pending: Arc<Mutex<Option<(String, String, oneshot::Sender<bool>)>>>,
+    pending: SharedPendingConfirmation,
 }
 
 impl VoiceConfirmationCoordinator {
-    fn new() -> (Self, Arc<Mutex<Option<(String, String, oneshot::Sender<bool>)>>>) {
+    fn new() -> (Self, SharedPendingConfirmation) {
         let pending = Arc::new(Mutex::new(None));
         (
             Self {
@@ -166,13 +169,21 @@ async fn main() -> std::result::Result<(), Box<dyn std::error::Error>> {
         Commands::Devices => {
             println!("{}", "Audio Devices Hardware Scan:".cyan().bold());
             let inputs = AudioDeviceManager::list_input_devices().unwrap_or_default();
-            println!("\n{} ({}):", "Microphones (Input)".green().bold(), inputs.len());
+            println!(
+                "\n{} ({}):",
+                "Microphones (Input)".green().bold(),
+                inputs.len()
+            );
             for (idx, dev) in inputs.iter().enumerate() {
                 println!("  [{}] {:?}", idx, dev);
             }
 
             let outputs = AudioDeviceManager::list_output_devices().unwrap_or_default();
-            println!("\n{} ({}):", "Speakers (Output)".green().bold(), outputs.len());
+            println!(
+                "\n{} ({}):",
+                "Speakers (Output)".green().bold(),
+                outputs.len()
+            );
             for (idx, dev) in outputs.iter().enumerate() {
                 println!("  [{}] {:?}", idx, dev);
             }
@@ -187,15 +198,29 @@ async fn main() -> std::result::Result<(), Box<dyn std::error::Error>> {
                     let stats = learning.stats()?;
                     println!("{}", "Continuous Learning Status:".cyan().bold());
                     println!("  Total Observations:    {}", stats.total_observations);
-                    println!("  Active Checkpoint:     {}", stats.active_version.green().bold());
-                    println!("  Top-1 Benchmark Acc:   {:.2}%", stats.top1_accuracy * 100.0);
-                    println!("  Top-3 Benchmark Recall: {:.2}%", stats.top3_recall * 100.0);
+                    println!(
+                        "  Active Checkpoint:     {}",
+                        stats.active_version.green().bold()
+                    );
+                    println!(
+                        "  Top-1 Benchmark Acc:   {:.2}%",
+                        stats.top1_accuracy * 100.0
+                    );
+                    println!(
+                        "  Top-3 Benchmark Recall: {:.2}%",
+                        stats.top3_recall * 100.0
+                    );
                     println!("  Available Checkpoints: {}", stats.available_checkpoints);
                 }
                 LearnAction::Train => {
-                    println!("{}", "Triggering continuous learning evaluation and training cycle...".cyan());
+                    println!(
+                        "{}",
+                        "Triggering continuous learning evaluation and training cycle...".cyan()
+                    );
                     let default_weights = pico_inference::ranking::RankingWeights::default();
-                    if let Some((_, new_ver, metrics)) = learning.train_and_evaluate(&default_weights)? {
+                    if let Some((_, new_ver, metrics)) =
+                        learning.train_and_evaluate(&default_weights)?
+                    {
                         println!(
                             "{} New model checkpoint promoted! Version: {}",
                             "[PROMOTED]".green().bold(),
@@ -223,7 +248,10 @@ async fn main() -> std::result::Result<(), Box<dyn std::error::Error>> {
             }
         }
         Commands::Doctor => {
-            println!("{}", "Pico Diagnostic Environment Health Check:".cyan().bold());
+            println!(
+                "{}",
+                "Pico Diagnostic Environment Health Check:".cyan().bold()
+            );
             println!("{:-<60}", "");
 
             // 1. Host OS & Platform
@@ -234,7 +262,11 @@ async fn main() -> std::result::Result<(), Box<dyn std::error::Error>> {
             } else {
                 "Unix/Other"
             };
-            println!("  [OK] Host Platform:   {} ({})", os_name.green().bold(), std::env::consts::ARCH);
+            println!(
+                "  [OK] Host Platform:   {} ({})",
+                os_name.green().bold(),
+                std::env::consts::ARCH
+            );
 
             // 2. Audio Pipeline
             let inputs = AudioDeviceManager::list_input_devices().unwrap_or_default();
@@ -258,8 +290,14 @@ async fn main() -> std::result::Result<(), Box<dyn std::error::Error>> {
             let config = load_or_default_config(&cli.config);
             println!(
                 "  [OK] Security Policy: Strict Mode = {}, Require Shell Confirm = {}",
-                (config.security.policy_mode == "Strict").to_string().green(),
-                config.security.require_confirmation_for_shell.to_string().green()
+                (config.security.policy_mode == "Strict")
+                    .to_string()
+                    .green(),
+                config
+                    .security
+                    .require_confirmation_for_shell
+                    .to_string()
+                    .green()
             );
 
             // 4. Decision Engine
@@ -268,7 +306,10 @@ async fn main() -> std::result::Result<(), Box<dyn std::error::Error>> {
             );
 
             println!("{:-<60}", "");
-            println!("{} All diagnostic checks completed.", "[DOCTOR]".cyan().bold());
+            println!(
+                "{} All diagnostic checks completed.",
+                "[DOCTOR]".cyan().bold()
+            );
         }
         Commands::Voice => {
             run_voice_loop(&cli.config).await?;
@@ -278,7 +319,9 @@ async fn main() -> std::result::Result<(), Box<dyn std::error::Error>> {
     Ok(())
 }
 
-async fn run_voice_loop(config_path: &PathBuf) -> std::result::Result<(), Box<dyn std::error::Error>> {
+async fn run_voice_loop(
+    config_path: &PathBuf,
+) -> std::result::Result<(), Box<dyn std::error::Error>> {
     let config = load_or_default_config(config_path);
     let runtime = Arc::new(PicoRuntime::new(config)?);
 
@@ -300,7 +343,9 @@ async fn run_voice_loop(config_path: &PathBuf) -> std::result::Result<(), Box<dy
     );
     println!(
         "{}",
-        "  [100% Voice-Driven] Listening continuously...    ".green().bold()
+        "  [100% Voice-Driven] Listening continuously...    "
+            .green()
+            .bold()
     );
     println!(
         "{}",
@@ -332,14 +377,19 @@ async fn run_voice_loop(config_path: &PathBuf) -> std::result::Result<(), Box<dy
         while let Ok(event) = event_rx.recv().await {
             match event {
                 PicoEvent::VoiceActivityStarted { .. } => {
-                    print!("\r{} Listening...                 ", "🎙️ [VOICE]".green().bold());
+                    print!(
+                        "\r{} Listening...                 ",
+                        "🎙️ [VOICE]".green().bold()
+                    );
                     let _ = io::stdout().flush();
                 }
                 PicoEvent::PlaybackInterrupted { reason } => {
                     println!("\n{} {}", "⚡ [BARGE-IN]".yellow().bold(), reason);
                 }
                 PicoEvent::DecisionSelected {
-                    action, confidence, latency_ms,
+                    action,
+                    confidence,
+                    latency_ms,
                 } => {
                     let act = action.unwrap_or_else(|| "direct_conversation".into());
                     println!(
@@ -368,6 +418,18 @@ async fn run_voice_loop(config_path: &PathBuf) -> std::result::Result<(), Box<dy
                         "{} Tool {} completed in {}ms: {}",
                         tag, result.name, result.execution_duration_ms, result.content
                     );
+                }
+                PicoEvent::ObjectiveVerificationCompleted {
+                    tool,
+                    verified,
+                    evidence,
+                } => {
+                    let tag = if verified {
+                        "✓ [VERIFIED]".green().bold()
+                    } else {
+                        "⚠️ [UNVERIFIED]".yellow().bold()
+                    };
+                    println!("{} Objective for {}: {}", tag, tool, evidence);
                 }
                 PicoEvent::ToolPermissionPrompt { tool, reason, .. } => {
                     println!(
@@ -400,55 +462,42 @@ async fn run_voice_loop(config_path: &PathBuf) -> std::result::Result<(), Box<dy
                 lock.take()
             };
 
-            if let Some((_req_id, tool_name, tx)) = pending_tx {
-                let lower = clean_speech.to_lowercase();
-                if lower.contains("yes")
-                    || lower.contains("confirm")
-                    || lower.contains("proceed")
-                    || lower.contains("go ahead")
-                    || lower.contains("do it")
-                    || lower.contains("sure")
-                    || lower.contains("ok")
-                {
-                    println!(
-                        "{} User verbally confirmed action '{}'. Proceeding.",
-                        "✓ [APPROVED]".green().bold(),
-                        tool_name
-                    );
-                    let _ = tx.send(true);
-                    let _ = rt.voice().speak("Confirmed. Proceeding with execution.").await;
-                    continue;
-                } else if lower.contains("no")
-                    || lower.contains("cancel")
-                    || lower.contains("abort")
-                    || lower.contains("stop")
-                    || lower.contains("don't")
-                {
-                    println!(
-                        "{} User verbally declined action '{}'. Aborting.",
-                        "✗ [DECLINED]".red().bold(),
-                        tool_name
-                    );
-                    let _ = tx.send(false);
-                    let _ = rt.voice().speak("Cancelled. Operation was aborted.").await;
-                    continue;
-                } else {
-                    // Ambiguous response: ask again
-                    println!(
-                        "{} Ambiguous confirmation response. Repeating prompt.",
-                        "⚠️".yellow()
-                    );
-                    let _ = rt
-                        .voice()
-                        .speak(&format!(
-                            "I heard {}. Please say confirm to proceed, or cancel to abort.",
-                            clean_speech
-                        ))
-                        .await;
-                    // Put back into pending
-                    let mut lock = pending_clone.lock().await;
-                    *lock = Some((_req_id, tool_name, tx));
-                    continue;
+            if let Some((req_id, tool_name, tx)) = pending_tx {
+                match pico_security::VoiceAuthorizer::evaluate_utterance(clean_speech, &tool_name) {
+                    pico_security::VoiceAuthDecision::Approved => {
+                        println!(
+                            "{} User verbally confirmed action '{}'. Proceeding.",
+                            "✓ [APPROVED]".green().bold(),
+                            tool_name
+                        );
+                        let _ = tx.send(true);
+                        let _ = rt
+                            .voice()
+                            .speak("Confirmed. Proceeding with execution.")
+                            .await;
+                        continue;
+                    }
+                    pico_security::VoiceAuthDecision::Declined { reason } => {
+                        println!(
+                            "{} User verbally declined action '{}' ({}). Aborting.",
+                            "✗ [DECLINED]".red().bold(),
+                            tool_name,
+                            reason
+                        );
+                        let _ = tx.send(false);
+                        let _ = rt.voice().speak("Cancelled. Operation was aborted.").await;
+                        continue;
+                    }
+                    pico_security::VoiceAuthDecision::Ambiguous { prompt } => {
+                        println!(
+                            "{} Ambiguous confirmation response. Repeating prompt.",
+                            "⚠️".yellow()
+                        );
+                        let _ = rt.voice().speak(&prompt).await;
+                        let mut lock = pending_clone.lock().await;
+                        *lock = Some((req_id, tool_name, tx));
+                        continue;
+                    }
                 }
             }
 
@@ -462,7 +511,10 @@ async fn run_voice_loop(config_path: &PathBuf) -> std::result::Result<(), Box<dy
                 }
                 Err(e) => {
                     println!("\n{} {}", "[Voice turn error]".red(), e);
-                    let _ = rt.voice().speak("Sorry, I encountered an error executing that request.").await;
+                    let _ = rt
+                        .voice()
+                        .speak("Sorry, I encountered an error executing that request.")
+                        .await;
                 }
             }
         }

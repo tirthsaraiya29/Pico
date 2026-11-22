@@ -12,7 +12,13 @@ pub struct SqliteStore {
 
 impl SqliteStore {
     pub fn open(path: impl AsRef<Path>) -> Result<Self> {
-        let conn = Connection::open(path.as_ref())
+        let p = path.as_ref();
+        if let Some(parent) = p.parent() {
+            if !parent.as_os_str().is_empty() && !parent.exists() {
+                let _ = std::fs::create_dir_all(parent);
+            }
+        }
+        let conn = Connection::open(p)
             .map_err(|e| PicoError::Memory(format!("Failed to open SQLite database: {}", e)))?;
 
         // Enable Write-Ahead Logging for concurrency and performance

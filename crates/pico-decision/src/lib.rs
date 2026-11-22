@@ -106,16 +106,81 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn test_direct_conversation_flow() {
+    async fn test_decision_with_memory_context() {
+        use async_trait::async_trait;
+        use pico_core::session::{Message, SessionId};
+        use pico_core::traits::MemoryStore;
+        use std::sync::Arc;
+
+        struct MockMemory;
+        #[async_trait]
+        impl MemoryStore for MockMemory {
+            async fn save_message(&self, _msg: &Message) -> pico_core::error::Result<()> {
+                Ok(())
+            }
+            async fn get_session_history(
+                &self,
+                _sid: &SessionId,
+                _limit: usize,
+            ) -> pico_core::error::Result<Vec<Message>> {
+                Ok(vec![])
+            }
+            async fn search_relevant_context(
+                &self,
+                _query: &str,
+                _limit: usize,
+            ) -> pico_core::error::Result<Vec<String>> {
+                Ok(vec!["content: Autonomous Pico Verified Memory".to_string()])
+            }
+            async fn remember_fact(&self, _cat: &str, _fact: &str) -> pico_core::error::Result<()> {
+                Ok(())
+            }
+        }
+
         let config = DecisionConfig::default();
         let engine = DecisionEngine::new(config);
+        engine.set_memory_store(Arc::new(MockMemory));
 
-        let result = engine.decide("Hello there, who are you?").await.unwrap();
+        // Register file_write tool
+        {
+            let tool_idx = engine.tool_index();
+            let mut idx = tool_idx.write().unwrap();
+            idx.add_entry(ToolEntry {
+                name: "file_write".to_string(),
+                description: "Writes string content to a specified file path".to_string(),
+                category: "filesystem".to_string(),
+                os: "all".to_string(),
+                permission_tier: PermissionTier::LowRisk,
+                parameters_schema: json!({
+                    "type": "object",
+                    "properties": {
+                        "path": { "type": "string" },
+                        "content": { "type": "string" }
+                    },
+                    "required": ["path", "content"]
+                }),
+            });
+        }
+
+        // Query missing content directly, but memory contains content
+        let result = engine.decide("write to file notes.txt").await.unwrap();
         match result {
-            DecisionResult::DirectConversation { response } => {
-                assert!(response.contains("Pico"));
+            DecisionResult::ActionSelected {
+                action_name,
+                arguments,
+                ..
+            } => {
+                assert_eq!(action_name, "file_write");
+                assert_eq!(
+                    arguments.get("path").and_then(|v| v.as_str()),
+                    Some("notes.txt")
+                );
+                assert!(arguments.get("content").is_some());
             }
-            _ => panic!("Expected DirectConversation, got {:?}", result),
+            other => panic!(
+                "Expected ActionSelected via memory context, got {:?}",
+                other
+            ),
         }
     }
 }

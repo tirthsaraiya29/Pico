@@ -36,7 +36,17 @@ impl Calibrator {
     /// Applies Platt scaling (logistic sigmoid) to map a raw candidate score to a calibrated probability.
     /// P(executable | score) = 1 / (1 + exp(-(A * score + B)))
     pub fn platt_calibrate(score: f32, params: &PlattParameters) -> f32 {
-        let logit = params.a * score + params.b;
+        Self::platt_calibrate_with_temperature(score, params, 1.0)
+    }
+
+    /// Applies Platt scaling with temperature scaling factor.
+    pub fn platt_calibrate_with_temperature(
+        score: f32,
+        params: &PlattParameters,
+        temperature: f32,
+    ) -> f32 {
+        let temp = if temperature <= 0.0 { 1.0 } else { temperature };
+        let logit = (params.a * score + params.b) / temp;
         // Numerically stable sigmoid
         if logit >= 0.0 {
             1.0 / (1.0 + (-logit).exp())

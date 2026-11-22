@@ -3,7 +3,6 @@ use pico_core::error::{PicoError, Result};
 use pico_core::traits::{PermissionTier, Tool};
 use pico_security::InputSanitizer;
 use serde_json::json;
-use std::process::Command;
 
 /// Tool to execute approved system shell commands.
 pub struct ExecuteShellCommandTool;
@@ -73,23 +72,66 @@ impl Tool for ExecuteShellCommandTool {
             }
         }
 
-        let output = Command::new(command)
-            .args(&args_list)
-            .output()
-            .map_err(|e| PicoError::ToolExecution {
+        let mut cmd = tokio::process::Command::new(command);
+        cmd.kill_on_drop(true);
+        cmd.args(&args_list);
+        cmd.stdout(std::process::Stdio::piped());
+        cmd.stderr(std::process::Stdio::piped());
+
+        let child = cmd.spawn().map_err(|e| PicoError::ToolExecution {
+            tool: self.name().into(),
+            message: format!("Failed to spawn command '{}': {}", command, e),
+        })?;
+
+        let child_id = child.id();
+        let timeout = std::time::Duration::from_secs(30);
+
+        let output = match tokio::time::timeout(timeout, child.wait_with_output()).await {
+            Ok(res) => res.map_err(|e| PicoError::ToolExecution {
                 tool: self.name().into(),
                 message: format!("Failed to execute command '{}': {}", command, e),
-            })?;
+            })?,
+            Err(_) => {
+                #[cfg(target_os = "windows")]
+                if let Some(pid) = child_id {
+                    let _ = std::process::Command::new("taskkill")
+                        .args(["/F", "/T", "/PID", &pid.to_string()])
+                        .output();
+                }
+                #[cfg(not(target_os = "windows"))]
+                if let Some(pid) = child_id {
+                    let _ = std::process::Command::new("kill")
+                        .args(["-9", &pid.to_string()])
+                        .output();
+                }
+                return Err(PicoError::ToolExecution {
+                    tool: self.name().into(),
+                    message: format!("Command '{}' timed out after {:?}", command, timeout),
+                });
+            }
+        };
 
         let stdout = String::from_utf8_lossy(&output.stdout).to_string();
         let stderr = String::from_utf8_lossy(&output.stderr).to_string();
         let exit_code = output.status.code().unwrap_or(-1);
 
+        if !output.status.success() {
+            return Err(PicoError::ToolExecution {
+                tool: self.name().into(),
+                message: format!(
+                    "Command '{}' failed with exit code {}: {}",
+                    command,
+                    exit_code,
+                    if !stderr.is_empty() { &stderr } else { &stdout }
+                ),
+            });
+        }
+
         Ok(json!({
             "command": command,
             "args": args_list,
             "exit_code": exit_code,
-            "success": output.status.success(),
+            "success": true,
             "stdout": stdout,
             "stderr": stderr
         }))

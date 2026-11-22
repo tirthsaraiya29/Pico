@@ -110,4 +110,40 @@ mod tests {
         );
         assert!(metrics.passed_promotion);
     }
+
+    #[test]
+    fn test_dynamic_tool_history_provider() {
+        use pico_core::traits::ToolHistoryProvider;
+
+        let manager = LearningManager::in_memory(LearningConfig::default()).unwrap();
+
+        // 1. Unobserved tool defaults to Bayesian prior 0.8
+        let prior = manager.get_success_rate("unobserved_tool");
+        assert!((prior - 0.8).abs() < 1e-4);
+
+        // 2. Record 3 successes and 1 failure for "calc"
+        for i in 0..4 {
+            let status = if i < 3 { "success" } else { "failure" };
+            let obs = ObservationRecord {
+                id: format!("obs-{}", i),
+                timestamp: Utc::now(),
+                request_text: "calc".into(),
+                primary_intent: "math".into(),
+                candidate_names: vec!["calc".into()],
+                candidate_scores: vec![0.9],
+                selected_action: "calc".into(),
+                confidence: 0.9,
+                execution_status: status.into(),
+                latency_ms: 5,
+                user_feedback: None,
+                corrected_action: None,
+                quality: LabelQuality::ExecutionOutcome,
+            };
+            manager.record_observation(obs).unwrap();
+        }
+
+        // Laplace smoothed: (3 + 1) / (4 + 2) = 4 / 6 = 0.6667
+        let rate = manager.get_success_rate("calc");
+        assert!((rate - (4.0 / 6.0)).abs() < 1e-4);
+    }
 }

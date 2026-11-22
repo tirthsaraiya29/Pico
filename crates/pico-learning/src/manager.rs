@@ -106,6 +106,11 @@ impl LearningManager {
         self.store.record_correction(observation_id, target_action)
     }
 
+    /// Gets empirical historical success rate for a tool.
+    pub fn get_tool_success_rate(&self, tool_name: &str) -> f32 {
+        self.store.get_tool_success_rate(tool_name)
+    }
+
     /// Runs a training and validation step over accumulated experience.
     /// Returns new weights, version string, and metrics if candidate passes promotion gate.
     pub fn train_and_evaluate(
@@ -200,6 +205,12 @@ impl LearningManager {
     /// Access underlying store for maintenance.
     pub fn store(&self) -> &Arc<ExperienceStore> {
         &self.store
+    }
+}
+
+impl pico_core::traits::ToolHistoryProvider for LearningManager {
+    fn get_success_rate(&self, tool_name: &str) -> f32 {
+        self.store.get_tool_success_rate(tool_name)
     }
 }
 

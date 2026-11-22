@@ -86,6 +86,11 @@ pub enum PicoEvent {
     ToolExecutionFinished {
         result: ToolResult,
     },
+    ObjectiveVerificationCompleted {
+        tool: String,
+        verified: bool,
+        evidence: String,
+    },
     ToolPermissionPrompt {
         call_id: String,
         tool: String,

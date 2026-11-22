@@ -84,7 +84,9 @@ impl ConfirmationProvider for DesktopConfirmationCoordinator {
         // Wait up to 20 seconds for verbal or UI click confirmation
         match tokio::time::timeout(std::time::Duration::from_secs(20), rx).await {
             Ok(Ok(approved)) => Ok(approved),
-            Ok(Err(_)) => Err(PicoError::Cancelled("Confirmation request cancelled".into())),
+            Ok(Err(_)) => Err(PicoError::Cancelled(
+                "Confirmation request cancelled".into(),
+            )),
             Err(_) => {
                 let mut lock = self.pending.lock().await;
                 *lock = None;
@@ -417,10 +419,15 @@ impl eframe::App for PicoDesktopApp {
 
                     // Controls: Barge-in & Toggle
                     ui.horizontal(|ui| {
-                        if self.runtime.voice().is_playing() {
-                            if ui.button(egui::RichText::new("⚡ Barge-in (Stop Speech)").color(Color32::from_rgb(244, 63, 94))).clicked() {
-                                self.runtime.voice().interrupt_playback();
-                            }
+                        if self.runtime.voice().is_playing()
+                            && ui
+                                .button(
+                                    egui::RichText::new("⚡ Barge-in (Stop Speech)")
+                                        .color(Color32::from_rgb(244, 63, 94)),
+                                )
+                                .clicked()
+                        {
+                            self.runtime.voice().interrupt_playback();
                         }
 
                         let listen_label = if self.is_listening_active {
@@ -570,9 +577,21 @@ fn main() -> std::result::Result<(), Box<dyn std::error::Error>> {
         .init();
 
     let args = Args::parse();
-    let config = if args.config.exists() {
-        PicoConfig::load_from_file(&args.config)?
+    let config_path = if args.config.exists() {
+        Some(args.config)
     } else {
+        let candidates = [
+            PathBuf::from("configs/pico.toml"),
+            PathBuf::from("../../configs/pico.toml"),
+            PathBuf::from("../configs/pico.toml"),
+        ];
+        candidates.into_iter().find(|p| p.exists())
+    };
+    let config = if let Some(p) = config_path {
+        tracing::info!("Loaded Pico configuration from {:?}", p);
+        PicoConfig::load_from_file(&p)?
+    } else {
+        tracing::info!("Using default Pico configuration");
         PicoConfig::default()
     };
 
@@ -580,6 +599,7 @@ fn main() -> std::result::Result<(), Box<dyn std::error::Error>> {
     let tokio_runtime = tokio::runtime::Builder::new_multi_thread()
         .enable_all()
         .build()?;
+    let _guard = tokio_runtime.enter();
     let handle = tokio_runtime.handle().clone();
 
     // Initialize full Pico assistant runtime
@@ -599,10 +619,23 @@ fn main() -> std::result::Result<(), Box<dyn std::error::Error>> {
 
     // Start voice listening loop in background
     let (speech_tx, mut speech_rx) = tokio::sync::mpsc::channel::<String>(16);
-    let _capture = pico_runtime.voice().start_listening(speech_tx)?;
+    let _capture = match pico_runtime.voice().start_listening(speech_tx) {
+        Ok(c) => {
+            tracing::info!("Microphone audio capture initialized successfully");
+            Some(c)
+        }
+        Err(e) => {
+            tracing::warn!(
+                "Audio input capture unavailable: {}. Pico desktop will continue in visual mode.",
+                e
+            );
+            None
+        }
+    };
 
     // Shared UI update channel
-    let (ui_event_tx, ui_event_rx) = std::sync::mpsc::channel::<(TimelineCategory, String, String)>();
+    let (ui_event_tx, ui_event_rx) =
+        std::sync::mpsc::channel::<(TimelineCategory, String, String)>();
     let ui_tx_clone = ui_event_tx.clone();
 
     // Background speech processing loop
@@ -624,45 +657,61 @@ fn main() -> std::result::Result<(), Box<dyn std::error::Error>> {
             };
 
             if let Some(c) = pending_tx {
-                let lower = clean.to_lowercase();
-                if lower.contains("yes")
-                    || lower.contains("confirm")
-                    || lower.contains("proceed")
-                    || lower.contains("go ahead")
-                    || lower.contains("do it")
-                    || lower.contains("sure")
-                    || lower.contains("ok")
-                {
-                    let _ = c.responder.send(true);
-                    let _ = ui_tx_clone.send((TimelineCategory::Confirmation, format!("Confirmed: {}", c.tool_name), "User authorized dangerous execution.".into()));
-                    let _ = rt_speech.voice().speak("Confirmed. Proceeding with execution.").await;
-                    continue;
-                } else if lower.contains("no")
-                    || lower.contains("cancel")
-                    || lower.contains("abort")
-                    || lower.contains("stop")
-                    || lower.contains("don't")
-                {
-                    let _ = c.responder.send(false);
-                    let _ = ui_tx_clone.send((TimelineCategory::Confirmation, format!("Declined: {}", c.tool_name), "User cancelled dangerous execution.".into()));
-                    let _ = rt_speech.voice().speak("Cancelled. Operation was aborted.").await;
-                    continue;
-                } else {
-                    let _ = rt_speech.voice().speak(&format!("Please say confirm or cancel to proceed with {}.", c.tool_name)).await;
-                    let mut lock = pending_speech.lock().await;
-                    *lock = Some(c);
-                    continue;
+                match pico_security::VoiceAuthorizer::evaluate_utterance(&clean, &c.tool_name) {
+                    pico_security::VoiceAuthDecision::Approved => {
+                        let _ = c.responder.send(true);
+                        let _ = ui_tx_clone.send((
+                            TimelineCategory::Confirmation,
+                            format!("Confirmed: {}", c.tool_name),
+                            "User authorized dangerous execution.".into(),
+                        ));
+                        let _ = rt_speech
+                            .voice()
+                            .speak("Confirmed. Proceeding with execution.")
+                            .await;
+                        continue;
+                    }
+                    pico_security::VoiceAuthDecision::Declined { reason } => {
+                        let _ = c.responder.send(false);
+                        let _ = ui_tx_clone.send((
+                            TimelineCategory::Confirmation,
+                            format!("Declined: {}", c.tool_name),
+                            reason,
+                        ));
+                        let _ = rt_speech
+                            .voice()
+                            .speak("Cancelled. Operation was aborted.")
+                            .await;
+                        continue;
+                    }
+                    pico_security::VoiceAuthDecision::Ambiguous { prompt } => {
+                        let _ = rt_speech.voice().speak(&prompt).await;
+                        let mut lock = pending_speech.lock().await;
+                        *lock = Some(c);
+                        continue;
+                    }
                 }
             }
 
             // Normal voice turn execution
             match rt_speech.process_turn(&clean, true).await {
                 Ok(reply) => {
-                    let _ = ui_tx_clone.send((TimelineCategory::SpeechOutput, reply.clone(), "".into()));
+                    let _ = ui_tx_clone.send((
+                        TimelineCategory::SpeechOutput,
+                        reply.clone(),
+                        "".into(),
+                    ));
                 }
                 Err(e) => {
-                    let _ = ui_tx_clone.send((TimelineCategory::SpeechOutput, "Execution Error".into(), e.to_string()));
-                    let _ = rt_speech.voice().speak("Sorry, I encountered an error processing that request.").await;
+                    let _ = ui_tx_clone.send((
+                        TimelineCategory::SpeechOutput,
+                        "Execution Error".into(),
+                        e.to_string(),
+                    ));
+                    let _ = rt_speech
+                        .voice()
+                        .speak("Sorry, I encountered an error processing that request.")
+                        .await;
                 }
             }
         }
@@ -674,12 +723,20 @@ fn main() -> std::result::Result<(), Box<dyn std::error::Error>> {
     tokio_runtime.spawn(async move {
         while let Ok(event) = event_sub.recv().await {
             match event {
-                PicoEvent::DecisionSelected { action, confidence, latency_ms } => {
+                PicoEvent::DecisionSelected {
+                    action,
+                    confidence,
+                    latency_ms,
+                } => {
                     let act = action.unwrap_or_else(|| "direct_conversation".into());
                     let _ = ui_event_tx_sub.send((
                         TimelineCategory::Decision,
                         act,
-                        format!("{:.0}% calibrated confidence, {}ms latency", confidence * 100.0, latency_ms),
+                        format!(
+                            "{:.0}% calibrated confidence, {}ms latency",
+                            confidence * 100.0,
+                            latency_ms
+                        ),
                     ));
                 }
                 PicoEvent::ToolExecutionFinished { result } => {
@@ -687,7 +744,22 @@ fn main() -> std::result::Result<(), Box<dyn std::error::Error>> {
                     let _ = ui_event_tx_sub.send((
                         TimelineCategory::ToolExecution,
                         format!("{}: {}", result.name, status),
-                        format!("{}ms duration | {}", result.execution_duration_ms, result.content),
+                        format!(
+                            "{}ms duration | {}",
+                            result.execution_duration_ms, result.content
+                        ),
+                    ));
+                }
+                PicoEvent::ObjectiveVerificationCompleted {
+                    tool,
+                    verified,
+                    evidence,
+                } => {
+                    let status = if verified { "Verified" } else { "Unverified" };
+                    let _ = ui_event_tx_sub.send((
+                        TimelineCategory::ToolExecution,
+                        format!("Objective {}: {}", tool, status),
+                        evidence,
                     ));
                 }
                 PicoEvent::PlaybackInterrupted { reason } => {

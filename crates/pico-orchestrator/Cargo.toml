@@ -7,6 +7,7 @@ license.workspace = true
 
 [dependencies]
 pico-core = { workspace = true }
+pico-platform = { workspace = true }
 pico-security = { workspace = true }
 pico-inference = { workspace = true }
 pico-decision = { workspace = true }
@@ -22,3 +23,6 @@ serde_json = { workspace = true }
 chrono = { workspace = true }
 uuid = { workspace = true }
 async-trait = { workspace = true }
+
+[dev-dependencies]
+tempfile = "3.13"

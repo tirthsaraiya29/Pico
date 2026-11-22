@@ -16,7 +16,7 @@ impl Tool for CalculatorTool {
     }
 
     fn description(&self) -> &str {
-        "Evaluates mathematical arithmetic expressions (e.g. '((25 * 4) + 12) / 2', 'sqrt(144)', '2^8')."
+        "Evaluates, calculates, computes, and solves mathematical arithmetic expressions, calculations, equations, and formulas (e.g. '((25 * 4) + 12) / 2', 'sqrt(144)', '2^8')."
     }
 
     fn parameters_schema(&self) -> serde_json::Value {

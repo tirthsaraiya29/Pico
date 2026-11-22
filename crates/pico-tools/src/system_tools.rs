@@ -14,7 +14,7 @@ impl Tool for GetSystemInfoTool {
     }
 
     fn description(&self) -> &str {
-        "Retrieves operating system details, CPU cores, RAM statistics, and battery charge status."
+        "Retrieves system information, computer hardware specs, operating system details, CPU cores, RAM and memory usage, and battery status."
     }
 
     fn parameters_schema(&self) -> serde_json::Value {
@@ -45,7 +45,7 @@ impl Tool for ListProcessesTool {
     }
 
     fn description(&self) -> &str {
-        "Lists active processes sorted by memory consumption."
+        "Lists active running processes, applications, tasks, memory usage, and process identifiers sorted by memory consumption."
     }
 
     fn parameters_schema(&self) -> serde_json::Value {
@@ -88,7 +88,7 @@ impl Tool for KillProcessTool {
     }
 
     fn description(&self) -> &str {
-        "Terminates a process by its process ID (PID). Requires user confirmation."
+        "Terminates, stops, kills, or ends an unresponsive process or task by PID or process name."
     }
 
     fn parameters_schema(&self) -> serde_json::Value {

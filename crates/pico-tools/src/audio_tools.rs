@@ -16,7 +16,7 @@ impl Tool for SetMasterVolumeTool {
     }
 
     fn description(&self) -> &str {
-        "Adjusts the master speaker output volume level (0-100 percentage)."
+        "Adjusts, sets, increases, turns up, or turns down the master speaker output sound volume level (0-100 percentage)."
     }
 
     fn parameters_schema(&self) -> Value {

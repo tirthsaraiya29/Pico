@@ -59,6 +59,7 @@ impl PicoConfig {
                 "Audio sample rate must be greater than zero".into(),
             ));
         }
+        self.voice.validate()?;
         Ok(())
     }
 }
@@ -153,6 +154,49 @@ pub struct VoiceConfig {
     pub ptt_key: String,
     /// Enable barge-in (interrupt playback when user speaks)
     pub enable_barge_in: bool,
+}
+
+impl VoiceConfig {
+    pub fn validate(&self) -> Result<()> {
+        let valid_stt = ["whisper", "local", "system", "native_sapi", "mock"];
+        if !valid_stt.contains(&self.stt_engine.to_lowercase().as_str()) {
+            return Err(PicoError::Config(format!(
+                "Invalid stt_engine '{}': supported engines are {:?}",
+                self.stt_engine, valid_stt
+            )));
+        }
+
+        let valid_tts = ["native_sapi", "piper", "espeak", "system", "mock"];
+        if !valid_tts.contains(&self.tts_engine.to_lowercase().as_str()) {
+            return Err(PicoError::Config(format!(
+                "Invalid tts_engine '{}': supported engines are {:?}",
+                self.tts_engine, valid_tts
+            )));
+        }
+
+        if !(0.5..=2.5).contains(&self.speech_rate) {
+            return Err(PicoError::Config(format!(
+                "speech_rate must be between 0.5 and 2.5, got {}",
+                self.speech_rate
+            )));
+        }
+
+        if !(0.0001..=0.5).contains(&self.vad_threshold) {
+            return Err(PicoError::Config(format!(
+                "vad_threshold must be between 0.0001 and 0.5, got {}",
+                self.vad_threshold
+            )));
+        }
+
+        if !(50..=10000).contains(&self.silence_duration_ms) {
+            return Err(PicoError::Config(format!(
+                "silence_duration_ms must be between 50 and 10000, got {}",
+                self.silence_duration_ms
+            )));
+        }
+
+        Ok(())
+    }
 }
 
 impl Default for VoiceConfig {

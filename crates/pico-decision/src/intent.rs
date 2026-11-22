@@ -336,6 +336,9 @@ fn is_direct_conversation(t: &str) -> bool {
         "good morning",
         "good afternoon",
         "good evening",
+        "tell me a joke",
+        "tell a joke",
+        "joke",
     ];
 
     exact_phrases.iter().any(|phrase| lower.contains(phrase))
@@ -344,6 +347,7 @@ fn is_direct_conversation(t: &str) -> bool {
 fn is_arithmetic(t: &str) -> bool {
     if t.contains("calculate")
         || t.contains("compute")
+        || t.contains("solve")
         || t.contains("sqrt")
         || t.contains("math")
         || t.contains("eval")
@@ -370,9 +374,11 @@ fn is_process_intent(t: &str) -> bool {
 
 fn is_system_intent(t: &str) -> bool {
     t.contains("system info")
+        || t.contains("system information")
         || t.contains("hardware")
         || t.contains("ram")
         || t.contains("specs")
+        || t.contains("computer specs")
         || t.contains("memory available")
         || t.contains("os version")
         || t.contains("cpu stats")

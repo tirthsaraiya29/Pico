@@ -238,6 +238,42 @@ impl ExperienceStore {
         Ok(results)
     }
 
+    /// Returns the empirical or Bayesian-smoothed historical success rate [0.0, 1.0] for the specified tool.
+    pub fn get_tool_success_rate(&self, tool_name: &str) -> f32 {
+        let conn = self.conn.lock().unwrap();
+        let mut stmt = match conn.prepare(
+            "SELECT execution_status, COUNT(*) FROM observations WHERE selected_action = ?1 GROUP BY execution_status",
+        ) {
+            Ok(s) => s,
+            Err(_) => return 0.8,
+        };
+
+        let mut success = 0usize;
+        let mut total = 0usize;
+
+        let rows = stmt.query_map([tool_name], |row| {
+            let status: String = row.get(0)?;
+            let count: i64 = row.get(1)?;
+            Ok((status, count as usize))
+        });
+
+        if let Ok(mapped) = rows {
+            for item in mapped.flatten() {
+                total += item.1;
+                if item.0.eq_ignore_ascii_case("success") {
+                    success += item.1;
+                }
+            }
+        }
+
+        if total == 0 {
+            0.8 // Bayesian prior for unobserved tool
+        } else {
+            // Laplace smoothed success rate
+            (success as f32 + 1.0) / (total as f32 + 2.0)
+        }
+    }
+
     /// Saves a model checkpoint.
     pub fn save_checkpoint(&self, checkpoint: &ModelCheckpoint) -> Result<()> {
         let conn = self.conn.lock().unwrap();

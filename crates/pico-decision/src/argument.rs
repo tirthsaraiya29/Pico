@@ -140,9 +140,24 @@ pub fn resolve_arguments(query: &str, tool_name: &str, schema: &Value) -> Argume
     } else if tool_name == "open_application" || tool_name == "app_launch" {
         let app = extract_app_target(query_clean);
         args.insert("target".to_string(), json!(app));
-    } else if tool_name == "clipboard_set" {
-        let text = extract_quoted_or_trailing(query_clean, &["copy", "clipboard", "set"]);
-        args.insert("text".to_string(), json!(text));
+    } else if tool_name == "clipboard" || tool_name == "clipboard_set" {
+        if query_clean.contains("paste")
+            || query_clean.contains("read")
+            || query_clean.contains("get")
+            || query_clean.contains("from")
+        {
+            args.insert("action".to_string(), json!("get"));
+        } else {
+            args.insert("action".to_string(), json!("set"));
+            let text = extract_quoted_or_trailing(query_clean, &["copy", "clipboard", "set"]);
+            args.insert("text".to_string(), json!(text));
+        }
+    } else if tool_name == "network.ping" || tool_name.contains("ping") {
+        if let Some(host) = extract_host_or_ip(query_clean) {
+            args.insert("host".to_string(), json!(host));
+        } else {
+            args.insert("host".to_string(), json!("8.8.8.8"));
+        }
     }
 
     // General schema-driven fallback / augmentation
@@ -351,6 +366,17 @@ pub fn extract_source_destination(query: &str) -> (Option<String>, Option<String
     (extract_path(query), None)
 }
 
+/// Extracts host or IP address from query.
+pub fn extract_host_or_ip(query: &str) -> Option<String> {
+    for word in query.split_whitespace() {
+        let clean = word.trim_matches(|c: char| !c.is_alphanumeric() && c != '.' && c != '-');
+        if clean.contains('.') && clean.len() >= 3 && !clean.ends_with('.') {
+            return Some(clean.to_string());
+        }
+    }
+    None
+}
+
 /// Extracts URL from query.
 pub fn extract_url(query: &str) -> Option<String> {
     RE_URL.find(query).map(|m| m.as_str().to_string())
@@ -440,6 +466,17 @@ pub fn extract_app_target(query: &str) -> String {
 pub fn extract_content_payload(query: &str) -> Option<String> {
     if let Some(caps) = RE_QUOTED.captures(query) {
         return Some(caps[1].to_string());
+    }
+    let lower = query.to_lowercase();
+    for kw in &["content:", "content is", "with content", "text:"] {
+        if let Some(pos) = lower.find(kw) {
+            let rem = query[pos + kw.len()..]
+                .trim()
+                .trim_matches(|c| c == '"' || c == '\'');
+            if !rem.is_empty() {
+                return Some(rem.to_string());
+            }
+        }
     }
     None
 }

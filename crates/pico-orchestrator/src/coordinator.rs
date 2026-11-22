@@ -132,6 +132,15 @@ impl PicoRuntime {
         // Memory Manager
         let memory = Arc::new(MemoryManager::new(config.memory.clone())?);
 
+        // Wire dynamic historical success rates and persistent memory into decision intelligence
+        decision.set_history_provider(learning.clone());
+        decision.set_memory_store(memory.clone());
+
+        // Load active checkpoint weights into decision engine if available
+        if let Ok(Some(active_chk)) = learning.store().get_active_checkpoint() {
+            decision.update_weights(active_chk.weights, active_chk.version);
+        }
+
         // Voice Pipeline
         let voice = Arc::new(VoicePipeline::new(config.voice.clone(), event_tx.clone())?);
 
@@ -369,6 +378,30 @@ impl PicoRuntime {
                         result: result.clone(),
                     });
 
+                    // Independent Objective Verification of system state
+                    let verification = crate::verification::ObjectiveVerifier::verify_execution(
+                        &action_name,
+                        &arguments,
+                        &result,
+                    )
+                    .await;
+
+                    let _ = self
+                        .event_tx
+                        .send(PicoEvent::ObjectiveVerificationCompleted {
+                            tool: action_name.clone(),
+                            verified: verification.verified,
+                            evidence: verification.evidence.clone(),
+                        });
+
+                    if !verification.verified {
+                        warn!(
+                            action = %action_name,
+                            evidence = %verification.evidence,
+                            "Independent objective verification failed"
+                        );
+                    }
+
                     // Save tool result into memory
                     let tool_msg = Message::new_tool_result(sid, &result);
                     self.memory.save_message(&tool_msg).await?;
@@ -394,7 +427,7 @@ impl PicoRuntime {
                         candidate_scores: ranked_scores.iter().map(|c| c.probability).collect(),
                         selected_action: action_name.clone(),
                         confidence,
-                        execution_status: if result.success {
+                        execution_status: if result.success && verification.verified {
                             "success".into()
                         } else {
                             "failure".into()
@@ -402,7 +435,7 @@ impl PicoRuntime {
                         latency_ms: t_start.elapsed().as_millis() as u64,
                         user_feedback: None,
                         corrected_action: None,
-                        quality: if result.success {
+                        quality: if result.success && verification.verified {
                             LabelQuality::ExecutionOutcome
                         } else {
                             LabelQuality::Inferred

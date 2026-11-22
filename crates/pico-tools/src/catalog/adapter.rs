@@ -150,6 +150,7 @@ async fn execute_windows_command(
     }
 
     let mut cmd = tokio::process::Command::new("powershell.exe");
+    cmd.kill_on_drop(true);
     cmd.args([
         "-NoProfile",
         "-NonInteractive",
@@ -159,29 +160,47 @@ async fn execute_windows_command(
         &resolved_script,
     ]);
 
-    let output = match tokio::time::timeout(timeout, cmd.output()).await {
+    let child = cmd
+        .stdout(std::process::Stdio::piped())
+        .stderr(std::process::Stdio::piped())
+        .spawn()
+        .map_err(|e| PicoError::ToolExecution {
+            tool: meta.canonical_id.clone(),
+            message: format!("Failed to spawn process: {}", e),
+        })?;
+
+    let child_id = child.id();
+
+    let output = match tokio::time::timeout(timeout, child.wait_with_output()).await {
         Ok(res) => res.map_err(|e| PicoError::ToolExecution {
             tool: meta.canonical_id.clone(),
-            message: format!("Failed to execute process: {}", e),
+            message: format!("Failed to wait for process: {}", e),
         })?,
         Err(_) => {
+            // Process tree timeout cleanup
+            if let Some(pid) = child_id {
+                let _ = std::process::Command::new("taskkill")
+                    .args(["/F", "/T", "/PID", &pid.to_string()])
+                    .output();
+            }
             return Err(PicoError::ToolExecution {
                 tool: meta.canonical_id.clone(),
                 message: format!("Execution timed out after {:?}", timeout),
-            })
+            });
         }
     };
 
     let stdout = String::from_utf8_lossy(&output.stdout).trim().to_string();
     let stderr = String::from_utf8_lossy(&output.stderr).trim().to_string();
 
-    if !output.status.success() && stdout.is_empty() {
+    let exit_code = output.status.code().unwrap_or(-1);
+    if !output.status.success() {
         return Err(PicoError::ToolExecution {
             tool: meta.canonical_id.clone(),
             message: format!(
-                "Command exited with code {:?}: {}",
-                output.status.code(),
-                stderr
+                "Command exited with non-zero exit code {}: {}",
+                exit_code,
+                if !stderr.is_empty() { &stderr } else { &stdout }
             ),
         });
     }
@@ -239,6 +258,7 @@ async fn execute_linux_command(
     };
 
     let mut cmd = tokio::process::Command::new(binary);
+    cmd.kill_on_drop(true);
     let mut args: Vec<String> = extra_cmd_args;
     args.extend(meta.adapter_args.split_whitespace().map(|s| s.to_string()));
 
@@ -261,8 +281,11 @@ async fn execute_linux_command(
 
     cmd.args(&args);
 
-    let output = match tokio::time::timeout(timeout, cmd.output()).await {
-        Ok(res) => res.map_err(|e| {
+    let child = cmd
+        .stdout(std::process::Stdio::piped())
+        .stderr(std::process::Stdio::piped())
+        .spawn()
+        .map_err(|e| {
             if e.kind() == std::io::ErrorKind::NotFound {
                 PicoError::ToolExecution {
                     tool: meta.canonical_id.clone(),
@@ -274,29 +297,43 @@ async fn execute_linux_command(
             } else {
                 PicoError::ToolExecution {
                     tool: meta.canonical_id.clone(),
-                    message: format!("Failed to execute process '{}': {}", binary, e),
+                    message: format!("Failed to spawn process '{}': {}", binary, e),
                 }
             }
+        })?;
+
+    let child_id = child.id();
+
+    let output = match tokio::time::timeout(timeout, child.wait_with_output()).await {
+        Ok(res) => res.map_err(|e| PicoError::ToolExecution {
+            tool: meta.canonical_id.clone(),
+            message: format!("Failed to wait for process '{}': {}", binary, e),
         })?,
         Err(_) => {
+            if let Some(pid) = child_id {
+                let _ = std::process::Command::new("kill")
+                    .args(["-9", &pid.to_string()])
+                    .output();
+            }
             return Err(PicoError::ToolExecution {
                 tool: meta.canonical_id.clone(),
                 message: format!("Execution timed out after {:?}", timeout),
-            })
+            });
         }
     };
 
     let stdout = String::from_utf8_lossy(&output.stdout).trim().to_string();
     let stderr = String::from_utf8_lossy(&output.stderr).trim().to_string();
 
-    if !output.status.success() && stdout.is_empty() {
+    let exit_code = output.status.code().unwrap_or(-1);
+    if !output.status.success() {
         return Err(PicoError::ToolExecution {
             tool: meta.canonical_id.clone(),
             message: format!(
-                "Command '{}' exited with code {:?}: {}",
+                "Command '{}' exited with non-zero exit code {}: {}",
                 binary,
-                output.status.code(),
-                stderr
+                exit_code,
+                if !stderr.is_empty() { &stderr } else { &stdout }
             ),
         });
     }

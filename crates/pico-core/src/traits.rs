@@ -102,3 +102,9 @@ pub trait MemoryStore: Send + Sync {
     /// Persist a key fact or user preference.
     async fn remember_fact(&self, category: &str, fact: &str) -> Result<()>;
 }
+
+/// Historical success rate provider for tool ranking calibration.
+pub trait ToolHistoryProvider: Send + Sync {
+    /// Returns the empirical or Bayesian-smoothed historical success rate [0.0, 1.0] for the given tool.
+    fn get_success_rate(&self, tool_name: &str) -> f32;
+}

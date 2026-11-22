@@ -1,4 +1,4 @@
-use pico_core::error::{PicoError, Result};
+use pico_core::error::Result;
 use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -49,35 +49,56 @@ impl PlatformSysInfo {
             .map(|n| n.get())
             .unwrap_or(8);
 
-        // Query memory status and battery state via CIM safely
-        let ps_cmd = r#"$os = Get-CimInstance Win32_OperatingSystem; $memTotal = [math]::Round($os.TotalVisibleMemorySize / 1024); $memFree = [math]::Round($os.FreePhysicalMemory / 1024); $bat = Get-CimInstance Win32_Battery -ErrorAction SilentlyContinue; $batPct = if ($bat) { $bat.EstimatedChargeRemaining } else { $null }; $charging = if ($bat) { ($bat.BatteryStatus -eq 2) } else { $null }; [PSCustomObject]@{ TotalMem = $memTotal; FreeMem = $memFree; BatteryPct = $batPct; Charging = $charging } | ConvertTo-Json -Compress"#;
+        #[repr(C)]
+        #[allow(clippy::upper_case_acronyms)]
+        struct MEMORYSTATUSEX {
+            dw_length: u32,
+            dw_memory_load: u32,
+            ull_total_phys: u64,
+            ull_avail_phys: u64,
+            ull_total_page_file: u64,
+            ull_avail_page_file: u64,
+            ull_total_virtual: u64,
+            ull_avail_virtual: u64,
+            ull_avail_extended_virtual: u64,
+        }
 
-        let output = std::process::Command::new("powershell")
-            .args(["-NoProfile", "-NonInteractive", "-Command", ps_cmd])
-            .output()
-            .map_err(|e| {
-                PicoError::Platform(format!("Failed to execute sysinfo command: {}", e))
-            })?;
+        #[repr(C)]
+        #[allow(clippy::upper_case_acronyms)]
+        struct SYSTEM_POWER_STATUS {
+            ac_line_status: u8,
+            battery_flag: u8,
+            battery_life_percent: u8,
+            system_status_flag: u8,
+            battery_life_time: u32,
+            battery_full_life_time: u32,
+        }
+
+        extern "system" {
+            fn GlobalMemoryStatusEx(lpBuffer: *mut MEMORYSTATUSEX) -> i32;
+            fn GetSystemPowerStatus(lpSystemPowerStatus: *mut SYSTEM_POWER_STATUS) -> i32;
+        }
 
         let mut total_memory_mb = 32768;
         let mut available_memory_mb = 16384;
         let mut battery_percent = None;
         let mut is_charging = None;
 
-        if output.status.success() {
-            let out_str = String::from_utf8_lossy(&output.stdout);
-            if let Ok(val) = serde_json::from_str::<serde_json::Value>(out_str.trim()) {
-                if let Some(t) = val.get("TotalMem").and_then(|v| v.as_u64()) {
-                    total_memory_mb = t;
+        unsafe {
+            let mut mem_status: MEMORYSTATUSEX = std::mem::zeroed();
+            mem_status.dw_length = std::mem::size_of::<MEMORYSTATUSEX>() as u32;
+            if GlobalMemoryStatusEx(&mut mem_status) != 0 {
+                total_memory_mb = mem_status.ull_total_phys / (1024 * 1024);
+                available_memory_mb = mem_status.ull_avail_phys / (1024 * 1024);
+            }
+
+            let mut power_status: SYSTEM_POWER_STATUS = std::mem::zeroed();
+            if GetSystemPowerStatus(&mut power_status) != 0 {
+                if power_status.battery_life_percent <= 100 {
+                    battery_percent = Some(power_status.battery_life_percent);
                 }
-                if let Some(f) = val.get("FreeMem").and_then(|v| v.as_u64()) {
-                    available_memory_mb = f;
-                }
-                if let Some(b) = val.get("BatteryPct").and_then(|v| v.as_u64()) {
-                    battery_percent = Some(b as u8);
-                }
-                if let Some(c) = val.get("Charging").and_then(|v| v.as_bool()) {
-                    is_charging = Some(c);
+                if power_status.ac_line_status != 255 {
+                    is_charging = Some(power_status.ac_line_status == 1);
                 }
             }
         }

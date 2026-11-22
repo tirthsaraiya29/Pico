@@ -195,7 +195,7 @@ impl PlatformApps {
         #[cfg(target_os = "windows")]
         {
             let status = Command::new("taskkill")
-                .args(["/PID", &pid.to_string(), "/F"])
+                .args(["/PID", &pid.to_string(), "/F", "/T"])
                 .status()
                 .map_err(|e| {
                     PicoError::Platform(format!("Failed to terminate PID {}: {}", pid, e))

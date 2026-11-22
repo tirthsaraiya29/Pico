@@ -234,6 +234,8 @@ impl SpeechSynthesizer for NativeLinuxSynthesizer {
 /// Unified cross-platform speech synthesizer dispatching to native Windows or Linux engines.
 pub struct PlatformSpeechSynthesizer {
     #[allow(dead_code)]
+    tts_engine: String,
+    #[allow(dead_code)]
     windows_synth: NativeWindowsSynthesizer,
     #[allow(dead_code)]
     linux_synth: NativeLinuxSynthesizer,
@@ -242,9 +244,25 @@ pub struct PlatformSpeechSynthesizer {
 impl PlatformSpeechSynthesizer {
     pub fn new(voice_name: Option<String>, speech_rate: f32) -> Self {
         Self {
+            tts_engine: "native_sapi".into(),
             windows_synth: NativeWindowsSynthesizer::new(voice_name.clone(), speech_rate),
             linux_synth: NativeLinuxSynthesizer::new(voice_name, speech_rate),
         }
+    }
+
+    pub fn from_config(config: &pico_core::config::VoiceConfig) -> Self {
+        Self {
+            tts_engine: config.tts_engine.clone(),
+            windows_synth: NativeWindowsSynthesizer::new(
+                config.voice_name.clone(),
+                config.speech_rate,
+            ),
+            linux_synth: NativeLinuxSynthesizer::new(config.voice_name.clone(), config.speech_rate),
+        }
+    }
+
+    pub fn tts_engine(&self) -> &str {
+        &self.tts_engine
     }
 }
 
