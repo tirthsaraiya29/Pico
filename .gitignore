@@ -28,6 +28,7 @@ pico_data/
 *.sqlite-wal
 *.sqlite-shm
 logs/
+*.log
 
 # Build artifacts & temp
 dist/
