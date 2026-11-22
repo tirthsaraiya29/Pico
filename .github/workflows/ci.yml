@@ -8,11 +8,21 @@ on:
 
 jobs:
   test:
-    name: Test and Lint
-    runs-on: windows-latest
+    name: Test and Lint (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
     steps:
       - name: Checkout Code
         uses: actions/checkout@v4
+
+      - name: Install Linux Dependencies
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libasound2-dev
 
       - name: Set up Rust Toolchain
         uses: dtolnay/rust-toolchain@stable
@@ -39,50 +49,8 @@ jobs:
       - name: Clippy Linter
         run: cargo clippy --workspace --all-targets --all-features -- -D warnings
 
-      - name: Test pico-core
-        run: cargo test -p pico-core --all-features
-
-      - name: Test pico-security
-        run: cargo test -p pico-security --all-features
-
-      - name: Test pico-platform
-        run: cargo test -p pico-platform --all-features
-
-      - name: Test pico-inference
-        run: cargo test -p pico-inference --all-features
-
-      - name: Test pico-decision
-        run: cargo test -p pico-decision --all-features
-
-      - name: Test pico-learning
-        run: cargo test -p pico-learning --all-features
-
-      - name: Test pico-memory
-        run: cargo test -p pico-memory --all-features
-
-      - name: Test pico-tools
-        run: cargo test -p pico-tools --all-features
-
-      - name: Test pico-audio
-        run: cargo test -p pico-audio --all-features
-
-      - name: Test pico-voice
-        run: cargo test -p pico-voice --all-features
-
-      - name: Test e2e initialization
-        run: cargo test -p pico-orchestrator --test e2e_turn_test test_e2e_runtime_initialization_and_events -- --nocapture
-
-      - name: Test e2e tools and permissions
-        run: cargo test -p pico-orchestrator --test e2e_turn_test test_e2e_tool_registry_and_permissions -- --nocapture
-
-      - name: Test e2e memory persistence
-        run: cargo test -p pico-orchestrator --test e2e_turn_test test_e2e_memory_persistence_and_retrieval -- --nocapture
-
-      - name: Test e2e runtime cancellation
-        run: cargo test -p pico-orchestrator --test e2e_turn_test test_e2e_runtime_cancellation -- --nocapture
-
-      - name: Test e2e turn and learning
-        run: cargo test -p pico-orchestrator --test e2e_turn_test test_e2e_probabilistic_turn_and_learning -- --nocapture
+      - name: Run All Workspace Tests
+        run: cargo test --workspace --all-features
 
       - name: Build Release
         run: cargo build --workspace --release

@@ -117,8 +117,75 @@ impl PlatformApps {
             }
             Ok(processes)
         }
-        #[cfg(not(target_os = "windows"))]
+        #[cfg(target_os = "linux")]
         {
+            let mut processes = Vec::new();
+            if let Ok(entries) = std::fs::read_dir("/proc") {
+                for entry in entries.flatten() {
+                    let file_name = entry.file_name();
+                    let name_str = file_name.to_string_lossy();
+                    if let Ok(pid) = name_str.parse::<u32>() {
+                        let proc_path = entry.path();
+                        let comm_path = proc_path.join("comm");
+                        let proc_name = std::fs::read_to_string(&comm_path)
+                            .map(|s| s.trim().to_string())
+                            .unwrap_or_else(|_| name_str.to_string());
+
+                        let statm_path = proc_path.join("statm");
+                        let memory_mb = if let Ok(statm) = std::fs::read_to_string(&statm_path) {
+                            let parts: Vec<&str> = statm.split_whitespace().collect();
+                            if parts.len() >= 2 {
+                                let pages = parts[1].parse::<u64>().unwrap_or(0);
+                                (pages * 4096) / (1024 * 1024)
+                            } else {
+                                0
+                            }
+                        } else {
+                            0
+                        };
+
+                        processes.push(ProcessInfo {
+                            pid,
+                            name: proc_name,
+                            memory_mb,
+                        });
+                    }
+                }
+                processes.sort_by(|a, b| b.memory_mb.cmp(&a.memory_mb));
+                processes.truncate(limit);
+                return Ok(processes);
+            }
+
+            // Fallback to ps command if /proc is not directly accessible
+            if let Ok(output) = Command::new("ps")
+                .args(["-eo", "pid,rss,comm", "--sort=-rss"])
+                .output()
+            {
+                if output.status.success() {
+                    let text = String::from_utf8_lossy(&output.stdout);
+                    for line in text.lines().skip(1).take(limit) {
+                        let parts: Vec<&str> = line.split_whitespace().collect();
+                        if parts.len() >= 3 {
+                            if let (Ok(pid), Ok(rss_kb)) =
+                                (parts[0].parse::<u32>(), parts[1].parse::<u64>())
+                            {
+                                let name = parts[2..].join(" ");
+                                processes.push(ProcessInfo {
+                                    pid,
+                                    name,
+                                    memory_mb: rss_kb / 1024,
+                                });
+                            }
+                        }
+                    }
+                }
+            }
+
+            Ok(processes)
+        }
+        #[cfg(not(any(target_os = "windows", target_os = "linux")))]
+        {
+            let _ = limit;
             Ok(vec![])
         }
     }

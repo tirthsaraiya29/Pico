@@ -23,7 +23,38 @@ impl PlatformClipboard {
                 .trim_end()
                 .to_string())
         }
-        #[cfg(not(target_os = "windows"))]
+        #[cfg(target_os = "linux")]
+        {
+            // Try Wayland wl-paste first
+            if let Ok(out) = Command::new("wl-paste").arg("-n").output() {
+                if out.status.success() {
+                    return Ok(String::from_utf8_lossy(&out.stdout).to_string());
+                }
+            }
+
+            // Try X11 xclip
+            if let Ok(out) = Command::new("xclip")
+                .args(["-selection", "clipboard", "-o"])
+                .output()
+            {
+                if out.status.success() {
+                    return Ok(String::from_utf8_lossy(&out.stdout).to_string());
+                }
+            }
+
+            // Try X11 xsel
+            if let Ok(out) = Command::new("xsel")
+                .args(["--clipboard", "--output"])
+                .output()
+            {
+                if out.status.success() {
+                    return Ok(String::from_utf8_lossy(&out.stdout).to_string());
+                }
+            }
+
+            Ok(String::new())
+        }
+        #[cfg(not(any(target_os = "windows", target_os = "linux")))]
         {
             Ok(String::new())
         }
@@ -62,7 +93,60 @@ impl PlatformClipboard {
             }
             Ok(())
         }
-        #[cfg(not(target_os = "windows"))]
+        #[cfg(target_os = "linux")]
+        {
+            use std::io::Write;
+
+            // Try Wayland wl-copy first
+            if let Ok(mut child) = Command::new("wl-copy")
+                .stdin(std::process::Stdio::piped())
+                .spawn()
+            {
+                if let Some(mut stdin) = child.stdin.take() {
+                    let _ = stdin.write_all(text.as_bytes());
+                }
+                if let Ok(status) = child.wait() {
+                    if status.success() {
+                        return Ok(());
+                    }
+                }
+            }
+
+            // Try X11 xclip
+            if let Ok(mut child) = Command::new("xclip")
+                .args(["-selection", "clipboard"])
+                .stdin(std::process::Stdio::piped())
+                .spawn()
+            {
+                if let Some(mut stdin) = child.stdin.take() {
+                    let _ = stdin.write_all(text.as_bytes());
+                }
+                if let Ok(status) = child.wait() {
+                    if status.success() {
+                        return Ok(());
+                    }
+                }
+            }
+
+            // Try X11 xsel
+            if let Ok(mut child) = Command::new("xsel")
+                .args(["--clipboard", "--input"])
+                .stdin(std::process::Stdio::piped())
+                .spawn()
+            {
+                if let Some(mut stdin) = child.stdin.take() {
+                    let _ = stdin.write_all(text.as_bytes());
+                }
+                if let Ok(status) = child.wait() {
+                    if status.success() {
+                        return Ok(());
+                    }
+                }
+            }
+
+            Ok(())
+        }
+        #[cfg(not(any(target_os = "windows", target_os = "linux")))]
         {
             let _ = text;
             Ok(())
