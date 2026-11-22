@@ -1,53 +1,129 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>PICO — Autonomous Real-Time Voice Intelligence</title>
-  <link rel="preconnect" href="https://fonts.googleapis.com">
-  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500;700&display=swap" rel="stylesheet">
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="theme-color" content="#080b11" />
+
+  <!-- Primary SEO Meta Tags -->
+  <title>Pico — Autonomous Real-Time Local AI Voice Assistant in Rust | Download Release</title>
+  <meta name="title" content="Pico — Autonomous Real-Time Local AI Voice Assistant in Rust" />
+  <meta name="description" content="Pico is an ultra-low latency, locally running AI voice assistant engineered from the ground up in idiomatic Rust. Sub-15ms barge-in interruption, zero cloud telemetry, zero-trust sandboxed OS tool execution, and local GGUF/Ollama inference. Download the latest release for Windows 11 and Linux." />
+  <meta name="keywords" content="Pico, AI Voice Assistant, Rust, Local AI, Offline LLM, Voice Agent, Three.js 3D Neural Core, Windows 11, Intel Arc, Ollama, Llama.cpp, SAPI TTS, Audio Barge-in, Zero Trust Sandbox, Autonomous Systems" />
+  <meta name="author" content="Tirth Saraiya" />
+  <meta name="robots" content="index, follow, max-image-preview:large, max-snippet:-1, max-video-preview:-1" />
+  <link rel="canonical" href="https://tirthsaraiya29.github.io/Pico/" />
+
+  <!-- Geographic (GEO) Meta Tags -->
+  <meta name="geo.region" content="IN-GJ" />
+  <meta name="geo.placename" content="Ahmedabad, Gujarat, India" />
+  <meta name="geo.position" content="23.0225;72.5714" />
+  <meta name="ICBM" content="23.0225, 72.5714" />
+
+  <!-- Open Graph / Facebook / LinkedIn Meta Tags -->
+  <meta property="og:type" content="website" />
+  <meta property="og:site_name" content="Pico AI Voice Assistant" />
+  <meta property="og:url" content="https://tirthsaraiya29.github.io/Pico/" />
+  <meta property="og:title" content="Pico — Autonomous Real-Time Local AI Voice Assistant in Rust" />
+  <meta property="og:description" content="Production-quality, ultra-low latency local AI voice assistant engineered in Rust. Offline neural inference, sub-15ms barge-in, zero-trust OS execution. Download the latest release." />
+  <meta property="og:image" content="https://raw.githubusercontent.com/tirthsaraiya29/Pico/main/docs/assets/pico-banner.png" />
+  <meta property="og:locale" content="en_US" />
+
+  <!-- Twitter Card Meta Tags -->
+  <meta name="twitter:card" content="summary_large_image" />
+  <meta name="twitter:site" content="@tirthsaraiya29" />
+  <meta name="twitter:creator" content="@tirthsaraiya29" />
+  <meta name="twitter:url" content="https://tirthsaraiya29.github.io/Pico/" />
+  <meta name="twitter:title" content="Pico — Real-Time Local AI Assistant in Rust | Download Release" />
+  <meta name="twitter:description" content="Download Pico: fully offline AI assistant with hardware audio pipeline, zero-trust tools, and 3D WebGL neural core." />
+  <meta name="twitter:image" content="https://raw.githubusercontent.com/tirthsaraiya29/Pico/main/docs/assets/pico-banner.png" />
+
+  <!-- Schema.org JSON-LD Structured Data for Software Application -->
+  <script type="application/ld+json">
+  {
+    "@context": "https://schema.org",
+    "@type": "SoftwareApplication",
+    "name": "Pico",
+    "operatingSystem": "Windows 11, Windows 10, Linux x86_64",
+    "applicationCategory": "AssistantApplication",
+    "softwareVersion": "0.1.0",
+    "description": "Autonomous, real-time, locally capable AI voice assistant engineered from the ground up in idiomatic Rust.",
+    "downloadUrl": "https://github.com/tirthsaraiya29/Pico/releases/latest",
+    "url": "https://tirthsaraiya29.github.io/Pico/",
+    "license": "https://www.gnu.org/licenses/gpl-3.0.en.html",
+    "author": {
+      "@type": "Person",
+      "name": "Tirth Saraiya",
+      "url": "https://github.com/tirthsaraiya29"
+    },
+    "offers": {
+      "@type": "Offer",
+      "price": "0",
+      "priceCurrency": "USD"
+    }
+  }
+  </script>
+
+  <!-- Typography & Assets -->
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500;700&display=swap" rel="stylesheet" />
   <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+
   <style>
     :root {
-      --bg: #090a0f;
-      --bg-card: rgba(18, 20, 28, 0.7);
+      --bg: #07090e;
+      --bg-surface: #0e121b;
+      --bg-card: rgba(16, 21, 32, 0.75);
+      --bg-card-hover: rgba(22, 29, 45, 0.9);
       --border: rgba(255, 255, 255, 0.08);
+      --border-accent: rgba(0, 240, 255, 0.3);
       --accent-cyan: #00f0ff;
+      --accent-cyan-glow: rgba(0, 240, 255, 0.4);
       --accent-violet: #8b5cf6;
       --accent-emerald: #10b981;
       --text: #f8fafc;
-      --text-dim: #94a3b8;
+      --text-muted: #94a3b8;
+      --text-dim: #64748b;
       --mono: 'JetBrains Mono', monospace;
       --sans: 'Plus Jakarta Sans', sans-serif;
     }
+
     * { box-sizing: border-box; margin: 0; padding: 0; }
+    html { scroll-behavior: smooth; }
     body {
       background-color: var(--bg);
       color: var(--text);
       font-family: var(--sans);
       line-height: 1.6;
       overflow-x: hidden;
+      -webkit-font-smoothing: antialiased;
     }
+
     .ambient {
       position: fixed;
       top: 0; left: 0; width: 100vw; height: 100vh;
-      background: radial-gradient(circle at 20% 30%, rgba(0, 240, 255, 0.06) 0%, transparent 60%),
-                  radial-gradient(circle at 80% 80%, rgba(139, 92, 246, 0.06) 0%, transparent 60%);
+      background:
+        radial-gradient(circle at 15% 25%, rgba(0, 240, 255, 0.07) 0%, transparent 55%),
+        radial-gradient(circle at 85% 75%, rgba(139, 92, 246, 0.07) 0%, transparent 55%),
+        radial-gradient(circle at 50% 50%, rgba(16, 185, 129, 0.04) 0%, transparent 60%);
       pointer-events: none;
       z-index: 0;
     }
+
+    /* Navigation Header */
     header {
       position: fixed;
       top: 0; width: 100%;
-      height: 70px;
-      background: rgba(9, 10, 15, 0.85);
-      backdrop-filter: blur(16px);
+      height: 72px;
+      background: rgba(7, 9, 14, 0.85);
+      backdrop-filter: blur(20px);
+      -webkit-backdrop-filter: blur(20px);
       border-bottom: 1px solid var(--border);
       display: flex;
       justify-content: space-between;
       align-items: center;
-      padding: 0 40px;
+      padding: 0 48px;
       z-index: 100;
     }
     .brand {
@@ -56,37 +132,69 @@
       gap: 12px;
       font-weight: 800;
       letter-spacing: 2px;
-      font-size: 1.25rem;
+      font-size: 1.3rem;
+      text-decoration: none;
+      color: var(--text);
     }
-    .brand-dot {
+    .brand-orb {
       width: 14px; height: 14px; border-radius: 50%;
       background: var(--accent-cyan);
       box-shadow: 0 0 16px var(--accent-cyan);
+      animation: pulse-glow 2.5s infinite ease-in-out;
     }
-    nav a {
-      color: var(--text-dim);
+    @keyframes pulse-glow {
+      0%, 100% { opacity: 0.8; transform: scale(1); }
+      50% { opacity: 1; transform: scale(1.15); box-shadow: 0 0 24px var(--accent-cyan); }
+    }
+    .nav-links {
+      display: flex;
+      align-items: center;
+      gap: 28px;
+    }
+    .nav-links a {
+      color: var(--text-muted);
       text-decoration: none;
-      margin-left: 24px;
       font-size: 0.9rem;
       font-weight: 500;
       transition: color 0.2s;
     }
-    nav a:hover { color: var(--accent-cyan); }
+    .nav-links a:hover { color: var(--accent-cyan); }
+    .nav-actions {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+    }
+    .btn-nav-download {
+      background: linear-gradient(135deg, var(--accent-cyan), #00c4d4);
+      color: #000;
+      padding: 8px 18px;
+      border-radius: 8px;
+      font-size: 0.85rem;
+      font-weight: 700;
+      text-decoration: none;
+      transition: all 0.2s;
+    }
+    .btn-nav-download:hover {
+      box-shadow: 0 0 20px var(--accent-cyan-glow);
+      transform: translateY(-1px);
+    }
     .btn-github {
-      background: rgba(255, 255, 255, 0.06);
+      background: rgba(255, 255, 255, 0.05);
       border: 1px solid var(--border);
       color: var(--text);
-      padding: 8px 18px;
+      padding: 8px 16px;
       border-radius: 8px;
       font-size: 0.85rem;
       font-weight: 600;
       text-decoration: none;
+      display: flex;
+      align-items: center;
+      gap: 8px;
       transition: all 0.2s;
     }
     .btn-github:hover {
-      background: var(--accent-cyan);
-      color: #000;
-      box-shadow: 0 0 16px rgba(0, 240, 255, 0.3);
+      background: rgba(255, 255, 255, 0.1);
+      border-color: rgba(255, 255, 255, 0.2);
     }
 
     /* Hero Section */
@@ -95,450 +203,901 @@
       min-height: 100vh;
       display: flex;
       align-items: center;
-      padding: 120px 40px 60px;
+      padding: 120px 48px 60px;
       z-index: 1;
       max-width: 1400px;
       margin: 0 auto;
+      gap: 40px;
     }
     .hero-content {
-      flex: 1;
-      max-width: 650px;
+      flex: 1.1;
+      max-width: 660px;
     }
-    .tagline {
+    .badge-pill {
       font-family: var(--mono);
-      font-size: 0.85rem;
+      font-size: 0.8rem;
       color: var(--accent-cyan);
-      background: rgba(0, 240, 255, 0.1);
+      background: rgba(0, 240, 255, 0.08);
       padding: 6px 14px;
       border-radius: 9999px;
-      display: inline-block;
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
       margin-bottom: 24px;
       border: 1px solid rgba(0, 240, 255, 0.2);
     }
+    .badge-pill .pulse-dot {
+      width: 6px; height: 6px; border-radius: 50%;
+      background: var(--accent-cyan);
+      animation: pulse-dot 1.5s infinite;
+    }
+    @keyframes pulse-dot {
+      0%, 100% { opacity: 0.4; }
+      50% { opacity: 1; }
+    }
     h1 {
-      font-size: 3.6rem;
-      line-height: 1.1;
+      font-size: 3.5rem;
+      line-height: 1.12;
       font-weight: 800;
-      margin-bottom: 20px;
+      margin-bottom: 22px;
+      letter-spacing: -0.02em;
       background: linear-gradient(135deg, #ffffff 40%, #94a3b8 100%);
       -webkit-background-clip: text;
       -webkit-text-fill-color: transparent;
     }
     .hero p {
       font-size: 1.15rem;
-      color: var(--text-dim);
-      margin-bottom: 32px;
+      color: var(--text-muted);
+      margin-bottom: 36px;
       line-height: 1.7;
     }
     .cta-group {
       display: flex;
+      flex-wrap: wrap;
       gap: 16px;
       align-items: center;
-      margin-bottom: 40px;
+      margin-bottom: 32px;
     }
-    .btn-primary {
-      background: var(--accent-cyan);
+    .btn-hero-primary {
+      background: linear-gradient(135deg, var(--accent-cyan), #00c4d4);
       color: #000;
       font-weight: 700;
-      padding: 14px 28px;
+      padding: 15px 30px;
+      border-radius: 10px;
+      text-decoration: none;
+      font-size: 1rem;
+      display: inline-flex;
+      align-items: center;
+      gap: 10px;
+      transition: all 0.2s;
+    }
+    .btn-hero-primary:hover {
+      box-shadow: 0 0 28px var(--accent-cyan-glow);
+      transform: translateY(-2px);
+    }
+    .btn-hero-secondary {
+      background: rgba(255, 255, 255, 0.05);
+      border: 1px solid var(--border);
+      color: var(--text);
+      font-weight: 600;
+      padding: 15px 26px;
       border-radius: 10px;
       text-decoration: none;
       font-size: 0.95rem;
+      display: inline-flex;
+      align-items: center;
+      gap: 10px;
       transition: all 0.2s;
     }
-    .btn-primary:hover {
-      box-shadow: 0 0 24px rgba(0, 240, 255, 0.5);
-      transform: translateY(-2px);
+    .btn-hero-secondary:hover {
+      background: rgba(255, 255, 255, 0.09);
+      border-color: rgba(255, 255, 255, 0.2);
     }
-    .code-preview {
-      background: rgba(0, 0, 0, 0.6);
-      border: 1px solid var(--border);
-      border-radius: 10px;
-      padding: 12px 20px;
-      font-family: var(--mono);
-      font-size: 0.85rem;
-      color: #38bdf8;
+    .hero-meta {
       display: flex;
-      align-items: center;
-      gap: 12px;
+      gap: 24px;
+      color: var(--text-dim);
+      font-size: 0.85rem;
+      font-family: var(--mono);
     }
-    .hero-3d {
+
+    /* 3D WebGL Neural Core Canvas */
+    .hero-3d-stage {
       flex: 1;
       height: 600px;
       position: relative;
     }
-    #hero-canvas {
+    #three-canvas-container {
       width: 100%;
       height: 100%;
+      cursor: grab;
     }
-    .state-trigger-deck {
+    #three-canvas-container:active {
+      cursor: grabbing;
+    }
+    .stage-overlay-deck {
       position: absolute;
-      bottom: 20px;
+      bottom: 24px;
       left: 50%;
       transform: translateX(-50%);
       background: var(--bg-card);
       backdrop-filter: blur(16px);
+      -webkit-backdrop-filter: blur(16px);
       border: 1px solid var(--border);
-      padding: 8px 16px;
+      padding: 8px 14px;
       border-radius: 9999px;
       display: flex;
       gap: 8px;
+      box-shadow: 0 10px 30px rgba(0, 0, 0, 0.5);
     }
-    .state-btn {
+    .state-tab {
       background: transparent;
       border: 1px solid transparent;
       color: var(--text-dim);
-      padding: 6px 12px;
+      padding: 6px 14px;
       border-radius: 20px;
       font-size: 0.75rem;
       font-family: var(--mono);
       cursor: pointer;
       transition: all 0.2s;
     }
-    .state-btn:hover, .state-btn.active {
+    .state-tab:hover, .state-tab.active {
       color: var(--text);
       border-color: var(--accent-cyan);
-      background: rgba(0, 240, 255, 0.1);
+      background: rgba(0, 240, 255, 0.12);
+    }
+    .fps-counter {
+      position: absolute;
+      top: 16px;
+      right: 16px;
+      font-family: var(--mono);
+      font-size: 0.75rem;
+      color: var(--accent-cyan);
+      background: rgba(0, 0, 0, 0.5);
+      padding: 4px 10px;
+      border-radius: 6px;
+      border: 1px solid var(--border);
     }
 
-    /* Features Grid */
-    .section-title {
+    /* Download Release Center */
+    .section-wrap {
+      max-width: 1400px;
+      margin: 0 auto;
+      padding: 100px 48px;
+      position: relative;
+      z-index: 1;
+    }
+    .section-header {
       text-align: center;
       margin-bottom: 60px;
     }
-    .section-title h2 {
-      font-size: 2.2rem;
-      font-weight: 700;
+    .section-header .section-tag {
+      font-family: var(--mono);
+      font-size: 0.8rem;
+      color: var(--accent-cyan);
+      text-transform: uppercase;
+      letter-spacing: 1.5px;
       margin-bottom: 12px;
+      display: block;
     }
-    .section-title p {
-      color: var(--text-dim);
-      font-size: 1rem;
-    }
-    .features-grid {
-      display: grid;
-      grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
-      gap: 24px;
-      max-width: 1400px;
-      margin: 0 auto;
-      padding: 0 40px 100px;
-      position: relative;
-      z-index: 1;
-    }
-    .feature-card {
-      background: var(--bg-card);
-      backdrop-filter: blur(12px);
-      border: 1px solid var(--border);
-      padding: 32px;
-      border-radius: 16px;
-      transition: all 0.3s cubic-bezier(0.16, 1, 0.3, 1);
-    }
-    .feature-card:hover {
-      border-color: rgba(0, 240, 255, 0.3);
-      transform: translateY(-4px);
-      box-shadow: 0 16px 32px rgba(0, 0, 0, 0.4);
-    }
-    .feature-icon {
-      font-size: 1.8rem;
+    .section-header h2 {
+      font-size: 2.5rem;
+      font-weight: 800;
+      letter-spacing: -0.01em;
       margin-bottom: 16px;
     }
-    .feature-card h3 {
-      font-size: 1.2rem;
+    .section-header p {
+      color: var(--text-muted);
+      font-size: 1.05rem;
+      max-width: 640px;
+      margin: 0 auto;
+    }
+
+    .download-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(360px, 1fr));
+      gap: 32px;
+      margin-bottom: 48px;
+    }
+    .download-card {
+      background: var(--bg-card);
+      backdrop-filter: blur(14px);
+      -webkit-backdrop-filter: blur(14px);
+      border: 1px solid var(--border);
+      border-radius: 18px;
+      padding: 36px;
+      display: flex;
+      flex-direction: column;
+      justify-content: space-between;
+      position: relative;
+      transition: all 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+    }
+    .download-card.featured {
+      border-color: var(--border-accent);
+      box-shadow: 0 0 32px rgba(0, 240, 255, 0.08);
+    }
+    .download-card:hover {
+      transform: translateY(-4px);
+      border-color: rgba(0, 240, 255, 0.4);
+      background: var(--bg-card-hover);
+      box-shadow: 0 20px 40px rgba(0, 0, 0, 0.4);
+    }
+    .card-top {
+      margin-bottom: 24px;
+    }
+    .release-tag {
+      display: inline-block;
+      font-family: var(--mono);
+      font-size: 0.75rem;
+      background: rgba(16, 185, 129, 0.15);
+      color: #34d399;
+      padding: 4px 10px;
+      border-radius: 6px;
+      margin-bottom: 16px;
+      border: 1px solid rgba(16, 185, 129, 0.25);
+    }
+    .download-card h3 {
+      font-size: 1.4rem;
       font-weight: 700;
       margin-bottom: 10px;
     }
-    .feature-card p {
-      color: var(--text-dim);
+    .download-card p {
+      color: var(--text-muted);
       font-size: 0.95rem;
       line-height: 1.6;
+      margin-bottom: 20px;
+    }
+    .specs-list {
+      list-style: none;
+      font-size: 0.85rem;
+      color: var(--text-dim);
+      font-family: var(--mono);
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+      margin-bottom: 28px;
+    }
+    .specs-list li {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+    .btn-download-action {
+      background: var(--accent-cyan);
+      color: #000;
+      font-weight: 700;
+      padding: 14px 24px;
+      border-radius: 10px;
+      text-decoration: none;
+      text-align: center;
+      font-size: 0.95rem;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      gap: 10px;
+      transition: all 0.2s;
+    }
+    .btn-download-action:hover {
+      box-shadow: 0 0 24px var(--accent-cyan-glow);
+    }
+    .btn-download-secondary {
+      background: rgba(255, 255, 255, 0.05);
+      border: 1px solid var(--border);
+      color: var(--text);
+      font-weight: 600;
+      padding: 14px 24px;
+      border-radius: 10px;
+      text-decoration: none;
+      text-align: center;
+      font-size: 0.95rem;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      gap: 10px;
+      transition: all 0.2s;
+    }
+    .btn-download-secondary:hover {
+      background: rgba(255, 255, 255, 0.1);
+      border-color: rgba(255, 255, 255, 0.2);
     }
 
-    /* Benchmarks Section */
-    .benchmarks-section {
-      background: rgba(18, 20, 28, 0.5);
+    /* Checksums Table */
+    .checksums-card {
+      background: var(--bg-card);
+      border: 1px solid var(--border);
+      border-radius: 16px;
+      padding: 28px 32px;
+      margin-top: 32px;
+    }
+    .checksums-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 20px;
+    }
+    .checksums-header h4 {
+      font-size: 1.1rem;
+      font-weight: 700;
+    }
+    .checksum-row {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 12px 0;
+      border-bottom: 1px solid rgba(255, 255, 255, 0.04);
+      font-family: var(--mono);
+      font-size: 0.85rem;
+    }
+    .checksum-row:last-child { border-bottom: none; }
+    .file-name { color: var(--text); font-weight: 600; }
+    .hash-val {
+      color: var(--text-dim);
+      background: rgba(0, 0, 0, 0.4);
+      padding: 4px 10px;
+      border-radius: 6px;
+      border: 1px solid var(--border);
+      user-select: all;
+    }
+
+    /* Benchmarks Metrics */
+    .benchmarks-strip {
+      background: rgba(14, 18, 27, 0.6);
       border-top: 1px solid var(--border);
       border-bottom: 1px solid var(--border);
-      padding: 80px 40px;
+      padding: 80px 48px;
       position: relative;
       z-index: 1;
     }
-    .benchmarks-wrap {
-      max-width: 1200px;
+    .bench-grid {
+      max-width: 1400px;
       margin: 0 auto;
       display: grid;
       grid-template-columns: repeat(4, 1fr);
       gap: 32px;
       text-align: center;
     }
-    .benchmark-val {
-      font-size: 2.8rem;
+    .bench-val {
+      font-size: 3rem;
       font-weight: 800;
       font-family: var(--mono);
       color: var(--accent-cyan);
       margin-bottom: 6px;
     }
-    .benchmark-label {
-      color: var(--text-dim);
-      font-size: 0.9rem;
+    .bench-label {
+      color: var(--text-muted);
+      font-size: 0.95rem;
       font-weight: 500;
     }
 
+    /* Feature Architecture Cards */
+    .features-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(340px, 1fr));
+      gap: 28px;
+    }
+    .feature-card {
+      background: var(--bg-card);
+      border: 1px solid var(--border);
+      border-radius: 16px;
+      padding: 32px;
+      transition: all 0.3s;
+    }
+    .feature-card:hover {
+      border-color: rgba(0, 240, 255, 0.3);
+      transform: translateY(-3px);
+    }
+    .feature-icon {
+      font-size: 1.8rem;
+      margin-bottom: 18px;
+      display: inline-block;
+    }
+    .feature-card h3 {
+      font-size: 1.25rem;
+      font-weight: 700;
+      margin-bottom: 12px;
+    }
+    .feature-card p {
+      color: var(--text-muted);
+      font-size: 0.95rem;
+      line-height: 1.6;
+    }
+
+    /* Terminal Quickstart Simulator */
+    .terminal-window {
+      background: #05070a;
+      border: 1px solid var(--border);
+      border-radius: 14px;
+      overflow: hidden;
+      box-shadow: 0 20px 50px rgba(0, 0, 0, 0.6);
+      max-width: 900px;
+      margin: 0 auto;
+    }
+    .terminal-bar {
+      background: rgba(255, 255, 255, 0.04);
+      padding: 12px 18px;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      border-bottom: 1px solid var(--border);
+    }
+    .dot { width: 12px; height: 12px; border-radius: 50%; }
+    .dot.red { background: #ef4444; }
+    .dot.yellow { background: #f59e0b; }
+    .dot.green { background: #10b981; }
+    .terminal-title {
+      color: var(--text-dim);
+      font-family: var(--mono);
+      font-size: 0.8rem;
+      margin-left: 12px;
+    }
+    .terminal-body {
+      padding: 24px;
+      font-family: var(--mono);
+      font-size: 0.9rem;
+      color: #38bdf8;
+      line-height: 1.8;
+    }
+    .t-dim { color: var(--text-dim); }
+    .t-green { color: #34d399; }
+    .t-white { color: #fff; }
+
+    /* Footer */
     footer {
       border-top: 1px solid var(--border);
-      padding: 40px;
+      padding: 60px 48px;
       text-align: center;
       color: var(--text-dim);
-      font-size: 0.85rem;
+      font-size: 0.9rem;
       position: relative;
       z-index: 1;
     }
+    .footer-links {
+      display: flex;
+      justify-content: center;
+      gap: 24px;
+      margin-bottom: 20px;
+    }
+    .footer-links a {
+      color: var(--text-muted);
+      text-decoration: none;
+      transition: color 0.2s;
+    }
+    .footer-links a:hover { color: var(--accent-cyan); }
 
-    @media (max-width: 900px) {
+    @media (max-width: 960px) {
+      header { padding: 0 24px; }
+      .nav-links { display: none; }
       .hero { flex-direction: column; text-align: center; padding-top: 100px; }
-      .hero-content { margin-bottom: 40px; }
-      .cta-group { justify-content: center; flex-direction: column; }
-      .benchmarks-wrap { grid-template-columns: repeat(2, 1fr); }
+      .hero-3d-stage { width: 100%; height: 420px; }
+      .cta-group { justify-content: center; }
+      .bench-grid { grid-template-columns: repeat(2, 1fr); }
+      .section-wrap { padding: 80px 24px; }
     }
   </style>
 </head>
 <body>
   <div class="ambient"></div>
 
+  <!-- Header Navigation -->
   <header>
-    <div class="brand">
-      <div class="brand-dot"></div>
+    <a href="#" class="brand">
+      <div class="brand-orb"></div>
       <span>PICO</span>
-    </div>
-    <nav>
+    </a>
+    <nav class="nav-links">
       <a href="#features">Architecture</a>
       <a href="#benchmarks">Benchmarks</a>
-      <a href="https://github.com/tirthsaraiya/Pico" class="btn-github">GitHub Repository</a>
+      <a href="#download">Downloads</a>
+      <a href="#quickstart">Quickstart</a>
+      <a href="https://github.com/tirthsaraiya29/Pico/blob/main/docs/ARCHITECTURE.md">Docs</a>
     </nav>
+    <div class="nav-actions">
+      <a href="#download" class="btn-nav-download">Download v0.1.0</a>
+      <a href="https://github.com/tirthsaraiya29/Pico" class="btn-github" target="_blank" rel="noopener">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><path d="M12 0C5.37 0 0 5.37 0 12c0 5.31 3.435 9.795 8.205 11.385.6.105.825-.255.825-.57 0-.285-.015-1.23-.015-2.235-3.015.555-3.795-.735-4.035-1.41-.135-.345-.72-1.41-1.23-1.695-.42-.225-1.02-.78-.015-.795.945-.015 1.62.87 1.845 1.23 1.08 1.815 2.805 1.305 3.495.99.105-.78.42-1.305.765-1.605-2.67-.3-5.46-1.335-5.46-5.925 0-1.305.465-2.385 1.23-3.225-.12-.3-.54-1.53.12-3.18 0 0 1.005-.315 3.3 1.23.96-.27 1.98-.405 3-.405s2.04.135 3 .405c2.295-1.56 3.3-1.23 3.3-1.23.66 1.65.24 2.88.12 3.18.765.84 1.23 1.905 1.23 3.225 0 4.605-2.805 5.625-5.475 5.925.435.375.81 1.095.81 2.22 0 1.605-.015 2.895-.015 3.3 0 .315.225.69.825.57A12.02 12.02 0 0024 12c0-6.63-5.37-12-12-12z"/></svg>
+        <span>GitHub</span>
+      </a>
+    </div>
   </header>
 
+  <!-- Hero Section -->
   <main>
     <section class="hero">
       <div class="hero-content">
-        <span class="tagline">PRODUCTION RUST VOICE ARCHITECTURE</span>
-        <h1>Real-time local AI assistant with zero cloud lag.</h1>
+        <div class="badge-pill">
+          <span class="pulse-dot"></span>
+          <span>AUTONOMOUS RUST VOICE ASSISTANT</span>
+        </div>
+        <h1>Real-time voice intelligence, running entirely on your hardware.</h1>
         <p>
-          Pico runs natively on Windows 11 and Linux with hardware audio downmixing, adaptive energy voice activity detection, sub-15ms barge-in interruption, and a zero-trust operating system tool execution engine.
+          Pico is a production-quality, low-latency AI assistant built from the ground up in idiomatic Rust. Features native hardware audio downmixing, sub-15ms barge-in interruption, zero-trust OS tool execution, and offline local inference.
         </p>
         <div class="cta-group">
-          <a href="https://github.com/tirthsaraiya/Pico" class="btn-primary">Explore Source Code</a>
-          <div class="code-preview">
-            <span>$ cargo run --release -p pico-cli -- chat</span>
+          <a href="#download" class="btn-hero-primary">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+            <span>Download for Windows 11</span>
+          </a>
+          <a href="https://github.com/tirthsaraiya29/Pico" class="btn-hero-secondary" target="_blank" rel="noopener">
+            <span>View Source (GPLv3)</span>
+          </a>
+        </div>
+        <div class="hero-meta">
+          <span>✓ Intel Core Ultra / x86_64</span>
+          <span>✓ Sub-15ms Barge-in</span>
+          <span>✓ 100% Local Privacy</span>
+        </div>
+      </div>
+
+      <div class="hero-3d-stage">
+        <div id="three-canvas-container"></div>
+        <div class="fps-counter" id="fps-counter">60 FPS</div>
+        <div class="stage-overlay-deck">
+          <button class="state-tab active" onclick="switchCoreState('IDLE', this)">IDLE</button>
+          <button class="state-tab" onclick="switchCoreState('LISTENING', this)">LISTENING</button>
+          <button class="state-tab" onclick="switchCoreState('THINKING', this)">THINKING</button>
+          <button class="state-tab" onclick="switchCoreState('TOOL', this)">TOOL EXECUTION</button>
+          <button class="state-tab" onclick="switchCoreState('SPEAKING', this)">SPEAKING</button>
+        </div>
+      </div>
+    </section>
+
+    <!-- Benchmarks Strip -->
+    <section class="benchmarks-strip" id="benchmarks">
+      <div class="bench-grid">
+        <div>
+          <div class="bench-val">&lt; 15ms</div>
+          <div class="bench-label">Barge-in Interruption Latency</div>
+        </div>
+        <div>
+          <div class="bench-val">&lt; 0.1ms</div>
+          <div class="bench-label">16kHz Hardware Resampling</div>
+        </div>
+        <div>
+          <div class="bench-val">28 MB</div>
+          <div class="bench-label">Idle Resident Memory (RAM)</div>
+        </div>
+        <div>
+          <div class="bench-val">100%</div>
+          <div class="bench-label">Offline Local Privacy</div>
+        </div>
+      </div>
+    </section>
+
+    <!-- Download Releases Section -->
+    <section class="section-wrap" id="download">
+      <div class="section-header">
+        <span class="section-tag">OFFICIAL PRODUCTION RELEASE</span>
+        <h2>Download Pico v0.1.0</h2>
+        <p>Built for Windows 11 x64 and Linux. Pre-compiled binaries with zero external runtime dependencies.</p>
+      </div>
+
+      <div class="download-grid">
+        <!-- Desktop UI Card -->
+        <div class="download-card featured">
+          <div class="card-top">
+            <span class="release-tag">RECOMMENDED • DESKTOP APP</span>
+            <h3>Pico Desktop (Setup & UI)</h3>
+            <p>Full 3D WebGL interface, real-time audio radar, native SAPI speech synthesis, and automatic tool execution.</p>
+            <ul class="specs-list">
+              <li>✓ Architecture: Windows 11 / 10 (x86_64)</li>
+              <li>✓ Format: Zip / Executable Bundle</li>
+              <li>✓ Includes: 3D UI, Background Runtime, Audio Engine</li>
+            </ul>
           </div>
+          <a href="https://github.com/tirthsaraiya29/Pico/releases/latest/download/pico-desktop-x64.zip" class="btn-download-action">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+            <span>Download Desktop (35 MB)</span>
+          </a>
+        </div>
+
+        <!-- CLI Binary Card -->
+        <div class="download-card">
+          <div class="card-top">
+            <span class="release-tag" style="background: rgba(139, 92, 246, 0.15); color: #a78bfa; border-color: rgba(139, 92, 246, 0.3);">LIGHTWEIGHT • CLI</span>
+            <h3>Pico CLI (Standalone Binary)</h3>
+            <p>Single standalone terminal binary for high-speed headless assistant interaction, voice mode, and server scripting.</p>
+            <ul class="specs-list">
+              <li>✓ Architecture: Windows x64 (`pico.exe`)</li>
+              <li>✓ Format: Portable Single Executable</li>
+              <li>✓ Subcommands: `chat`, `voice`, `tools`, `doctor`</li>
+            </ul>
+          </div>
+          <a href="https://github.com/tirthsaraiya29/Pico/releases/latest/download/pico-cli.exe" class="btn-download-secondary">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+            <span>Download CLI (18 MB)</span>
+          </a>
+        </div>
+
+        <!-- Linux & Source -->
+        <div class="download-card">
+          <div class="card-top">
+            <span class="release-tag" style="background: rgba(255, 255, 255, 0.1); color: #e2e8f0; border-color: rgba(255, 255, 255, 0.15);">SOURCE & LINUX</span>
+            <h3>Linux x86_64 & Source Code</h3>
+            <p>Build natively from source or download release tarballs for Debian, Ubuntu, Fedora, and Arch Linux.</p>
+            <ul class="specs-list">
+              <li>✓ Compiler: Rust 1.80+ (MSVC / GCC)</li>
+              <li>✓ Audio: ALSA / PulseAudio / WASAPI</li>
+              <li>✓ License: GNU General Public License v3.0</li>
+            </ul>
+          </div>
+          <a href="https://github.com/tirthsaraiya29/Pico/releases/latest" class="btn-download-secondary" target="_blank" rel="noopener">
+            <span>View All GitHub Releases</span>
+          </a>
         </div>
       </div>
-      <div class="hero-3d">
-        <div id="hero-canvas"></div>
-        <div class="state-trigger-deck">
-          <button class="state-btn active" onclick="setCoreState('IDLE', this)">IDLE</button>
-          <button class="state-btn" onclick="setCoreState('LISTENING', this)">LISTENING</button>
-          <button class="state-btn" onclick="setCoreState('THINKING', this)">THINKING</button>
-          <button class="state-btn" onclick="setCoreState('TOOL', this)">TOOL EXECUTION</button>
-          <button class="state-btn" onclick="setCoreState('SPEAKING', this)">SPEAKING</button>
+
+      <!-- Checksums Verification Table -->
+      <div class="checksums-card">
+        <div class="checksums-header">
+          <h4>SHA-256 Release Checksums</h4>
+          <span style="font-family: var(--mono); font-size: 0.8rem; color: var(--accent-cyan);">Official Signatures</span>
+        </div>
+        <div class="checksum-row">
+          <span class="file-name">pico-desktop-x64.zip</span>
+          <span class="hash-val">e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855</span>
+        </div>
+        <div class="checksum-row">
+          <span class="file-name">pico-cli.exe</span>
+          <span class="hash-val">a5c10b4887968b556f26487e47ef625a6e2e5050f28e2de70283e336ebdafa82</span>
         </div>
       </div>
     </section>
 
-    <!-- Benchmarks -->
-    <section class="benchmarks-section" id="benchmarks">
-      <div class="benchmarks-wrap">
-        <div>
-          <div class="benchmark-val">&lt; 15ms</div>
-          <div class="benchmark-label">Barge-in Interruption</div>
-        </div>
-        <div>
-          <div class="benchmark-val">&lt; 0.1ms</div>
-          <div class="benchmark-label">Audio 16kHz Resampling</div>
-        </div>
-        <div>
-          <div class="benchmark-val">28 MB</div>
-          <div class="benchmark-label">Idle Memory Footprint</div>
-        </div>
-        <div>
-          <div class="benchmark-val">100%</div>
-          <div class="benchmark-label">Local &amp; Offline Capable</div>
-        </div>
-      </div>
-    </section>
-
-    <!-- Features -->
-    <section class="features-section" id="features" style="padding-top: 100px;">
-      <div class="section-title">
-        <h2>Engineered Without Compromise</h2>
-        <p>Built as a high-performance modular Rust workspace.</p>
+    <!-- Architecture & Features Section -->
+    <section class="section-wrap" id="features">
+      <div class="section-header">
+        <span class="section-tag">ENGINEERING FOUNDATIONS</span>
+        <h2>Architected for Extreme Responsiveness</h2>
+        <p>Engineered without bloated runtimes or third-party cloud intermediaries.</p>
       </div>
 
       <div class="features-grid">
         <div class="feature-card">
-          <div class="feature-icon">🎙</div>
-          <h3>WASAPI Audio Pipeline</h3>
-          <p>Continuous microphone streaming with polyphase 16kHz mono resampling, dynamic RMS noise-floor tracking, and push-to-talk.</p>
-        </div>
-        <div class="feature-card">
           <div class="feature-icon">⚡</div>
-          <h3>Interchangeable Inference</h3>
-          <p>Supports local GGUF via Vulkan llama-server, Ollama native/v1 endpoints, and OpenAI-compatible remote providers with token streaming.</p>
+          <h3>Native WASAPI Audio & Barge-in</h3>
+          <p>Custom lock-free ring buffer running on dedicated high-priority audio threads with energy-based voice activity detection. Speaks and listens concurrently with sub-15ms barge-in interruption.</p>
         </div>
+
         <div class="feature-card">
-          <div class="feature-icon">🛡</div>
-          <h3>Zero-Trust Security Engine</h3>
-          <p>Four-tiered permissions (ReadOnly, LowRisk, ConfirmationRequired, Restricted), path boundary traversal protection, and audit trails.</p>
+          <div class="feature-icon">🛡️</div>
+          <h3>Zero-Trust OS Sandbox</h3>
+          <p>Strict path boundary verification defending against Windows junctions, symlinks, Alternate Data Streams (ADS), device names (CON/NUL), UNC leaks, and command chaining.</p>
         </div>
-        <div class="feature-card">
-          <div class="feature-icon">⚙</div>
-          <h3>OS System Integration</h3>
-          <p>Native application launcher, process manager, memory inspector, file search, safe command runner, and clipboard sync.</p>
-        </div>
+
         <div class="feature-card">
           <div class="feature-icon">🧠</div>
-          <h3>SQLite Context Budgeter</h3>
-          <p>WAL-journaled persistent memory with FTS5 BM25 relevance ranking and dynamic context window budgeting to prevent memory blowups.</p>
+          <h3>Interchangeable Local Inference</h3>
+          <p>Native async provider abstraction supporting local Ollama (Granite 4.2 / Llama 3.2), Vulkan-accelerated `llama-server.exe`, and streaming OpenAI-compatible JSON endpoints.</p>
         </div>
+
+        <div class="feature-card">
+          <div class="feature-icon">🔢</div>
+          <h3>Zero-Shell Math AST Parser</h3>
+          <p>Dedicated recursive-descent arithmetic parser evaluating expressions, powers, and trigonometry in microseconds with strict recursion depth and float boundaries—completely eliminating PowerShell execution.</p>
+        </div>
+
+        <div class="feature-card">
+          <div class="feature-icon">💾</div>
+          <h3>Persistent Context Budgeting</h3>
+          <p>SQLite with Write-Ahead Logging (WAL) and token context budgeting. Preserves long-term memory facts, session history, and execution metrics while preventing LLM context overflows.</p>
+        </div>
+
         <div class="feature-card">
           <div class="feature-icon">🌐</div>
-          <h3>Real-Time 3D Desktop UI</h3>
-          <p>Axum-powered WebSocket hub with interactive Three.js neural sphere, live VU meters, and diagnostic telemetry.</p>
+          <h3>Anti-SSRF Web Fetching</h3>
+          <p>Robust DNS resolution and IP range verification blocking loopback (127.0.0.0/8), RFC 1918 private networks, link-local metadata (169.254.169.254), and redirect-based SSRF vectors.</p>
+        </div>
+      </div>
+    </section>
+
+    <!-- Terminal Quickstart Section -->
+    <section class="section-wrap" id="quickstart">
+      <div class="section-header">
+        <span class="section-tag">GET STARTED IN SECONDS</span>
+        <h2>Terminal & Voice Interaction</h2>
+        <p>Interact with Pico directly from your shell or launch the visual 3D interface.</p>
+      </div>
+
+      <div class="terminal-window">
+        <div class="terminal-bar">
+          <span class="dot red"></span>
+          <span class="dot yellow"></span>
+          <span class="dot green"></span>
+          <span class="terminal-title">pico-cli — PowerShell / Bash</span>
+        </div>
+        <div class="terminal-body">
+          <span class="t-dim"># 1. Run diagnostic system doctor</span><br />
+          <span class="t-white">&gt; pico-cli.exe doctor</span><br />
+          <span class="t-green">[OK] Host OS: Windows 11 x86_64 (Intel Core Ultra 7 356H)</span><br />
+          <span class="t-green">[OK] Audio: Microphones (1), Speakers (1) verified</span><br />
+          <span class="t-green">[OK] Inference: Local Ollama reachable at http://127.0.0.1:11434</span><br /><br />
+
+          <span class="t-dim"># 2. Start interactive assistant with OS tool execution</span><br />
+          <span class="t-white">&gt; pico-cli.exe chat</span><br />
+          <span class="t-dim">Pico &gt;</span> <span class="t-white">"What is (25 * 4) + sqrt(144)?"</span><br />
+          <span class="t-dim">⚙ [TOOL] Calling tool: calculator with {"expression":"(25 * 4) + sqrt(144)"}</span><br />
+          <span class="t-green">[OK] Tool calculator completed in 0.05ms: {"result":"112"}</span><br />
+          <span class="t-dim">Pico &gt;</span> (25 * 4) + sqrt(144) equals 112.<br /><br />
+
+          <span class="t-dim"># 3. Launch Hands-Free Voice Mode</span><br />
+          <span class="t-white">&gt; pico-cli.exe voice</span><br />
+          <span class="t-green">[LISTENING] Speak naturally into microphone. Speak anytime to barge in.</span>
         </div>
       </div>
     </section>
   </main>
 
+  <!-- Footer -->
   <footer>
-    <p>Released under the GNU General Public License v3.0 • Authored by Tirth Saraiya</p>
+    <div class="footer-links">
+      <a href="https://github.com/tirthsaraiya29/Pico">GitHub Repository</a>
+      <a href="https://github.com/tirthsaraiya29/Pico/releases/latest">Release Notes</a>
+      <a href="https://github.com/tirthsaraiya29/Pico/blob/main/docs/ARCHITECTURE.md">Architecture Guide</a>
+      <a href="https://github.com/tirthsaraiya29/Pico/issues">Report Issue</a>
+    </div>
+    <p>Project Pico © 2026 Tirth Saraiya. Released under the GNU General Public License v3.0.</p>
   </footer>
 
+  <!-- Three.js Interactive Neural Core Logic -->
   <script>
-    let scene, camera, renderer, wireframe, core, particles;
-    let targetColor = new THREE.Color(0x00f0ff);
+    let scene, camera, renderer, wireframeMesh, innerCore, particleSystem;
+    let currentScale = 1.0;
     let targetScale = 1.0;
-    let coreState = 'IDLE';
+    let targetColor = new THREE.Color(0x00f0ff);
+    let currentColor = new THREE.Color(0x00f0ff);
+    let fpsCounter = document.getElementById('fps-counter');
+    let lastTime = performance.now();
+    let frameCount = 0;
 
-    function init() {
-      const container = document.getElementById('hero-canvas');
-      const w = container.clientWidth;
-      const h = container.clientHeight;
+    function init3D() {
+      const container = document.getElementById('three-canvas-container');
+      const width = container.clientWidth;
+      const height = container.clientHeight;
 
       scene = new THREE.Scene();
-      camera = new THREE.PerspectiveCamera(45, w / h, 0.1, 1000);
+      camera = new THREE.PerspectiveCamera(45, width / height, 0.1, 1000);
       camera.position.z = 4.8;
 
       renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
-      renderer.setSize(w, h);
+      renderer.setSize(width, height);
       renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
       container.appendChild(renderer.domElement);
 
-      const geo = new THREE.IcosahedronGeometry(1.2, 3);
-      const mat = new THREE.MeshBasicMaterial({ color: 0x00f0ff, wireframe: true, transparent: true, opacity: 0.4 });
-      wireframe = new THREE.Mesh(geo, mat);
-      scene.add(wireframe);
+      // 1. Outer Geodesic Icosahedron Cage
+      const geoOuter = new THREE.IcosahedronGeometry(1.25, 3);
+      const matOuter = new THREE.MeshBasicMaterial({
+        color: 0x00f0ff,
+        wireframe: true,
+        transparent: true,
+        opacity: 0.38,
+      });
+      wireframeMesh = new THREE.Mesh(geoOuter, matOuter);
+      scene.add(wireframeMesh);
 
-      const innerGeo = new THREE.IcosahedronGeometry(0.8, 2);
-      const innerMat = new THREE.MeshBasicMaterial({ color: 0x00e5ff, transparent: true, opacity: 0.25 });
-      core = new THREE.Mesh(innerGeo, innerMat);
-      scene.add(core);
+      // 2. Inner Glowing Core
+      const geoInner = new THREE.IcosahedronGeometry(0.85, 2);
+      const matInner = new THREE.MeshBasicMaterial({
+        color: 0x00e5ff,
+        wireframe: false,
+        transparent: true,
+        opacity: 0.22,
+      });
+      innerCore = new THREE.Mesh(geoInner, matInner);
+      scene.add(innerCore);
 
+      // 3. Floating Neural Cloud Particles
+      const particleCount = 480;
       const pGeo = new THREE.BufferGeometry();
-      const pCount = 500;
-      const pos = new Float32Array(pCount * 3);
-      for (let i = 0; i < pCount * 3; i += 3) {
+      const pPos = new Float32Array(particleCount * 3);
+
+      for (let i = 0; i < particleCount * 3; i += 3) {
         const u = Math.random();
         const v = Math.random();
         const theta = u * 2.0 * Math.PI;
         const phi = Math.acos(2.0 * v - 1.0);
-        const r = 1.5 + Math.random() * 0.8;
-        pos[i] = r * Math.sin(phi) * Math.cos(theta);
-        pos[i+1] = r * Math.sin(phi) * Math.sin(theta);
-        pos[i+2] = r * Math.cos(phi);
+        const r = 1.5 + Math.random() * 0.9;
+        pPos[i] = r * Math.sin(phi) * Math.cos(theta);
+        pPos[i + 1] = r * Math.sin(phi) * Math.sin(theta);
+        pPos[i + 2] = r * Math.cos(phi);
       }
-      pGeo.setAttribute('position', new THREE.BufferAttribute(pos, 3));
-      const pMat = new THREE.PointsMaterial({ size: 0.03, color: 0x00f0ff, transparent: true, opacity: 0.7 });
-      particles = new THREE.Points(pGeo, pMat);
-      scene.add(particles);
+      pGeo.setAttribute('position', new THREE.BufferAttribute(pPos, 3));
+
+      const pMat = new THREE.PointsMaterial({
+        size: 0.045,
+        color: 0x00f0ff,
+        transparent: true,
+        opacity: 0.7,
+      });
+      particleSystem = new THREE.Points(pGeo, pMat);
+      scene.add(particleSystem);
+
+      // Mouse Parallax
+      let mouseX = 0, mouseY = 0;
+      container.addEventListener('mousemove', (e) => {
+        const rect = container.getBoundingClientRect();
+        mouseX = ((e.clientX - rect.left) / width) * 2 - 1;
+        mouseY = -(((e.clientY - rect.top) / height) * 2 - 1);
+      });
+
+      // Interactive Click Shockwave
+      container.addEventListener('click', () => {
+        targetScale = 1.35;
+        setTimeout(() => { targetScale = 1.0; }, 300);
+      });
 
       window.addEventListener('resize', () => {
-        const w2 = container.clientWidth;
-        const h2 = container.clientHeight;
-        camera.aspect = w2 / h2;
+        const w = container.clientWidth;
+        const h = container.clientHeight;
+        camera.aspect = w / h;
         camera.updateProjectionMatrix();
-        renderer.setSize(w2, h2);
+        renderer.setSize(w, h);
       });
 
-      document.addEventListener('mousemove', (e) => {
-        const mx = (e.clientX / window.innerWidth) * 2 - 1;
-        const my = -(e.clientY / window.innerHeight) * 2 + 1;
-        camera.position.x += (mx * 0.3 - camera.position.x) * 0.05;
-        camera.position.y += (my * 0.3 - camera.position.y) * 0.05;
-        camera.lookAt(scene.position);
-      });
+      // Animation Loop
+      function animate(time) {
+        requestAnimationFrame(animate);
 
-      render();
+        // FPS calculation
+        frameCount++;
+        if (time >= lastTime + 1000) {
+          fpsCounter.textContent = `${frameCount} FPS`;
+          frameCount = 0;
+          lastTime = time;
+        }
+
+        const t = time * 0.001;
+        wireframeMesh.rotation.y = t * 0.35 + mouseX * 0.5;
+        wireframeMesh.rotation.x = t * 0.2 + mouseY * 0.5;
+
+        innerCore.rotation.y = -t * 0.45;
+        innerCore.rotation.z = t * 0.25;
+
+        particleSystem.rotation.y = t * 0.12;
+
+        // Smooth scale and color interpolation
+        currentScale += (targetScale - currentScale) * 0.08;
+        wireframeMesh.scale.set(currentScale, currentScale, currentScale);
+        innerCore.scale.set(currentScale * 0.85, currentScale * 0.85, currentScale * 0.85);
+
+        currentColor.lerp(targetColor, 0.08);
+        wireframeMesh.material.color = currentColor;
+        innerCore.material.color = currentColor;
+        particleSystem.material.color = currentColor;
+
+        renderer.render(scene, camera);
+      }
+      animate(performance.now());
     }
 
-    let clk = new THREE.Clock();
-    function render() {
-      requestAnimationFrame(render);
-      const t = clk.getElapsedTime();
-
-      let rot = 0.5;
-      if (coreState === 'THINKING') rot = 2.4;
-      if (coreState === 'TOOL') rot = 1.8;
-      if (coreState === 'SPEAKING') rot = 0.9;
-
-      wireframe.rotation.x += 0.005 * rot;
-      wireframe.rotation.y += 0.01 * rot;
-      core.rotation.x -= 0.007 * rot;
-      core.rotation.y -= 0.009 * rot;
-      particles.rotation.y += 0.003 * rot;
-
-      let p = Math.sin(t * 2.5) * 0.08;
-      if (coreState === 'LISTENING') p = Math.sin(t * 6.0) * 0.15;
-      if (coreState === 'SPEAKING') p = Math.sin(t * 8.0) * 0.22;
-
-      const s = targetScale + p;
-      wireframe.scale.set(s, s, s);
-      core.scale.set(s * 0.8, s * 0.8, s * 0.8);
-
-      wireframe.material.color.lerp(targetColor, 0.08);
-      core.material.color.lerp(targetColor, 0.08);
-      particles.material.color.lerp(targetColor, 0.08);
-
-      renderer.render(scene, camera);
-    }
-
-    function setCoreState(st, btn) {
-      coreState = st;
-      document.querySelectorAll('.state-btn').forEach(b => b.classList.remove('active'));
+    function switchCoreState(state, btn) {
+      document.querySelectorAll('.state-tab').forEach(b => b.classList.remove('active'));
       if (btn) btn.classList.add('active');
 
-      switch(st) {
+      switch (state) {
+        case 'IDLE':
+          targetColor = new THREE.Color(0x00f0ff); // Cyan
+          targetScale = 1.0;
+          break;
         case 'LISTENING':
-          targetColor = new THREE.Color(0x3b82f6);
-          targetScale = 1.25;
-          break;
-        case 'THINKING':
-          targetColor = new THREE.Color(0xf59e0b);
-          targetScale = 0.95;
-          break;
-        case 'TOOL':
-          targetColor = new THREE.Color(0x10b981);
+          targetColor = new THREE.Color(0x10b981); // Emerald Green
           targetScale = 1.15;
           break;
-        case 'SPEAKING':
-          targetColor = new THREE.Color(0x8b5cf6);
-          targetScale = 1.35;
+        case 'THINKING':
+          targetColor = new THREE.Color(0x8b5cf6); // Violet
+          targetScale = 1.25;
           break;
-        default:
-          targetColor = new THREE.Color(0x00f0ff);
-          targetScale = 1.0;
+        case 'TOOL':
+          targetColor = new THREE.Color(0xf59e0b); // Amber Gold
+          targetScale = 1.2;
+          break;
+        case 'SPEAKING':
+          targetColor = new THREE.Color(0xec4899); // Magenta Pink
+          targetScale = 1.3;
           break;
       }
     }
 
-    init();
+    document.addEventListener('DOMContentLoaded', init3D);
   </script>
 </body>
 </html>

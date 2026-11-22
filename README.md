@@ -15,7 +15,8 @@
 [Key Features](#key-features) •
 [Architecture](#architecture) •
 [Quickstart](#quickstart) •
-[Interactive 3D UI](#desktop--3d-web-interface) •
+[3D Landing Page & Downloads](https://tirthsaraiya29.github.io/Pico/) •
+[Desktop UI](#desktop-application--local-interface) •
 [Benchmarks](#hardware-benchmarks) •
 [Documentation](docs/ARCHITECTURE.md)
 
@@ -162,14 +163,26 @@ Continuous microphone capture with real-time VAD and barge-in interruption:
 .\target\release\pico-desktop.exe
 ```
 
-Access the desktop interface at `http://127.0.0.1:3124` to interact with the Three.js 3D neural core, audio oscilloscope, live metrics, and settings drawer.
+Access the local desktop interface at `http://127.0.0.1:3124` to interact with the Three.js 3D neural core, audio oscilloscope, live metrics, and settings drawer.
 
 ---
 
-## Desktop & 3D Web Interface
+## 3D Landing Page & Download Release Center
 
-The Desktop interface connects directly to the Pico runtime via low-latency WebSockets (`/ws`):
+Visit the official static 3D project showcase and release download center:
+**[https://tirthsaraiya29.github.io/Pico/](https://tirthsaraiya29.github.io/Pico/)**
+
+- **Full SEO & GEO Optimization**: Complete Schema.org JSON-LD `SoftwareApplication` structured metadata, OpenGraph tags, Twitter Cards, and Geographic coordinate meta tags (`geo.region: IN-GJ`, `geo.position: 23.0225;72.5714`).
+- **Interactive Three.js Neural Core**: Real-time 3D WebGL particle sphere responding to mouse hover, click shockwaves, and assistant state changes.
+- **Direct Release Downloads**: Direct release download cards for Windows 11 x64 Desktop setup (`pico-desktop-x64.zip`), standalone portable CLI (`pico-cli.exe`), and verified SHA-256 signatures.
+
+---
+
+## Desktop Application & Local Interface
+
+The local Desktop application connects directly to the Pico runtime via authenticated WebSockets (`/ws`):
 - **Dynamic 3D Neural Core**: Visualizes assistant state (`IDLE`, `LISTENING`, `THINKING`, `TOOL_EXECUTION`, `SPEAKING`) with smooth geometric morphing and mouse raycast tracking.
+- **Local Security Guard**: Local token authentication (`PICO_AUTH_TOKEN`), loopback interface restriction, and strict origin validation preventing cross-site WebSocket hijacking (CSWSH).
 - **Audio Radar & Oscilloscope**: Real-time canvas waveform and VAD sensitivity VU meter.
 - **Live Tool Cards**: Inspect parameter inputs, execution times, and return values in real time.
 - **Configuration Drawer**: Switch inference backends, adjust VAD thresholds, inspect audio devices, and manage security tiers.

@@ -12,19 +12,19 @@
 
 | Component | Status | Test Coverage | Verification Notes |
 | :--- | :---: | :---: | :--- |
-| **Workspace & Toolchain** | :white_check_mark: Complete | 100% | Rust 1.100.0 MSVC toolchain, clippy, rustfmt initialized |
+| **Workspace & Toolchain** | :white_check_mark: Complete | 100% | Rust 1.80+ MSVC toolchain, clippy, rustfmt clean, GitHub Actions CI & CodeQL fixed |
 | **`pico-core`** | :white_check_mark: Complete | 4/4 Unit Tests Passed | Message, SessionId, PicoConfig, PicoEvent, traits, universal error models |
-| **`pico-security`** | :white_check_mark: Complete | 5/5 Unit Tests Passed | 4-tier permission policy, path sandbox boundary checks, audit logger, injection sanitizer |
-| **`pico-platform`** | :white_check_mark: Complete | 2/2 Unit Tests Passed | Windows 11 native integrations (sysinfo, process enumeration/killing, apps, clipboard) |
+| **`pico-security`** | :white_check_mark: Complete | 9/9 Unit Tests Passed | 4-tier permission policy, ADS & DOS device blocking, path sandbox boundary checks, audit logger, injection sanitizer |
+| **`pico-platform`** | :white_check_mark: Complete | 2/2 Unit Tests Passed | Windows 11 native integrations (sysinfo, process enumeration/killing, safe app launcher without cmd.exe, clipboard) |
 | **`pico-audio`** | :white_check_mark: Complete | 2/2 Unit Tests Passed | CPAL capture & playback, thread-isolated OS streams, polyphase 16kHz mono resampler |
-| **`pico-voice`** | :white_check_mark: Complete | 3/3 Unit Tests Passed | Adaptive energy VAD, Windows SAPI instant TTS (<185ms), STT WAV encoder, barge-in |
-| **`pico-inference`** | :white_check_mark: Complete | 4/4 Unit Tests Passed | Native Ollama (`granite4.2`), LlamaCpp, OpenAI SSE, structured JSON decision recovery |
-| **`pico-tools`** | :white_check_mark: Complete | 3/3 Unit Tests Passed | 12 tools (sysinfo, procs, kill, app, files, calc, timers, clipboard, web, shell) |
+| **`pico-voice`** | :white_check_mark: Complete | 4/4 Unit Tests Passed | Adaptive energy VAD, safe parameterized Windows SAPI (<185ms), STT WAV encoder, barge-in, malicious TTS tests |
+| **`pico-inference`** | :white_check_mark: Complete | 4/4 Unit Tests Passed | Native Ollama (`granite4.2`), LlamaCpp, OpenAI SSE, structured JSON decision recovery, live provider tests |
+| **`pico-tools`** | :white_check_mark: Complete | 13/13 Unit Tests Passed | Dedicated zero-shell arithmetic parser, SSRF IP defense, 12 tools (sysinfo, procs, kill, app, files, timers, clipboard, web) |
 | **`pico-memory`** | :white_check_mark: Complete | 3/3 Unit Tests Passed | SQLite WAL storage, context window budgeter, BM25 keyword relevance ranking |
-| **`pico-orchestrator`** | :white_check_mark: Complete | 4/4 E2E Tests Passed | Event-driven runtime hub, multi-turn tool loops, cancellation & interruption |
+| **`pico-orchestrator`** | :white_check_mark: Complete | 5/5 E2E Tests Passed | Event-driven runtime hub, multi-turn tool loops, per-turn cancellation tokens & live Ollama tool calling |
 | **`pico-cli`** | :white_check_mark: Complete | Verified CLI | Interactive REPL, hands-free voice mode, diagnostic doctor, tool/device catalogs |
-| **`pico-desktop`** | :white_check_mark: Complete | Verified GUI | Axum WebSocket hub, static file server, Three.js 3D neural core, oscilloscope |
-| **Documentation & Landing** | :white_check_mark: Complete | Verified | Comprehensive README, ARCHITECTURE, VOICE_PIPELINE, BENCHMARKS, TOOLS, 3D Landing Page |
+| **`pico-desktop`** | :white_check_mark: Complete | Verified GUI | Protected WebSocket hub, local token auth, CSWSH origin defense, connection limits, Three.js 3D neural core |
+| **Documentation & Landing** | :white_check_mark: Complete | Verified | Production 3D landing page with full SEO/GEO (`docs/index.html`), release downloads, architecture docs |
 
 ---
 
@@ -57,7 +57,8 @@
 
 - `cargo fmt --all -- --check`: **Clean (Zero formatting violations)**
 - `cargo clippy --workspace --all-targets --all-features -- -D warnings`: **Clean (Zero warnings)**
-- `cargo test --workspace --all-features`: **29/29 Tests Passed**
+- `cargo test --workspace --all-features`: **46/46 Tests Passed (100% Success)**
+- `cargo build --workspace --release`: **Clean (Both `pico-cli.exe` & `pico-desktop.exe` built with LTO)**
   - `pico-core`: 4 passed
   - `pico-security`: 5 passed
   - `pico-platform`: 2 passed
