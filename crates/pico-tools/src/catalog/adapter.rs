@@ -4,11 +4,13 @@
 
 use crate::catalog::types::{LatencyClass, TargetOs, ToolMetadata};
 use pico_core::error::{PicoError, Result};
+use pico_security::PathSandbox;
 use std::time::Duration;
 
 pub async fn execute_tool_adapter(
     meta: &ToolMetadata,
     arguments: serde_json::Value,
+    sandbox: Option<&PathSandbox>,
 ) -> Result<serde_json::Value> {
     // 1. Validate required parameters
     if let Some(req_array) = meta
@@ -28,6 +30,43 @@ pub async fn execute_tool_adapter(
         }
     }
 
+    // 2. Enforce PathSandbox validation on all path parameters and sanitize arguments
+    let default_sandbox = PathSandbox::new(vec![std::path::PathBuf::from(".")], vec![]);
+    let effective_sandbox = sandbox.unwrap_or(&default_sandbox);
+
+    let mut validated_arguments = arguments.clone();
+    if let Some(obj) = validated_arguments.as_object_mut() {
+        for (k, v) in obj.iter_mut() {
+            let k_lower = k.to_ascii_lowercase();
+            let is_path_param = k_lower.contains("path")
+                || k_lower.contains("file")
+                || k_lower.contains("dir")
+                || k_lower == "source"
+                || k_lower == "destination"
+                || k_lower == "target";
+
+            if is_path_param {
+                if let Some(s) = v.as_str() {
+                    let safe_path = effective_sandbox.validate_path(s).map_err(|e| {
+                        PicoError::Security(format!(
+                            "Sandbox violation in parameter '{}' for tool {}: {}",
+                            k, meta.canonical_id, e
+                        ))
+                    })?;
+                    *v = serde_json::Value::String(safe_path.to_string_lossy().to_string());
+                }
+            } else if let Some(s) = v.as_str() {
+                // Ensure shell argument does not contain arbitrary shell metacharacters
+                if !pico_security::InputSanitizer::is_safe_shell_arg(s) {
+                    return Err(PicoError::Security(format!(
+                        "Prohibited shell metacharacters detected in argument '{}': {}",
+                        k, s
+                    )));
+                }
+            }
+        }
+    }
+
     // Determine execution timeout based on LatencyClass
     let timeout = match meta.latency_class {
         LatencyClass::SubMillisecond => Duration::from_millis(1000),
@@ -41,7 +80,7 @@ pub async fn execute_tool_adapter(
         TargetOs::Windows => {
             #[cfg(target_os = "windows")]
             {
-                execute_windows_command(meta, &arguments, timeout).await
+                execute_windows_command(meta, &validated_arguments, timeout).await
             }
             #[cfg(not(target_os = "windows"))]
             {
@@ -50,7 +89,7 @@ pub async fn execute_tool_adapter(
                     "target_os": "windows",
                     "host_os": current_os,
                     "canonical_id": meta.canonical_id,
-                    "parameters": arguments,
+                    "parameters": validated_arguments,
                     "simulated": true,
                     "message": format!("Tool {} validated against Windows execution contract on {}", meta.canonical_id, current_os)
                 }))
@@ -59,7 +98,7 @@ pub async fn execute_tool_adapter(
         TargetOs::Linux => {
             #[cfg(target_os = "linux")]
             {
-                execute_linux_command(meta, &arguments, timeout).await
+                execute_linux_command(meta, &validated_arguments, timeout).await
             }
             #[cfg(not(target_os = "linux"))]
             {
@@ -68,7 +107,7 @@ pub async fn execute_tool_adapter(
                     "target_os": "linux",
                     "host_os": current_os,
                     "canonical_id": meta.canonical_id,
-                    "parameters": arguments,
+                    "parameters": validated_arguments,
                     "simulated": true,
                     "message": format!("Tool {} validated against Linux execution contract on {}", meta.canonical_id, current_os)
                 }))
@@ -77,7 +116,7 @@ pub async fn execute_tool_adapter(
         TargetOs::Universal => Ok(serde_json::json!({
             "status": "success",
             "canonical_id": meta.canonical_id,
-            "parameters": arguments
+            "parameters": validated_arguments
         })),
     }
 }
@@ -104,8 +143,9 @@ async fn execute_windows_command(
                 serde_json::Value::String(s) => s.replace('\'', "''").replace('`', "``"),
                 other => other.to_string(),
             };
-            resolved_script =
-                resolved_script.replace(&format!("${}", k), &format!("'{}'", val_str));
+            resolved_script = resolved_script
+                .replace(&format!("${{{}}}", k), &format!("'{}'", val_str))
+                .replace(&format!("${}", k), &format!("'{}'", val_str));
         }
     }
 

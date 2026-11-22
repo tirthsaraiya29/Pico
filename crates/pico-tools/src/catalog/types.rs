@@ -4,7 +4,10 @@
 use async_trait::async_trait;
 use pico_core::error::Result;
 use pico_core::traits::{PermissionTier, Tool};
+use pico_security::PathSandbox;
 use serde::{Deserialize, Serialize};
+use std::path::PathBuf;
+use std::sync::Arc;
 
 /// Target operating system for an ecosystem tool.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -108,15 +111,25 @@ pub struct ToolMetadata {
 /// Dynamic executable tool in Pico's massive operating system ecosystem.
 pub struct EcosystemTool {
     meta: ToolMetadata,
+    sandbox: Arc<PathSandbox>,
 }
 
 impl EcosystemTool {
     pub fn new(meta: ToolMetadata) -> Self {
-        Self { meta }
+        let sandbox = Arc::new(PathSandbox::new(vec![PathBuf::from(".")], vec![]));
+        Self { meta, sandbox }
+    }
+
+    pub fn with_sandbox(meta: ToolMetadata, sandbox: Arc<PathSandbox>) -> Self {
+        Self { meta, sandbox }
     }
 
     pub fn metadata(&self) -> &ToolMetadata {
         &self.meta
+    }
+
+    pub fn sandbox(&self) -> &Arc<PathSandbox> {
+        &self.sandbox
     }
 
     pub fn target_os(&self) -> TargetOs {
@@ -155,6 +168,7 @@ impl Tool for EcosystemTool {
     }
 
     async fn execute(&self, arguments: serde_json::Value) -> Result<serde_json::Value> {
-        crate::catalog::adapter::execute_tool_adapter(&self.meta, arguments).await
+        crate::catalog::adapter::execute_tool_adapter(&self.meta, arguments, Some(&self.sandbox))
+            .await
     }
 }

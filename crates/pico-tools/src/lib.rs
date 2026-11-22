@@ -53,7 +53,7 @@ pub fn build_default_registry(
     // File tools
     reg.register(Arc::new(ReadFileTool::new(sandbox.clone())));
     reg.register(Arc::new(WriteFileTool::new(sandbox.clone())));
-    reg.register(Arc::new(SearchFilesTool::new(sandbox)));
+    reg.register(Arc::new(SearchFilesTool::new(sandbox.clone())));
 
     // Command tool
     reg.register(Arc::new(ExecuteShellCommandTool));
@@ -65,7 +65,7 @@ pub fn build_default_registry(
     reg.register(Arc::new(FetchWebContentTool::new()));
 
     // Massive OS Tool Ecosystem (> 2,000 tools across 22 operational domains)
-    reg.register_batch(catalog::get_massive_tool_catalog());
+    reg.register_batch(catalog::get_massive_tool_catalog_with_sandbox(sandbox));
 
     reg
 }

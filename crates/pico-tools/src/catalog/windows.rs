@@ -6,6 +6,7 @@ use crate::catalog::types::{
     ToolMetadata,
 };
 use pico_core::traits::{PermissionTier, Tool};
+use pico_security::PathSandbox;
 use std::sync::Arc;
 
 pub static WINDOWS_CATEGORIES: &[CategoryDef] = &[
@@ -13172,6 +13173,13 @@ pub static WINDOWS_CATEGORIES: &[CategoryDef] = &[
 ];
 
 pub fn get_windows_catalog() -> Vec<Arc<dyn Tool>> {
+    get_windows_catalog_with_sandbox(Arc::new(PathSandbox::new(
+        vec![std::path::PathBuf::from(".")],
+        vec![],
+    )))
+}
+
+pub fn get_windows_catalog_with_sandbox(sandbox: Arc<PathSandbox>) -> Vec<Arc<dyn Tool>> {
     let mut tools: Vec<Arc<dyn Tool>> = Vec::with_capacity(1100);
     for cat in WINDOWS_CATEGORIES {
         for action in cat.actions {
@@ -13219,7 +13227,7 @@ pub fn get_windows_catalog() -> Vec<Arc<dyn Tool>> {
                 adapter_args: action.adapter_args.to_string(),
             };
 
-            tools.push(Arc::new(EcosystemTool::new(meta)));
+            tools.push(Arc::new(EcosystemTool::with_sandbox(meta, sandbox.clone())));
         }
     }
     tools

@@ -7,21 +7,30 @@ pub mod types;
 pub mod windows;
 
 pub use adapter::execute_tool_adapter;
-pub use linux::get_linux_catalog;
+pub use linux::{get_linux_catalog, get_linux_catalog_with_sandbox};
 pub use types::{
     ActionDef, CategoryDef, EcosystemTool, LatencyClass, ParamDef, Reversibility, TargetOs,
     ToolMetadata,
 };
-pub use windows::get_windows_catalog;
+pub use windows::{get_windows_catalog, get_windows_catalog_with_sandbox};
 
 use pico_core::traits::Tool;
+use pico_security::PathSandbox;
 use std::sync::Arc;
 
-/// Returns the complete combined ecosystem catalog (> 2,000 distinct tools).
+/// Returns the complete combined ecosystem catalog (> 2,000 distinct tools) with default sandbox.
 pub fn get_massive_tool_catalog() -> Vec<Arc<dyn Tool>> {
+    get_massive_tool_catalog_with_sandbox(Arc::new(PathSandbox::new(
+        vec![std::path::PathBuf::from(".")],
+        vec![],
+    )))
+}
+
+/// Returns the complete combined ecosystem catalog initialized with a shared PathSandbox.
+pub fn get_massive_tool_catalog_with_sandbox(sandbox: Arc<PathSandbox>) -> Vec<Arc<dyn Tool>> {
     let mut catalog = Vec::with_capacity(2200);
-    catalog.extend(get_windows_catalog());
-    catalog.extend(get_linux_catalog());
+    catalog.extend(get_windows_catalog_with_sandbox(sandbox.clone()));
+    catalog.extend(get_linux_catalog_with_sandbox(sandbox));
     catalog
 }
 
@@ -103,5 +112,20 @@ mod tests {
         // Execute list_directory with parameter
         let res = list_dir.execute(serde_json::json!({ "path": "." })).await;
         assert!(res.is_ok(), "Execution failed: {:?}", res.err());
+    }
+
+    #[tokio::test]
+    async fn test_ecosystem_filesystem_tool_enforces_sandbox() {
+        let tools = get_windows_catalog();
+        let list_dir = tools
+            .iter()
+            .find(|t| t.name() == "windows.filesystem.list_directory")
+            .expect("list_directory tool missing");
+
+        // Attempt directory traversal out of sandbox
+        let res = list_dir
+            .execute(serde_json::json!({ "path": "../../Windows/System32" }))
+            .await;
+        assert!(res.is_err(), "Ecosystem tool must reject traversal");
     }
 }
