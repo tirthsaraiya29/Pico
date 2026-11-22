@@ -7,25 +7,20 @@ license.workspace = true
 
 [dependencies]
 pico-core = { workspace = true }
-pico-security = { workspace = true }
-pico-platform = { workspace = true }
-pico-inference = { workspace = true }
-pico-decision = { workspace = true }
-pico-learning = { workspace = true }
-pico-tools = { workspace = true }
-pico-audio = { workspace = true }
-pico-voice = { workspace = true }
-pico-memory = { workspace = true }
 pico-orchestrator = { workspace = true }
+pico-voice = { workspace = true }
+pico-audio = { workspace = true }
+pico-tools = { workspace = true }
+pico-security = { workspace = true }
+pico-learning = { workspace = true }
+pico-platform = { workspace = true }
+async-trait = { workspace = true }
 tokio = { workspace = true }
-axum = { workspace = true }
-tower = { workspace = true }
-tower-http = { workspace = true }
-futures = { workspace = true }
 tracing = { workspace = true }
 tracing-subscriber = { workspace = true }
+clap = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }
-clap = { workspace = true }
-colored = { workspace = true }
 uuid = { workspace = true }
+chrono = { workspace = true }
+eframe = { version = "0.29", default-features = false, features = ["default_fonts", "glow"] }
