@@ -23,8 +23,8 @@ pub static LINUX_CATEGORIES: &[CategoryDef] = &[
                 params: &[
                     ParamDef { name: "path", param_type: "string", description: "Directory path", required: true },
                 ],
-                adapter_cmd: "Get-ChildItem",
-                adapter_args: "ls -la $path",
+                adapter_cmd: "ls",
+                adapter_args: "-la $path",
             },
             ActionDef {
                 subaction: "get_file_info",
@@ -35,8 +35,8 @@ pub static LINUX_CATEGORIES: &[CategoryDef] = &[
                 params: &[
                     ParamDef { name: "path", param_type: "string", description: "File path", required: true },
                 ],
-                adapter_cmd: "Get-Item",
-                adapter_args: "stat $path",
+                adapter_cmd: "stat",
+                adapter_args: "$path",
             },
             ActionDef {
                 subaction: "create_directory",
@@ -47,8 +47,8 @@ pub static LINUX_CATEGORIES: &[CategoryDef] = &[
                 params: &[
                     ParamDef { name: "path", param_type: "string", description: "Folder path", required: true },
                 ],
-                adapter_cmd: "New-Item",
-                adapter_args: "mkdir -p $path",
+                adapter_cmd: "mkdir",
+                adapter_args: "-p $path",
             },
             ActionDef {
                 subaction: "remove_directory",
@@ -59,8 +59,8 @@ pub static LINUX_CATEGORIES: &[CategoryDef] = &[
                 params: &[
                     ParamDef { name: "path", param_type: "string", description: "Folder path", required: true },
                 ],
-                adapter_cmd: "Remove-Item",
-                adapter_args: "rm -rf $path",
+                adapter_cmd: "rm",
+                adapter_args: "-rf $path",
             },
             ActionDef {
                 subaction: "copy_file",
@@ -72,8 +72,8 @@ pub static LINUX_CATEGORIES: &[CategoryDef] = &[
                     ParamDef { name: "source", param_type: "string", description: "Source file", required: true },
                     ParamDef { name: "destination", param_type: "string", description: "Destination file", required: true },
                 ],
-                adapter_cmd: "Copy-Item",
-                adapter_args: "cp $source $destination",
+                adapter_cmd: "cp",
+                adapter_args: "$source $destination",
             },
             ActionDef {
                 subaction: "move_file",
@@ -85,8 +85,8 @@ pub static LINUX_CATEGORIES: &[CategoryDef] = &[
                     ParamDef { name: "source", param_type: "string", description: "Source file", required: true },
                     ParamDef { name: "destination", param_type: "string", description: "Destination file", required: true },
                 ],
-                adapter_cmd: "Move-Item",
-                adapter_args: "mv $source $destination",
+                adapter_cmd: "mv",
+                adapter_args: "$source $destination",
             },
             ActionDef {
                 subaction: "remove_file",
@@ -97,8 +97,8 @@ pub static LINUX_CATEGORIES: &[CategoryDef] = &[
                 params: &[
                     ParamDef { name: "path", param_type: "string", description: "File path", required: true },
                 ],
-                adapter_cmd: "Remove-Item",
-                adapter_args: "rm -f $path",
+                adapter_cmd: "rm",
+                adapter_args: "-f $path",
             },
             ActionDef {
                 subaction: "test_path_exists",
@@ -109,8 +109,8 @@ pub static LINUX_CATEGORIES: &[CategoryDef] = &[
                 params: &[
                     ParamDef { name: "path", param_type: "string", description: "Path to test", required: true },
                 ],
-                adapter_cmd: "Test-Path",
-                adapter_args: "test -e $path",
+                adapter_cmd: "test",
+                adapter_args: "-e $path",
             },
             ActionDef {
                 subaction: "get_file_hash",
@@ -121,8 +121,8 @@ pub static LINUX_CATEGORIES: &[CategoryDef] = &[
                 params: &[
                     ParamDef { name: "path", param_type: "string", description: "File path", required: true },
                 ],
-                adapter_cmd: "Get-FileHash",
-                adapter_args: "sha256sum $path",
+                adapter_cmd: "sha256sum",
+                adapter_args: "$path",
             },
             ActionDef {
                 subaction: "find_files_by_pattern",
@@ -134,8 +134,8 @@ pub static LINUX_CATEGORIES: &[CategoryDef] = &[
                     ParamDef { name: "path", param_type: "string", description: "Search folder", required: true },
                     ParamDef { name: "pattern", param_type: "string", description: "Filter pattern", required: true },
                 ],
-                adapter_cmd: "Get-ChildItem",
-                adapter_args: "find $path -name $pattern",
+                adapter_cmd: "find",
+                adapter_args: "$path -name $pattern",
             },
             ActionDef {
                 subaction: "find_files_by_size",
@@ -147,8 +147,8 @@ pub static LINUX_CATEGORIES: &[CategoryDef] = &[
                     ParamDef { name: "path", param_type: "string", description: "Folder path", required: true },
                     ParamDef { name: "min_bytes", param_type: "integer", description: "Minimum bytes", required: true },
                 ],
-                adapter_cmd: "Get-ChildItem",
-                adapter_args: "find $path -size +${min_bytes}c",
+                adapter_cmd: "find",
+                adapter_args: "$path -size +${min_bytes}c",
             },
             ActionDef {
                 subaction: "find_files_by_extension",
@@ -160,8 +160,8 @@ pub static LINUX_CATEGORIES: &[CategoryDef] = &[
                     ParamDef { name: "path", param_type: "string", description: "Folder path", required: true },
                     ParamDef { name: "extension", param_type: "string", description: "Extension", required: true },
                 ],
-                adapter_cmd: "Get-ChildItem",
-                adapter_args: "find $path -name *.$extension",
+                adapter_cmd: "find",
+                adapter_args: "$path -name *.$extension",
             },
             ActionDef {
                 subaction: "find_files_by_date",
@@ -173,8 +173,8 @@ pub static LINUX_CATEGORIES: &[CategoryDef] = &[
                     ParamDef { name: "path", param_type: "string", description: "Folder path", required: true },
                     ParamDef { name: "after_date", param_type: "string", description: "Date string", required: true },
                 ],
-                adapter_cmd: "Get-ChildItem",
-                adapter_args: "find $path -newermt $after_date",
+                adapter_cmd: "find",
+                adapter_args: "$path -newermt $after_date",
             },
             ActionDef {
                 subaction: "get_file_attributes",
@@ -185,8 +185,8 @@ pub static LINUX_CATEGORIES: &[CategoryDef] = &[
                 params: &[
                     ParamDef { name: "path", param_type: "string", description: "File path", required: true },
                 ],
-                adapter_cmd: "Get-ItemProperty",
-                adapter_args: "stat -c %a $path",
+                adapter_cmd: "stat",
+                adapter_args: "-c %a $path",
             },
             ActionDef {
                 subaction: "set_file_attributes",
@@ -198,8 +198,8 @@ pub static LINUX_CATEGORIES: &[CategoryDef] = &[
                     ParamDef { name: "path", param_type: "string", description: "File path", required: true },
                     ParamDef { name: "attributes", param_type: "string", description: "Attributes or mode", required: true },
                 ],
-                adapter_cmd: "Set-ItemProperty",
-                adapter_args: "chmod $attributes $path",
+                adapter_cmd: "chmod",
+                adapter_args: "$attributes $path",
             },
             ActionDef {
                 subaction: "clear_file_attributes",
@@ -210,8 +210,8 @@ pub static LINUX_CATEGORIES: &[CategoryDef] = &[
                 params: &[
                     ParamDef { name: "path", param_type: "string", description: "File path", required: true },
                 ],
-                adapter_cmd: "Set-ItemProperty",
-                adapter_args: "chmod 644 $path",
+                adapter_cmd: "chmod",
+                adapter_args: "644 $path",
             },
             ActionDef {
                 subaction: "read_text_head",
@@ -223,8 +223,8 @@ pub static LINUX_CATEGORIES: &[CategoryDef] = &[
                     ParamDef { name: "path", param_type: "string", description: "File path", required: true },
                     ParamDef { name: "lines", param_type: "integer", description: "Line count", required: true },
                 ],
-                adapter_cmd: "Get-Content",
-                adapter_args: "head -n $lines $path",
+                adapter_cmd: "head",
+                adapter_args: "-n $lines $path",
             },
             ActionDef {
                 subaction: "read_text_tail",
@@ -236,8 +236,8 @@ pub static LINUX_CATEGORIES: &[CategoryDef] = &[
                     ParamDef { name: "path", param_type: "string", description: "File path", required: true },
                     ParamDef { name: "lines", param_type: "integer", description: "Line count", required: true },
                 ],
-                adapter_cmd: "Get-Content",
-                adapter_args: "tail -n $lines $path",
+                adapter_cmd: "tail",
+                adapter_args: "-n $lines $path",
             },
             ActionDef {
                 subaction: "count_file_lines",
@@ -248,8 +248,8 @@ pub static LINUX_CATEGORIES: &[CategoryDef] = &[
                 params: &[
                     ParamDef { name: "path", param_type: "string", description: "File path", required: true },
                 ],
-                adapter_cmd: "Get-Content",
-                adapter_args: "wc -l $path",
+                adapter_cmd: "wc",
+                adapter_args: "-l $path",
             },
             ActionDef {
                 subaction: "append_text",
@@ -261,8 +261,8 @@ pub static LINUX_CATEGORIES: &[CategoryDef] = &[
                     ParamDef { name: "path", param_type: "string", description: "File path", required: true },
                     ParamDef { name: "content", param_type: "string", description: "Text content", required: true },
                 ],
-                adapter_cmd: "Add-Content",
-                adapter_args: "echo $content >> $path",
+                adapter_cmd: "tee",
+                adapter_args: "-a $path",
             },
             ActionDef {
                 subaction: "create_empty_file",
@@ -273,8 +273,8 @@ pub static LINUX_CATEGORIES: &[CategoryDef] = &[
                 params: &[
                     ParamDef { name: "path", param_type: "string", description: "File path", required: true },
                 ],
-                adapter_cmd: "New-Item",
-                adapter_args: "touch $path",
+                adapter_cmd: "touch",
+                adapter_args: "$path",
             },
             ActionDef {
                 subaction: "compare_files",
@@ -286,8 +286,8 @@ pub static LINUX_CATEGORIES: &[CategoryDef] = &[
                     ParamDef { name: "path_a", param_type: "string", description: "File A", required: true },
                     ParamDef { name: "path_b", param_type: "string", description: "File B", required: true },
                 ],
-                adapter_cmd: "Compare-Object",
-                adapter_args: "diff -u $path_a $path_b",
+                adapter_cmd: "diff",
+                adapter_args: "-u $path_a $path_b",
             },
             ActionDef {
                 subaction: "create_symbolic_link",
@@ -299,8 +299,8 @@ pub static LINUX_CATEGORIES: &[CategoryDef] = &[
                     ParamDef { name: "link_path", param_type: "string", description: "Link path", required: true },
                     ParamDef { name: "target_path", param_type: "string", description: "Target destination", required: true },
                 ],
-                adapter_cmd: "New-Item",
-                adapter_args: "ln -s $target_path $link_path",
+                adapter_cmd: "ln",
+                adapter_args: "-s $target_path $link_path",
             },
             ActionDef {
                 subaction: "create_hard_link",
@@ -312,8 +312,8 @@ pub static LINUX_CATEGORIES: &[CategoryDef] = &[
                     ParamDef { name: "link_path", param_type: "string", description: "Link path", required: true },
                     ParamDef { name: "target_path", param_type: "string", description: "Target file", required: true },
                 ],
-                adapter_cmd: "New-Item",
-                adapter_args: "ln $target_path $link_path",
+                adapter_cmd: "ln",
+                adapter_args: "$target_path $link_path",
             },
             ActionDef {
                 subaction: "create_junction",
@@ -325,8 +325,8 @@ pub static LINUX_CATEGORIES: &[CategoryDef] = &[
                     ParamDef { name: "junction_path", param_type: "string", description: "Junction folder", required: true },
                     ParamDef { name: "target_path", param_type: "string", description: "Target folder", required: true },
                 ],
-                adapter_cmd: "New-Item",
-                adapter_args: "mount --bind $target_path $junction_path",
+                adapter_cmd: "mount",
+                adapter_args: "--bind $target_path $junction_path",
             },
             ActionDef {
                 subaction: "get_junction_target",
@@ -337,8 +337,8 @@ pub static LINUX_CATEGORIES: &[CategoryDef] = &[
                 params: &[
                     ParamDef { name: "path", param_type: "string", description: "Link path", required: true },
                 ],
-                adapter_cmd: "Get-Item",
-                adapter_args: "readlink -f $path",
+                adapter_cmd: "readlink",
+                adapter_args: "-f $path",
             },
             ActionDef {
                 subaction: "list_alternate_streams",
@@ -349,8 +349,8 @@ pub static LINUX_CATEGORIES: &[CategoryDef] = &[
                 params: &[
                     ParamDef { name: "path", param_type: "string", description: "File path", required: true },
                 ],
-                adapter_cmd: "Get-Item",
-                adapter_args: "getfattr -d $path",
+                adapter_cmd: "getfattr",
+                adapter_args: "-d $path",
             },
             ActionDef {
                 subaction: "remove_alternate_stream",
@@ -362,8 +362,8 @@ pub static LINUX_CATEGORIES: &[CategoryDef] = &[
                     ParamDef { name: "path", param_type: "string", description: "File path", required: true },
                     ParamDef { name: "stream_name", param_type: "string", description: "Stream/attr name", required: true },
                 ],
-                adapter_cmd: "Remove-Item",
-                adapter_args: "setfattr -x $stream_name $path",
+                adapter_cmd: "setfattr",
+                adapter_args: "-x $stream_name $path",
             },
             ActionDef {
                 subaction: "get_directory_size",
@@ -374,8 +374,8 @@ pub static LINUX_CATEGORIES: &[CategoryDef] = &[
                 params: &[
                     ParamDef { name: "path", param_type: "string", description: "Directory path", required: true },
                 ],
-                adapter_cmd: "Get-ChildItem",
-                adapter_args: "du -sb $path",
+                adapter_cmd: "du",
+                adapter_args: "-sb $path",
             },
             ActionDef {
                 subaction: "find_duplicate_files",
@@ -386,8 +386,8 @@ pub static LINUX_CATEGORIES: &[CategoryDef] = &[
                 params: &[
                     ParamDef { name: "path", param_type: "string", description: "Directory path", required: true },
                 ],
-                adapter_cmd: "Get-ChildItem",
-                adapter_args: "fdupes -r $path",
+                adapter_cmd: "fdupes",
+                adapter_args: "-r $path",
             },
             ActionDef {
                 subaction: "find_empty_directories",
@@ -398,8 +398,8 @@ pub static LINUX_CATEGORIES: &[CategoryDef] = &[
                 params: &[
                     ParamDef { name: "path", param_type: "string", description: "Directory path", required: true },
                 ],
-                adapter_cmd: "Get-ChildItem",
-                adapter_args: "find $path -type d -empty",
+                adapter_cmd: "find",
+                adapter_args: "$path -type d -empty",
             },
             ActionDef {
                 subaction: "remove_empty_directories",
@@ -410,8 +410,8 @@ pub static LINUX_CATEGORIES: &[CategoryDef] = &[
                 params: &[
                     ParamDef { name: "path", param_type: "string", description: "Directory path", required: true },
                 ],
-                adapter_cmd: "Get-ChildItem",
-                adapter_args: "find $path -type d -empty -delete",
+                adapter_cmd: "find",
+                adapter_args: "$path -type d -empty -delete",
             },
             ActionDef {
                 subaction: "get_file_owner",
@@ -422,8 +422,8 @@ pub static LINUX_CATEGORIES: &[CategoryDef] = &[
                 params: &[
                     ParamDef { name: "path", param_type: "string", description: "File path", required: true },
                 ],
-                adapter_cmd: "Get-Acl",
-                adapter_args: "stat -c %U $path",
+                adapter_cmd: "stat",
+                adapter_args: "-c %U $path",
             },
             ActionDef {
                 subaction: "take_ownership",
@@ -434,8 +434,8 @@ pub static LINUX_CATEGORIES: &[CategoryDef] = &[
                 params: &[
                     ParamDef { name: "path", param_type: "string", description: "File or folder path", required: true },
                 ],
-                adapter_cmd: "takeown.exe",
-                adapter_args: "chown root $path",
+                adapter_cmd: "chown",
+                adapter_args: "root $path",
             },
             ActionDef {
                 subaction: "grant_file_read",
@@ -447,8 +447,8 @@ pub static LINUX_CATEGORIES: &[CategoryDef] = &[
                     ParamDef { name: "path", param_type: "string", description: "File path", required: true },
                     ParamDef { name: "user", param_type: "string", description: "User name", required: true },
                 ],
-                adapter_cmd: "icacls.exe",
-                adapter_args: "setfacl -m u:${user}:r $path",
+                adapter_cmd: "setfacl",
+                adapter_args: "-m u:${user}:r $path",
             },
             ActionDef {
                 subaction: "grant_file_write",
@@ -460,8 +460,8 @@ pub static LINUX_CATEGORIES: &[CategoryDef] = &[
                     ParamDef { name: "path", param_type: "string", description: "File path", required: true },
                     ParamDef { name: "user", param_type: "string", description: "User name", required: true },
                 ],
-                adapter_cmd: "icacls.exe",
-                adapter_args: "setfacl -m u:${user}:w $path",
+                adapter_cmd: "setfacl",
+                adapter_args: "-m u:${user}:w $path",
             },
             ActionDef {
                 subaction: "grant_file_full_control",
@@ -473,8 +473,8 @@ pub static LINUX_CATEGORIES: &[CategoryDef] = &[
                     ParamDef { name: "path", param_type: "string", description: "File path", required: true },
                     ParamDef { name: "user", param_type: "string", description: "User name", required: true },
                 ],
-                adapter_cmd: "icacls.exe",
-                adapter_args: "setfacl -m u:${user}:rwx $path",
+                adapter_cmd: "setfacl",
+                adapter_args: "-m u:${user}:rwx $path",
             },
             ActionDef {
                 subaction: "revoke_file_permission",
@@ -486,8 +486,8 @@ pub static LINUX_CATEGORIES: &[CategoryDef] = &[
                     ParamDef { name: "path", param_type: "string", description: "File path", required: true },
                     ParamDef { name: "user", param_type: "string", description: "User name", required: true },
                 ],
-                adapter_cmd: "icacls.exe",
-                adapter_args: "setfacl -x u:${user} $path",
+                adapter_cmd: "setfacl",
+                adapter_args: "-x u:${user} $path",
             },
             ActionDef {
                 subaction: "backup_acls",
@@ -499,8 +499,8 @@ pub static LINUX_CATEGORIES: &[CategoryDef] = &[
                     ParamDef { name: "path", param_type: "string", description: "Folder path", required: true },
                     ParamDef { name: "backup_file", param_type: "string", description: "Backup file", required: true },
                 ],
-                adapter_cmd: "icacls.exe",
-                adapter_args: "getfacl -R $path > $backup_file",
+                adapter_cmd: "getfacl",
+                adapter_args: "-R $path",
             },
             ActionDef {
                 subaction: "restore_acls",
@@ -512,8 +512,8 @@ pub static LINUX_CATEGORIES: &[CategoryDef] = &[
                     ParamDef { name: "path", param_type: "string", description: "Folder path", required: true },
                     ParamDef { name: "backup_file", param_type: "string", description: "Backup file", required: true },
                 ],
-                adapter_cmd: "icacls.exe",
-                adapter_args: "setfacl --restore=$backup_file",
+                adapter_cmd: "setfacl",
+                adapter_args: "--restore=$backup_file",
             },
             ActionDef {
                 subaction: "list_open_files",
@@ -522,8 +522,8 @@ pub static LINUX_CATEGORIES: &[CategoryDef] = &[
                 latency: LatencyClass::FastSync,
                 reversibility: Reversibility::Idempotent,
                 params: &[],
-                adapter_cmd: "openfiles.exe",
-                adapter_args: "lsof",
+                adapter_cmd: "lsof",
+                adapter_args: "",
             },
             ActionDef {
                 subaction: "get_file_version",
@@ -534,8 +534,8 @@ pub static LINUX_CATEGORIES: &[CategoryDef] = &[
                 params: &[
                     ParamDef { name: "path", param_type: "string", description: "Binary path", required: true },
                 ],
-                adapter_cmd: "Get-Item",
-                adapter_args: "file $path",
+                adapter_cmd: "file",
+                adapter_args: "$path",
             },
             ActionDef {
                 subaction: "compress_file",
@@ -546,8 +546,8 @@ pub static LINUX_CATEGORIES: &[CategoryDef] = &[
                 params: &[
                     ParamDef { name: "path", param_type: "string", description: "Path", required: true },
                 ],
-                adapter_cmd: "compact.exe",
-                adapter_args: "chattr +c $path",
+                adapter_cmd: "chattr",
+                adapter_args: "+c $path",
             },
             ActionDef {
                 subaction: "decompress_file",
@@ -558,8 +558,8 @@ pub static LINUX_CATEGORIES: &[CategoryDef] = &[
                 params: &[
                     ParamDef { name: "path", param_type: "string", description: "Path", required: true },
                 ],
-                adapter_cmd: "compact.exe",
-                adapter_args: "chattr -c $path",
+                adapter_cmd: "chattr",
+                adapter_args: "-c $path",
             },
             ActionDef {
                 subaction: "encrypt_efs",
@@ -570,8 +570,8 @@ pub static LINUX_CATEGORIES: &[CategoryDef] = &[
                 params: &[
                     ParamDef { name: "path", param_type: "string", description: "File path", required: true },
                 ],
-                adapter_cmd: "cipher.exe",
-                adapter_args: "gpg -e $path",
+                adapter_cmd: "gpg",
+                adapter_args: "-e $path",
             },
             ActionDef {
                 subaction: "decrypt_efs",
@@ -582,8 +582,8 @@ pub static LINUX_CATEGORIES: &[CategoryDef] = &[
                 params: &[
                     ParamDef { name: "path", param_type: "string", description: "File path", required: true },
                 ],
-                adapter_cmd: "cipher.exe",
-                adapter_args: "gpg -d $path",
+                adapter_cmd: "gpg",
+                adapter_args: "-d $path",
             },
             ActionDef {
                 subaction: "touch_file",
@@ -594,8 +594,8 @@ pub static LINUX_CATEGORIES: &[CategoryDef] = &[
                 params: &[
                     ParamDef { name: "path", param_type: "string", description: "File path", required: true },
                 ],
-                adapter_cmd: "Set-ItemProperty",
-                adapter_args: "touch $path",
+                adapter_cmd: "touch",
+                adapter_args: "$path",
             },
             ActionDef {
                 subaction: "export_directory_tree",
@@ -607,8 +607,8 @@ pub static LINUX_CATEGORIES: &[CategoryDef] = &[
                     ParamDef { name: "path", param_type: "string", description: "Root directory", required: true },
                     ParamDef { name: "output_file", param_type: "string", description: "Output file", required: true },
                 ],
-                adapter_cmd: "tree.exe",
-                adapter_args: "tree -f $path > $output_file",
+                adapter_cmd: "tree",
+                adapter_args: "-f $path",
             },
         ],
     },
@@ -1223,8 +1223,8 @@ pub static LINUX_CATEGORIES: &[CategoryDef] = &[
                 params: &[
                     ParamDef { name: "name", param_type: "string", description: "Target task name", required: false },
                 ],
-                adapter_cmd: "ps aux",
-                adapter_args: "$name",
+                adapter_cmd: "ps",
+                adapter_args: "aux $name",
             },
             ActionDef {
                 subaction: "set_task",
@@ -1236,8 +1236,8 @@ pub static LINUX_CATEGORIES: &[CategoryDef] = &[
                     ParamDef { name: "name", param_type: "string", description: "Target task name", required: true },
                     ParamDef { name: "value", param_type: "string", description: "Configuration value", required: false },
                 ],
-                adapter_cmd: "ps aux",
-                adapter_args: "$name",
+                adapter_cmd: "ps",
+                adapter_args: "aux $name",
             },
             ActionDef {
                 subaction: "list_task",
@@ -1248,8 +1248,8 @@ pub static LINUX_CATEGORIES: &[CategoryDef] = &[
                 params: &[
                     ParamDef { name: "name", param_type: "string", description: "Target task name", required: false },
                 ],
-                adapter_cmd: "ps aux",
-                adapter_args: "$name",
+                adapter_cmd: "ps",
+                adapter_args: "aux $name",
             },
             ActionDef {
                 subaction: "query_task",
@@ -1260,8 +1260,8 @@ pub static LINUX_CATEGORIES: &[CategoryDef] = &[
                 params: &[
                     ParamDef { name: "name", param_type: "string", description: "Target task name", required: false },
                 ],
-                adapter_cmd: "ps aux",
-                adapter_args: "$name",
+                adapter_cmd: "ps",
+                adapter_args: "aux $name",
             },
             ActionDef {
                 subaction: "check_task",
@@ -1272,8 +1272,8 @@ pub static LINUX_CATEGORIES: &[CategoryDef] = &[
                 params: &[
                     ParamDef { name: "name", param_type: "string", description: "Target task name", required: false },
                 ],
-                adapter_cmd: "ps aux",
-                adapter_args: "$name",
+                adapter_cmd: "ps",
+                adapter_args: "aux $name",
             },
             ActionDef {
                 subaction: "test_task",
@@ -1284,8 +1284,8 @@ pub static LINUX_CATEGORIES: &[CategoryDef] = &[
                 params: &[
                     ParamDef { name: "name", param_type: "string", description: "Target task name", required: false },
                 ],
-                adapter_cmd: "ps aux",
-                adapter_args: "$name",
+                adapter_cmd: "ps",
+                adapter_args: "aux $name",
             },
             ActionDef {
                 subaction: "find_task",
@@ -1296,8 +1296,8 @@ pub static LINUX_CATEGORIES: &[CategoryDef] = &[
                 params: &[
                     ParamDef { name: "name", param_type: "string", description: "Target task name", required: false },
                 ],
-                adapter_cmd: "ps aux",
-                adapter_args: "$name",
+                adapter_cmd: "ps",
+                adapter_args: "aux $name",
             },
             ActionDef {
                 subaction: "search_task",
@@ -1308,8 +1308,8 @@ pub static LINUX_CATEGORIES: &[CategoryDef] = &[
                 params: &[
                     ParamDef { name: "name", param_type: "string", description: "Target task name", required: false },
                 ],
-                adapter_cmd: "ps aux",
-                adapter_args: "$name",
+                adapter_cmd: "ps",
+                adapter_args: "aux $name",
             },
             ActionDef {
                 subaction: "create_task",
@@ -1320,8 +1320,8 @@ pub static LINUX_CATEGORIES: &[CategoryDef] = &[
                 params: &[
                     ParamDef { name: "name", param_type: "string", description: "Target task name", required: true },
                 ],
-                adapter_cmd: "ps aux",
-                adapter_args: "$name",
+                adapter_cmd: "ps",
+                adapter_args: "aux $name",
             },
             ActionDef {
                 subaction: "delete_task",
@@ -1332,8 +1332,8 @@ pub static LINUX_CATEGORIES: &[CategoryDef] = &[
                 params: &[
                     ParamDef { name: "name", param_type: "string", description: "Target task identifier", required: true },
                 ],
-                adapter_cmd: "ps aux",
-                adapter_args: "$name",
+                adapter_cmd: "ps",
+                adapter_args: "aux $name",
             },
             ActionDef {
                 subaction: "enable_task",
@@ -1345,8 +1345,8 @@ pub static LINUX_CATEGORIES: &[CategoryDef] = &[
                     ParamDef { name: "name", param_type: "string", description: "Target task name", required: true },
                     ParamDef { name: "value", param_type: "string", description: "Configuration value", required: false },
                 ],
-                adapter_cmd: "ps aux",
-                adapter_args: "$name",
+                adapter_cmd: "ps",
+                adapter_args: "aux $name",
             },
             ActionDef {
                 subaction: "disable_task",
@@ -1358,8 +1358,8 @@ pub static LINUX_CATEGORIES: &[CategoryDef] = &[
                     ParamDef { name: "name", param_type: "string", description: "Target task name", required: true },
                     ParamDef { name: "value", param_type: "string", description: "Configuration value", required: false },
                 ],
-                adapter_cmd: "ps aux",
-                adapter_args: "$name",
+                adapter_cmd: "ps",
+                adapter_args: "aux $name",
             },
             ActionDef {
                 subaction: "start_task",
@@ -1370,8 +1370,8 @@ pub static LINUX_CATEGORIES: &[CategoryDef] = &[
                 params: &[
                     ParamDef { name: "name", param_type: "string", description: "Target task name", required: true },
                 ],
-                adapter_cmd: "ps aux",
-                adapter_args: "$name",
+                adapter_cmd: "ps",
+                adapter_args: "aux $name",
             },
             ActionDef {
                 subaction: "stop_task",
@@ -1382,8 +1382,8 @@ pub static LINUX_CATEGORIES: &[CategoryDef] = &[
                 params: &[
                     ParamDef { name: "name", param_type: "string", description: "Target task name", required: true },
                 ],
-                adapter_cmd: "ps aux",
-                adapter_args: "$name",
+                adapter_cmd: "ps",
+                adapter_args: "aux $name",
             },
             ActionDef {
                 subaction: "restart_task",
@@ -1394,8 +1394,8 @@ pub static LINUX_CATEGORIES: &[CategoryDef] = &[
                 params: &[
                     ParamDef { name: "name", param_type: "string", description: "Target task name", required: true },
                 ],
-                adapter_cmd: "ps aux",
-                adapter_args: "$name",
+                adapter_cmd: "ps",
+                adapter_args: "aux $name",
             },
             ActionDef {
                 subaction: "reload_task",
@@ -1406,8 +1406,8 @@ pub static LINUX_CATEGORIES: &[CategoryDef] = &[
                 params: &[
                     ParamDef { name: "name", param_type: "string", description: "Target task name", required: true },
                 ],
-                adapter_cmd: "ps aux",
-                adapter_args: "$name",
+                adapter_cmd: "ps",
+                adapter_args: "aux $name",
             },
             ActionDef {
                 subaction: "update_task",
@@ -1419,8 +1419,8 @@ pub static LINUX_CATEGORIES: &[CategoryDef] = &[
                     ParamDef { name: "name", param_type: "string", description: "Target task name", required: true },
                     ParamDef { name: "value", param_type: "string", description: "Configuration value", required: false },
                 ],
-                adapter_cmd: "ps aux",
-                adapter_args: "$name",
+                adapter_cmd: "ps",
+                adapter_args: "aux $name",
             },
             ActionDef {
                 subaction: "reset_task",
@@ -1431,8 +1431,8 @@ pub static LINUX_CATEGORIES: &[CategoryDef] = &[
                 params: &[
                     ParamDef { name: "name", param_type: "string", description: "Target task identifier", required: true },
                 ],
-                adapter_cmd: "ps aux",
-                adapter_args: "$name",
+                adapter_cmd: "ps",
+                adapter_args: "aux $name",
             },
             ActionDef {
                 subaction: "export_task",
@@ -1443,8 +1443,8 @@ pub static LINUX_CATEGORIES: &[CategoryDef] = &[
                 params: &[
                     ParamDef { name: "name", param_type: "string", description: "Target task identifier", required: true },
                 ],
-                adapter_cmd: "ps aux",
-                adapter_args: "$name",
+                adapter_cmd: "ps",
+                adapter_args: "aux $name",
             },
             ActionDef {
                 subaction: "import_task",
@@ -1455,8 +1455,8 @@ pub static LINUX_CATEGORIES: &[CategoryDef] = &[
                 params: &[
                     ParamDef { name: "name", param_type: "string", description: "Target task identifier", required: true },
                 ],
-                adapter_cmd: "ps aux",
-                adapter_args: "$name",
+                adapter_cmd: "ps",
+                adapter_args: "aux $name",
             },
             ActionDef {
                 subaction: "backup_task",
@@ -1467,8 +1467,8 @@ pub static LINUX_CATEGORIES: &[CategoryDef] = &[
                 params: &[
                     ParamDef { name: "name", param_type: "string", description: "Target task name", required: true },
                 ],
-                adapter_cmd: "ps aux",
-                adapter_args: "$name",
+                adapter_cmd: "ps",
+                adapter_args: "aux $name",
             },
             ActionDef {
                 subaction: "restore_task",
@@ -1479,8 +1479,8 @@ pub static LINUX_CATEGORIES: &[CategoryDef] = &[
                 params: &[
                     ParamDef { name: "name", param_type: "string", description: "Target task name", required: true },
                 ],
-                adapter_cmd: "ps aux",
-                adapter_args: "$name",
+                adapter_cmd: "ps",
+                adapter_args: "aux $name",
             },
             ActionDef {
                 subaction: "audit_task",
@@ -1491,8 +1491,8 @@ pub static LINUX_CATEGORIES: &[CategoryDef] = &[
                 params: &[
                     ParamDef { name: "name", param_type: "string", description: "Target task name", required: false },
                 ],
-                adapter_cmd: "ps aux",
-                adapter_args: "$name",
+                adapter_cmd: "ps",
+                adapter_args: "aux $name",
             },
             ActionDef {
                 subaction: "verify_task",
@@ -1503,8 +1503,8 @@ pub static LINUX_CATEGORIES: &[CategoryDef] = &[
                 params: &[
                     ParamDef { name: "name", param_type: "string", description: "Target task name", required: false },
                 ],
-                adapter_cmd: "ps aux",
-                adapter_args: "$name",
+                adapter_cmd: "ps",
+                adapter_args: "aux $name",
             },
             ActionDef {
                 subaction: "monitor_task",
@@ -1515,8 +1515,8 @@ pub static LINUX_CATEGORIES: &[CategoryDef] = &[
                 params: &[
                     ParamDef { name: "name", param_type: "string", description: "Target task name", required: false },
                 ],
-                adapter_cmd: "ps aux",
-                adapter_args: "$name",
+                adapter_cmd: "ps",
+                adapter_args: "aux $name",
             },
             ActionDef {
                 subaction: "measure_task",
@@ -1527,8 +1527,8 @@ pub static LINUX_CATEGORIES: &[CategoryDef] = &[
                 params: &[
                     ParamDef { name: "name", param_type: "string", description: "Target task name", required: false },
                 ],
-                adapter_cmd: "ps aux",
-                adapter_args: "$name",
+                adapter_cmd: "ps",
+                adapter_args: "aux $name",
             },
             ActionDef {
                 subaction: "clean_task",
@@ -1540,8 +1540,8 @@ pub static LINUX_CATEGORIES: &[CategoryDef] = &[
                     ParamDef { name: "name", param_type: "string", description: "Target task name", required: true },
                     ParamDef { name: "value", param_type: "string", description: "Configuration value", required: false },
                 ],
-                adapter_cmd: "ps aux",
-                adapter_args: "$name",
+                adapter_cmd: "ps",
+                adapter_args: "aux $name",
             },
             ActionDef {
                 subaction: "optimize_task",
@@ -1553,8 +1553,8 @@ pub static LINUX_CATEGORIES: &[CategoryDef] = &[
                     ParamDef { name: "name", param_type: "string", description: "Target task name", required: true },
                     ParamDef { name: "value", param_type: "string", description: "Configuration value", required: false },
                 ],
-                adapter_cmd: "ps aux",
-                adapter_args: "$name",
+                adapter_cmd: "ps",
+                adapter_args: "aux $name",
             },
             ActionDef {
                 subaction: "lock_task",
@@ -1565,8 +1565,8 @@ pub static LINUX_CATEGORIES: &[CategoryDef] = &[
                 params: &[
                     ParamDef { name: "name", param_type: "string", description: "Target task name", required: true },
                 ],
-                adapter_cmd: "ps aux",
-                adapter_args: "$name",
+                adapter_cmd: "ps",
+                adapter_args: "aux $name",
             },
             ActionDef {
                 subaction: "unlock_task",
@@ -1577,8 +1577,8 @@ pub static LINUX_CATEGORIES: &[CategoryDef] = &[
                 params: &[
                     ParamDef { name: "name", param_type: "string", description: "Target task name", required: true },
                 ],
-                adapter_cmd: "ps aux",
-                adapter_args: "$name",
+                adapter_cmd: "ps",
+                adapter_args: "aux $name",
             },
             ActionDef {
                 subaction: "scan_task",
@@ -1589,8 +1589,8 @@ pub static LINUX_CATEGORIES: &[CategoryDef] = &[
                 params: &[
                     ParamDef { name: "name", param_type: "string", description: "Target task identifier", required: true },
                 ],
-                adapter_cmd: "ps aux",
-                adapter_args: "$name",
+                adapter_cmd: "ps",
+                adapter_args: "aux $name",
             },
             ActionDef {
                 subaction: "repair_task",
@@ -1601,8 +1601,8 @@ pub static LINUX_CATEGORIES: &[CategoryDef] = &[
                 params: &[
                     ParamDef { name: "name", param_type: "string", description: "Target task identifier", required: true },
                 ],
-                adapter_cmd: "ps aux",
-                adapter_args: "$name",
+                adapter_cmd: "ps",
+                adapter_args: "aux $name",
             },
             ActionDef {
                 subaction: "inspect_task",
@@ -1613,8 +1613,8 @@ pub static LINUX_CATEGORIES: &[CategoryDef] = &[
                 params: &[
                     ParamDef { name: "name", param_type: "string", description: "Target task name", required: false },
                 ],
-                adapter_cmd: "ps aux",
-                adapter_args: "$name",
+                adapter_cmd: "ps",
+                adapter_args: "aux $name",
             },
             ActionDef {
                 subaction: "tune_task",
@@ -1626,8 +1626,8 @@ pub static LINUX_CATEGORIES: &[CategoryDef] = &[
                     ParamDef { name: "name", param_type: "string", description: "Target task name", required: true },
                     ParamDef { name: "value", param_type: "string", description: "Configuration value", required: false },
                 ],
-                adapter_cmd: "ps aux",
-                adapter_args: "$name",
+                adapter_cmd: "ps",
+                adapter_args: "aux $name",
             },
             ActionDef {
                 subaction: "report_task",
@@ -1638,8 +1638,8 @@ pub static LINUX_CATEGORIES: &[CategoryDef] = &[
                 params: &[
                     ParamDef { name: "name", param_type: "string", description: "Target task name", required: false },
                 ],
-                adapter_cmd: "ps aux",
-                adapter_args: "$name",
+                adapter_cmd: "ps",
+                adapter_args: "aux $name",
             },
             ActionDef {
                 subaction: "trace_task",
@@ -1650,8 +1650,8 @@ pub static LINUX_CATEGORIES: &[CategoryDef] = &[
                 params: &[
                     ParamDef { name: "name", param_type: "string", description: "Target task name", required: false },
                 ],
-                adapter_cmd: "ps aux",
-                adapter_args: "$name",
+                adapter_cmd: "ps",
+                adapter_args: "aux $name",
             },
             ActionDef {
                 subaction: "sync_task",
@@ -1663,8 +1663,8 @@ pub static LINUX_CATEGORIES: &[CategoryDef] = &[
                     ParamDef { name: "name", param_type: "string", description: "Target task name", required: true },
                     ParamDef { name: "value", param_type: "string", description: "Configuration value", required: false },
                 ],
-                adapter_cmd: "ps aux",
-                adapter_args: "$name",
+                adapter_cmd: "ps",
+                adapter_args: "aux $name",
             },
             ActionDef {
                 subaction: "flush_task",
@@ -1676,8 +1676,8 @@ pub static LINUX_CATEGORIES: &[CategoryDef] = &[
                     ParamDef { name: "name", param_type: "string", description: "Target task name", required: true },
                     ParamDef { name: "value", param_type: "string", description: "Configuration value", required: false },
                 ],
-                adapter_cmd: "ps aux",
-                adapter_args: "$name",
+                adapter_cmd: "ps",
+                adapter_args: "aux $name",
             },
             ActionDef {
                 subaction: "mount_task",
@@ -1689,8 +1689,8 @@ pub static LINUX_CATEGORIES: &[CategoryDef] = &[
                     ParamDef { name: "name", param_type: "string", description: "Target task name", required: true },
                     ParamDef { name: "value", param_type: "string", description: "Configuration value", required: false },
                 ],
-                adapter_cmd: "ps aux",
-                adapter_args: "$name",
+                adapter_cmd: "ps",
+                adapter_args: "aux $name",
             },
             ActionDef {
                 subaction: "unmount_task",
@@ -1702,8 +1702,8 @@ pub static LINUX_CATEGORIES: &[CategoryDef] = &[
                     ParamDef { name: "name", param_type: "string", description: "Target task name", required: true },
                     ParamDef { name: "value", param_type: "string", description: "Configuration value", required: false },
                 ],
-                adapter_cmd: "ps aux",
-                adapter_args: "$name",
+                adapter_cmd: "ps",
+                adapter_args: "aux $name",
             },
             ActionDef {
                 subaction: "grant_task",
@@ -1715,8 +1715,8 @@ pub static LINUX_CATEGORIES: &[CategoryDef] = &[
                     ParamDef { name: "name", param_type: "string", description: "Target task name", required: true },
                     ParamDef { name: "value", param_type: "string", description: "Configuration value", required: false },
                 ],
-                adapter_cmd: "ps aux",
-                adapter_args: "$name",
+                adapter_cmd: "ps",
+                adapter_args: "aux $name",
             },
             ActionDef {
                 subaction: "revoke_task",
@@ -1728,8 +1728,8 @@ pub static LINUX_CATEGORIES: &[CategoryDef] = &[
                     ParamDef { name: "name", param_type: "string", description: "Target task name", required: true },
                     ParamDef { name: "value", param_type: "string", description: "Configuration value", required: false },
                 ],
-                adapter_cmd: "ps aux",
-                adapter_args: "$name",
+                adapter_cmd: "ps",
+                adapter_args: "aux $name",
             },
             ActionDef {
                 subaction: "connect_task",
@@ -1741,8 +1741,8 @@ pub static LINUX_CATEGORIES: &[CategoryDef] = &[
                     ParamDef { name: "name", param_type: "string", description: "Target task name", required: true },
                     ParamDef { name: "value", param_type: "string", description: "Configuration value", required: false },
                 ],
-                adapter_cmd: "ps aux",
-                adapter_args: "$name",
+                adapter_cmd: "ps",
+                adapter_args: "aux $name",
             },
             ActionDef {
                 subaction: "disconnect_task",
@@ -1754,8 +1754,8 @@ pub static LINUX_CATEGORIES: &[CategoryDef] = &[
                     ParamDef { name: "name", param_type: "string", description: "Target task name", required: true },
                     ParamDef { name: "value", param_type: "string", description: "Configuration value", required: false },
                 ],
-                adapter_cmd: "ps aux",
-                adapter_args: "$name",
+                adapter_cmd: "ps",
+                adapter_args: "aux $name",
             },
             ActionDef {
                 subaction: "suspend_task",
@@ -1766,8 +1766,8 @@ pub static LINUX_CATEGORIES: &[CategoryDef] = &[
                 params: &[
                     ParamDef { name: "name", param_type: "string", description: "Target task name", required: true },
                 ],
-                adapter_cmd: "ps aux",
-                adapter_args: "$name",
+                adapter_cmd: "ps",
+                adapter_args: "aux $name",
             },
             ActionDef {
                 subaction: "resume_task",
@@ -1778,8 +1778,8 @@ pub static LINUX_CATEGORIES: &[CategoryDef] = &[
                 params: &[
                     ParamDef { name: "name", param_type: "string", description: "Target task name", required: true },
                 ],
-                adapter_cmd: "ps aux",
-                adapter_args: "$name",
+                adapter_cmd: "ps",
+                adapter_args: "aux $name",
             },
             ActionDef {
                 subaction: "format_task",
@@ -1790,8 +1790,8 @@ pub static LINUX_CATEGORIES: &[CategoryDef] = &[
                 params: &[
                     ParamDef { name: "name", param_type: "string", description: "Target task identifier", required: true },
                 ],
-                adapter_cmd: "ps aux",
-                adapter_args: "$name",
+                adapter_cmd: "ps",
+                adapter_args: "aux $name",
             },
             ActionDef {
                 subaction: "compact_task",
@@ -1803,8 +1803,8 @@ pub static LINUX_CATEGORIES: &[CategoryDef] = &[
                     ParamDef { name: "name", param_type: "string", description: "Target task name", required: true },
                     ParamDef { name: "value", param_type: "string", description: "Configuration value", required: false },
                 ],
-                adapter_cmd: "ps aux",
-                adapter_args: "$name",
+                adapter_cmd: "ps",
+                adapter_args: "aux $name",
             },
         ],
     },
@@ -3615,8 +3615,8 @@ pub static LINUX_CATEGORIES: &[CategoryDef] = &[
                 params: &[
                     ParamDef { name: "name", param_type: "string", description: "Target adapter name", required: false },
                 ],
-                adapter_cmd: "ip addr",
-                adapter_args: "$name",
+                adapter_cmd: "ip",
+                adapter_args: "addr $name",
             },
             ActionDef {
                 subaction: "set_adapter",
@@ -3628,8 +3628,8 @@ pub static LINUX_CATEGORIES: &[CategoryDef] = &[
                     ParamDef { name: "name", param_type: "string", description: "Target adapter name", required: true },
                     ParamDef { name: "value", param_type: "string", description: "Configuration value", required: false },
                 ],
-                adapter_cmd: "ip addr",
-                adapter_args: "$name",
+                adapter_cmd: "ip",
+                adapter_args: "addr $name",
             },
             ActionDef {
                 subaction: "list_adapter",
@@ -3640,8 +3640,8 @@ pub static LINUX_CATEGORIES: &[CategoryDef] = &[
                 params: &[
                     ParamDef { name: "name", param_type: "string", description: "Target adapter name", required: false },
                 ],
-                adapter_cmd: "ip addr",
-                adapter_args: "$name",
+                adapter_cmd: "ip",
+                adapter_args: "addr $name",
             },
             ActionDef {
                 subaction: "query_adapter",
@@ -3652,8 +3652,8 @@ pub static LINUX_CATEGORIES: &[CategoryDef] = &[
                 params: &[
                     ParamDef { name: "name", param_type: "string", description: "Target adapter name", required: false },
                 ],
-                adapter_cmd: "ip addr",
-                adapter_args: "$name",
+                adapter_cmd: "ip",
+                adapter_args: "addr $name",
             },
             ActionDef {
                 subaction: "check_adapter",
@@ -3664,8 +3664,8 @@ pub static LINUX_CATEGORIES: &[CategoryDef] = &[
                 params: &[
                     ParamDef { name: "name", param_type: "string", description: "Target adapter name", required: false },
                 ],
-                adapter_cmd: "ip addr",
-                adapter_args: "$name",
+                adapter_cmd: "ip",
+                adapter_args: "addr $name",
             },
             ActionDef {
                 subaction: "test_adapter",
@@ -3676,8 +3676,8 @@ pub static LINUX_CATEGORIES: &[CategoryDef] = &[
                 params: &[
                     ParamDef { name: "name", param_type: "string", description: "Target adapter name", required: false },
                 ],
-                adapter_cmd: "ip addr",
-                adapter_args: "$name",
+                adapter_cmd: "ip",
+                adapter_args: "addr $name",
             },
             ActionDef {
                 subaction: "find_adapter",
@@ -3688,8 +3688,8 @@ pub static LINUX_CATEGORIES: &[CategoryDef] = &[
                 params: &[
                     ParamDef { name: "name", param_type: "string", description: "Target adapter name", required: false },
                 ],
-                adapter_cmd: "ip addr",
-                adapter_args: "$name",
+                adapter_cmd: "ip",
+                adapter_args: "addr $name",
             },
             ActionDef {
                 subaction: "search_adapter",
@@ -3700,8 +3700,8 @@ pub static LINUX_CATEGORIES: &[CategoryDef] = &[
                 params: &[
                     ParamDef { name: "name", param_type: "string", description: "Target adapter name", required: false },
                 ],
-                adapter_cmd: "ip addr",
-                adapter_args: "$name",
+                adapter_cmd: "ip",
+                adapter_args: "addr $name",
             },
             ActionDef {
                 subaction: "create_adapter",
@@ -3712,8 +3712,8 @@ pub static LINUX_CATEGORIES: &[CategoryDef] = &[
                 params: &[
                     ParamDef { name: "name", param_type: "string", description: "Target adapter name", required: true },
                 ],
-                adapter_cmd: "ip addr",
-                adapter_args: "$name",
+                adapter_cmd: "ip",
+                adapter_args: "addr $name",
             },
             ActionDef {
                 subaction: "delete_adapter",
@@ -3724,8 +3724,8 @@ pub static LINUX_CATEGORIES: &[CategoryDef] = &[
                 params: &[
                     ParamDef { name: "name", param_type: "string", description: "Target adapter identifier", required: true },
                 ],
-                adapter_cmd: "ip addr",
-                adapter_args: "$name",
+                adapter_cmd: "ip",
+                adapter_args: "addr $name",
             },
             ActionDef {
                 subaction: "enable_adapter",
@@ -3737,8 +3737,8 @@ pub static LINUX_CATEGORIES: &[CategoryDef] = &[
                     ParamDef { name: "name", param_type: "string", description: "Target adapter name", required: true },
                     ParamDef { name: "value", param_type: "string", description: "Configuration value", required: false },
                 ],
-                adapter_cmd: "ip addr",
-                adapter_args: "$name",
+                adapter_cmd: "ip",
+                adapter_args: "addr $name",
             },
             ActionDef {
                 subaction: "disable_adapter",
@@ -3750,8 +3750,8 @@ pub static LINUX_CATEGORIES: &[CategoryDef] = &[
                     ParamDef { name: "name", param_type: "string", description: "Target adapter name", required: true },
                     ParamDef { name: "value", param_type: "string", description: "Configuration value", required: false },
                 ],
-                adapter_cmd: "ip addr",
-                adapter_args: "$name",
+                adapter_cmd: "ip",
+                adapter_args: "addr $name",
             },
             ActionDef {
                 subaction: "start_adapter",
@@ -3762,8 +3762,8 @@ pub static LINUX_CATEGORIES: &[CategoryDef] = &[
                 params: &[
                     ParamDef { name: "name", param_type: "string", description: "Target adapter name", required: true },
                 ],
-                adapter_cmd: "ip addr",
-                adapter_args: "$name",
+                adapter_cmd: "ip",
+                adapter_args: "addr $name",
             },
             ActionDef {
                 subaction: "stop_adapter",
@@ -3774,8 +3774,8 @@ pub static LINUX_CATEGORIES: &[CategoryDef] = &[
                 params: &[
                     ParamDef { name: "name", param_type: "string", description: "Target adapter name", required: true },
                 ],
-                adapter_cmd: "ip addr",
-                adapter_args: "$name",
+                adapter_cmd: "ip",
+                adapter_args: "addr $name",
             },
             ActionDef {
                 subaction: "restart_adapter",
@@ -3786,8 +3786,8 @@ pub static LINUX_CATEGORIES: &[CategoryDef] = &[
                 params: &[
                     ParamDef { name: "name", param_type: "string", description: "Target adapter name", required: true },
                 ],
-                adapter_cmd: "ip addr",
-                adapter_args: "$name",
+                adapter_cmd: "ip",
+                adapter_args: "addr $name",
             },
             ActionDef {
                 subaction: "reload_adapter",
@@ -3798,8 +3798,8 @@ pub static LINUX_CATEGORIES: &[CategoryDef] = &[
                 params: &[
                     ParamDef { name: "name", param_type: "string", description: "Target adapter name", required: true },
                 ],
-                adapter_cmd: "ip addr",
-                adapter_args: "$name",
+                adapter_cmd: "ip",
+                adapter_args: "addr $name",
             },
             ActionDef {
                 subaction: "update_adapter",
@@ -3811,8 +3811,8 @@ pub static LINUX_CATEGORIES: &[CategoryDef] = &[
                     ParamDef { name: "name", param_type: "string", description: "Target adapter name", required: true },
                     ParamDef { name: "value", param_type: "string", description: "Configuration value", required: false },
                 ],
-                adapter_cmd: "ip addr",
-                adapter_args: "$name",
+                adapter_cmd: "ip",
+                adapter_args: "addr $name",
             },
             ActionDef {
                 subaction: "reset_adapter",
@@ -3823,8 +3823,8 @@ pub static LINUX_CATEGORIES: &[CategoryDef] = &[
                 params: &[
                     ParamDef { name: "name", param_type: "string", description: "Target adapter identifier", required: true },
                 ],
-                adapter_cmd: "ip addr",
-                adapter_args: "$name",
+                adapter_cmd: "ip",
+                adapter_args: "addr $name",
             },
             ActionDef {
                 subaction: "export_adapter",
@@ -3835,8 +3835,8 @@ pub static LINUX_CATEGORIES: &[CategoryDef] = &[
                 params: &[
                     ParamDef { name: "name", param_type: "string", description: "Target adapter identifier", required: true },
                 ],
-                adapter_cmd: "ip addr",
-                adapter_args: "$name",
+                adapter_cmd: "ip",
+                adapter_args: "addr $name",
             },
             ActionDef {
                 subaction: "import_adapter",
@@ -3847,8 +3847,8 @@ pub static LINUX_CATEGORIES: &[CategoryDef] = &[
                 params: &[
                     ParamDef { name: "name", param_type: "string", description: "Target adapter identifier", required: true },
                 ],
-                adapter_cmd: "ip addr",
-                adapter_args: "$name",
+                adapter_cmd: "ip",
+                adapter_args: "addr $name",
             },
             ActionDef {
                 subaction: "backup_adapter",
@@ -3859,8 +3859,8 @@ pub static LINUX_CATEGORIES: &[CategoryDef] = &[
                 params: &[
                     ParamDef { name: "name", param_type: "string", description: "Target adapter name", required: true },
                 ],
-                adapter_cmd: "ip addr",
-                adapter_args: "$name",
+                adapter_cmd: "ip",
+                adapter_args: "addr $name",
             },
             ActionDef {
                 subaction: "restore_adapter",
@@ -3871,8 +3871,8 @@ pub static LINUX_CATEGORIES: &[CategoryDef] = &[
                 params: &[
                     ParamDef { name: "name", param_type: "string", description: "Target adapter name", required: true },
                 ],
-                adapter_cmd: "ip addr",
-                adapter_args: "$name",
+                adapter_cmd: "ip",
+                adapter_args: "addr $name",
             },
             ActionDef {
                 subaction: "audit_adapter",
@@ -3883,8 +3883,8 @@ pub static LINUX_CATEGORIES: &[CategoryDef] = &[
                 params: &[
                     ParamDef { name: "name", param_type: "string", description: "Target adapter name", required: false },
                 ],
-                adapter_cmd: "ip addr",
-                adapter_args: "$name",
+                adapter_cmd: "ip",
+                adapter_args: "addr $name",
             },
             ActionDef {
                 subaction: "verify_adapter",
@@ -3895,8 +3895,8 @@ pub static LINUX_CATEGORIES: &[CategoryDef] = &[
                 params: &[
                     ParamDef { name: "name", param_type: "string", description: "Target adapter name", required: false },
                 ],
-                adapter_cmd: "ip addr",
-                adapter_args: "$name",
+                adapter_cmd: "ip",
+                adapter_args: "addr $name",
             },
             ActionDef {
                 subaction: "monitor_adapter",
@@ -3907,8 +3907,8 @@ pub static LINUX_CATEGORIES: &[CategoryDef] = &[
                 params: &[
                     ParamDef { name: "name", param_type: "string", description: "Target adapter name", required: false },
                 ],
-                adapter_cmd: "ip addr",
-                adapter_args: "$name",
+                adapter_cmd: "ip",
+                adapter_args: "addr $name",
             },
             ActionDef {
                 subaction: "measure_adapter",
@@ -3919,8 +3919,8 @@ pub static LINUX_CATEGORIES: &[CategoryDef] = &[
                 params: &[
                     ParamDef { name: "name", param_type: "string", description: "Target adapter name", required: false },
                 ],
-                adapter_cmd: "ip addr",
-                adapter_args: "$name",
+                adapter_cmd: "ip",
+                adapter_args: "addr $name",
             },
             ActionDef {
                 subaction: "clean_adapter",
@@ -3932,8 +3932,8 @@ pub static LINUX_CATEGORIES: &[CategoryDef] = &[
                     ParamDef { name: "name", param_type: "string", description: "Target adapter name", required: true },
                     ParamDef { name: "value", param_type: "string", description: "Configuration value", required: false },
                 ],
-                adapter_cmd: "ip addr",
-                adapter_args: "$name",
+                adapter_cmd: "ip",
+                adapter_args: "addr $name",
             },
             ActionDef {
                 subaction: "optimize_adapter",
@@ -3945,8 +3945,8 @@ pub static LINUX_CATEGORIES: &[CategoryDef] = &[
                     ParamDef { name: "name", param_type: "string", description: "Target adapter name", required: true },
                     ParamDef { name: "value", param_type: "string", description: "Configuration value", required: false },
                 ],
-                adapter_cmd: "ip addr",
-                adapter_args: "$name",
+                adapter_cmd: "ip",
+                adapter_args: "addr $name",
             },
             ActionDef {
                 subaction: "lock_adapter",
@@ -3957,8 +3957,8 @@ pub static LINUX_CATEGORIES: &[CategoryDef] = &[
                 params: &[
                     ParamDef { name: "name", param_type: "string", description: "Target adapter name", required: true },
                 ],
-                adapter_cmd: "ip addr",
-                adapter_args: "$name",
+                adapter_cmd: "ip",
+                adapter_args: "addr $name",
             },
             ActionDef {
                 subaction: "unlock_adapter",
@@ -3969,8 +3969,8 @@ pub static LINUX_CATEGORIES: &[CategoryDef] = &[
                 params: &[
                     ParamDef { name: "name", param_type: "string", description: "Target adapter name", required: true },
                 ],
-                adapter_cmd: "ip addr",
-                adapter_args: "$name",
+                adapter_cmd: "ip",
+                adapter_args: "addr $name",
             },
             ActionDef {
                 subaction: "scan_adapter",
@@ -3981,8 +3981,8 @@ pub static LINUX_CATEGORIES: &[CategoryDef] = &[
                 params: &[
                     ParamDef { name: "name", param_type: "string", description: "Target adapter identifier", required: true },
                 ],
-                adapter_cmd: "ip addr",
-                adapter_args: "$name",
+                adapter_cmd: "ip",
+                adapter_args: "addr $name",
             },
             ActionDef {
                 subaction: "repair_adapter",
@@ -3993,8 +3993,8 @@ pub static LINUX_CATEGORIES: &[CategoryDef] = &[
                 params: &[
                     ParamDef { name: "name", param_type: "string", description: "Target adapter identifier", required: true },
                 ],
-                adapter_cmd: "ip addr",
-                adapter_args: "$name",
+                adapter_cmd: "ip",
+                adapter_args: "addr $name",
             },
             ActionDef {
                 subaction: "inspect_adapter",
@@ -4005,8 +4005,8 @@ pub static LINUX_CATEGORIES: &[CategoryDef] = &[
                 params: &[
                     ParamDef { name: "name", param_type: "string", description: "Target adapter name", required: false },
                 ],
-                adapter_cmd: "ip addr",
-                adapter_args: "$name",
+                adapter_cmd: "ip",
+                adapter_args: "addr $name",
             },
             ActionDef {
                 subaction: "tune_adapter",
@@ -4018,8 +4018,8 @@ pub static LINUX_CATEGORIES: &[CategoryDef] = &[
                     ParamDef { name: "name", param_type: "string", description: "Target adapter name", required: true },
                     ParamDef { name: "value", param_type: "string", description: "Configuration value", required: false },
                 ],
-                adapter_cmd: "ip addr",
-                adapter_args: "$name",
+                adapter_cmd: "ip",
+                adapter_args: "addr $name",
             },
             ActionDef {
                 subaction: "report_adapter",
@@ -4030,8 +4030,8 @@ pub static LINUX_CATEGORIES: &[CategoryDef] = &[
                 params: &[
                     ParamDef { name: "name", param_type: "string", description: "Target adapter name", required: false },
                 ],
-                adapter_cmd: "ip addr",
-                adapter_args: "$name",
+                adapter_cmd: "ip",
+                adapter_args: "addr $name",
             },
             ActionDef {
                 subaction: "trace_adapter",
@@ -4042,8 +4042,8 @@ pub static LINUX_CATEGORIES: &[CategoryDef] = &[
                 params: &[
                     ParamDef { name: "name", param_type: "string", description: "Target adapter name", required: false },
                 ],
-                adapter_cmd: "ip addr",
-                adapter_args: "$name",
+                adapter_cmd: "ip",
+                adapter_args: "addr $name",
             },
             ActionDef {
                 subaction: "sync_adapter",
@@ -4055,8 +4055,8 @@ pub static LINUX_CATEGORIES: &[CategoryDef] = &[
                     ParamDef { name: "name", param_type: "string", description: "Target adapter name", required: true },
                     ParamDef { name: "value", param_type: "string", description: "Configuration value", required: false },
                 ],
-                adapter_cmd: "ip addr",
-                adapter_args: "$name",
+                adapter_cmd: "ip",
+                adapter_args: "addr $name",
             },
             ActionDef {
                 subaction: "flush_adapter",
@@ -4068,8 +4068,8 @@ pub static LINUX_CATEGORIES: &[CategoryDef] = &[
                     ParamDef { name: "name", param_type: "string", description: "Target adapter name", required: true },
                     ParamDef { name: "value", param_type: "string", description: "Configuration value", required: false },
                 ],
-                adapter_cmd: "ip addr",
-                adapter_args: "$name",
+                adapter_cmd: "ip",
+                adapter_args: "addr $name",
             },
             ActionDef {
                 subaction: "mount_adapter",
@@ -4081,8 +4081,8 @@ pub static LINUX_CATEGORIES: &[CategoryDef] = &[
                     ParamDef { name: "name", param_type: "string", description: "Target adapter name", required: true },
                     ParamDef { name: "value", param_type: "string", description: "Configuration value", required: false },
                 ],
-                adapter_cmd: "ip addr",
-                adapter_args: "$name",
+                adapter_cmd: "ip",
+                adapter_args: "addr $name",
             },
             ActionDef {
                 subaction: "unmount_adapter",
@@ -4094,8 +4094,8 @@ pub static LINUX_CATEGORIES: &[CategoryDef] = &[
                     ParamDef { name: "name", param_type: "string", description: "Target adapter name", required: true },
                     ParamDef { name: "value", param_type: "string", description: "Configuration value", required: false },
                 ],
-                adapter_cmd: "ip addr",
-                adapter_args: "$name",
+                adapter_cmd: "ip",
+                adapter_args: "addr $name",
             },
             ActionDef {
                 subaction: "grant_adapter",
@@ -4107,8 +4107,8 @@ pub static LINUX_CATEGORIES: &[CategoryDef] = &[
                     ParamDef { name: "name", param_type: "string", description: "Target adapter name", required: true },
                     ParamDef { name: "value", param_type: "string", description: "Configuration value", required: false },
                 ],
-                adapter_cmd: "ip addr",
-                adapter_args: "$name",
+                adapter_cmd: "ip",
+                adapter_args: "addr $name",
             },
             ActionDef {
                 subaction: "revoke_adapter",
@@ -4120,8 +4120,8 @@ pub static LINUX_CATEGORIES: &[CategoryDef] = &[
                     ParamDef { name: "name", param_type: "string", description: "Target adapter name", required: true },
                     ParamDef { name: "value", param_type: "string", description: "Configuration value", required: false },
                 ],
-                adapter_cmd: "ip addr",
-                adapter_args: "$name",
+                adapter_cmd: "ip",
+                adapter_args: "addr $name",
             },
             ActionDef {
                 subaction: "connect_adapter",
@@ -4133,8 +4133,8 @@ pub static LINUX_CATEGORIES: &[CategoryDef] = &[
                     ParamDef { name: "name", param_type: "string", description: "Target adapter name", required: true },
                     ParamDef { name: "value", param_type: "string", description: "Configuration value", required: false },
                 ],
-                adapter_cmd: "ip addr",
-                adapter_args: "$name",
+                adapter_cmd: "ip",
+                adapter_args: "addr $name",
             },
             ActionDef {
                 subaction: "disconnect_adapter",
@@ -4146,8 +4146,8 @@ pub static LINUX_CATEGORIES: &[CategoryDef] = &[
                     ParamDef { name: "name", param_type: "string", description: "Target adapter name", required: true },
                     ParamDef { name: "value", param_type: "string", description: "Configuration value", required: false },
                 ],
-                adapter_cmd: "ip addr",
-                adapter_args: "$name",
+                adapter_cmd: "ip",
+                adapter_args: "addr $name",
             },
             ActionDef {
                 subaction: "suspend_adapter",
@@ -4158,8 +4158,8 @@ pub static LINUX_CATEGORIES: &[CategoryDef] = &[
                 params: &[
                     ParamDef { name: "name", param_type: "string", description: "Target adapter name", required: true },
                 ],
-                adapter_cmd: "ip addr",
-                adapter_args: "$name",
+                adapter_cmd: "ip",
+                adapter_args: "addr $name",
             },
             ActionDef {
                 subaction: "resume_adapter",
@@ -4170,8 +4170,8 @@ pub static LINUX_CATEGORIES: &[CategoryDef] = &[
                 params: &[
                     ParamDef { name: "name", param_type: "string", description: "Target adapter name", required: true },
                 ],
-                adapter_cmd: "ip addr",
-                adapter_args: "$name",
+                adapter_cmd: "ip",
+                adapter_args: "addr $name",
             },
             ActionDef {
                 subaction: "format_adapter",
@@ -4182,8 +4182,8 @@ pub static LINUX_CATEGORIES: &[CategoryDef] = &[
                 params: &[
                     ParamDef { name: "name", param_type: "string", description: "Target adapter identifier", required: true },
                 ],
-                adapter_cmd: "ip addr",
-                adapter_args: "$name",
+                adapter_cmd: "ip",
+                adapter_args: "addr $name",
             },
             ActionDef {
                 subaction: "compact_adapter",
@@ -4195,8 +4195,8 @@ pub static LINUX_CATEGORIES: &[CategoryDef] = &[
                     ParamDef { name: "name", param_type: "string", description: "Target adapter name", required: true },
                     ParamDef { name: "value", param_type: "string", description: "Configuration value", required: false },
                 ],
-                adapter_cmd: "ip addr",
-                adapter_args: "$name",
+                adapter_cmd: "ip",
+                adapter_args: "addr $name",
             },
         ],
     },
@@ -4213,8 +4213,8 @@ pub static LINUX_CATEGORIES: &[CategoryDef] = &[
                 params: &[
                     ParamDef { name: "name", param_type: "string", description: "Target socket name", required: false },
                 ],
-                adapter_cmd: "ss -tuln",
-                adapter_args: "$name",
+                adapter_cmd: "ss",
+                adapter_args: "-tuln $name",
             },
             ActionDef {
                 subaction: "set_socket",
@@ -4226,8 +4226,8 @@ pub static LINUX_CATEGORIES: &[CategoryDef] = &[
                     ParamDef { name: "name", param_type: "string", description: "Target socket name", required: true },
                     ParamDef { name: "value", param_type: "string", description: "Configuration value", required: false },
                 ],
-                adapter_cmd: "ss -tuln",
-                adapter_args: "$name",
+                adapter_cmd: "ss",
+                adapter_args: "-tuln $name",
             },
             ActionDef {
                 subaction: "list_socket",
@@ -4238,8 +4238,8 @@ pub static LINUX_CATEGORIES: &[CategoryDef] = &[
                 params: &[
                     ParamDef { name: "name", param_type: "string", description: "Target socket name", required: false },
                 ],
-                adapter_cmd: "ss -tuln",
-                adapter_args: "$name",
+                adapter_cmd: "ss",
+                adapter_args: "-tuln $name",
             },
             ActionDef {
                 subaction: "query_socket",
@@ -4250,8 +4250,8 @@ pub static LINUX_CATEGORIES: &[CategoryDef] = &[
                 params: &[
                     ParamDef { name: "name", param_type: "string", description: "Target socket name", required: false },
                 ],
-                adapter_cmd: "ss -tuln",
-                adapter_args: "$name",
+                adapter_cmd: "ss",
+                adapter_args: "-tuln $name",
             },
             ActionDef {
                 subaction: "check_socket",
@@ -4262,8 +4262,8 @@ pub static LINUX_CATEGORIES: &[CategoryDef] = &[
                 params: &[
                     ParamDef { name: "name", param_type: "string", description: "Target socket name", required: false },
                 ],
-                adapter_cmd: "ss -tuln",
-                adapter_args: "$name",
+                adapter_cmd: "ss",
+                adapter_args: "-tuln $name",
             },
             ActionDef {
                 subaction: "test_socket",
@@ -4274,8 +4274,8 @@ pub static LINUX_CATEGORIES: &[CategoryDef] = &[
                 params: &[
                     ParamDef { name: "name", param_type: "string", description: "Target socket name", required: false },
                 ],
-                adapter_cmd: "ss -tuln",
-                adapter_args: "$name",
+                adapter_cmd: "ss",
+                adapter_args: "-tuln $name",
             },
             ActionDef {
                 subaction: "find_socket",
@@ -4286,8 +4286,8 @@ pub static LINUX_CATEGORIES: &[CategoryDef] = &[
                 params: &[
                     ParamDef { name: "name", param_type: "string", description: "Target socket name", required: false },
                 ],
-                adapter_cmd: "ss -tuln",
-                adapter_args: "$name",
+                adapter_cmd: "ss",
+                adapter_args: "-tuln $name",
             },
             ActionDef {
                 subaction: "search_socket",
@@ -4298,8 +4298,8 @@ pub static LINUX_CATEGORIES: &[CategoryDef] = &[
                 params: &[
                     ParamDef { name: "name", param_type: "string", description: "Target socket name", required: false },
                 ],
-                adapter_cmd: "ss -tuln",
-                adapter_args: "$name",
+                adapter_cmd: "ss",
+                adapter_args: "-tuln $name",
             },
             ActionDef {
                 subaction: "create_socket",
@@ -4310,8 +4310,8 @@ pub static LINUX_CATEGORIES: &[CategoryDef] = &[
                 params: &[
                     ParamDef { name: "name", param_type: "string", description: "Target socket name", required: true },
                 ],
-                adapter_cmd: "ss -tuln",
-                adapter_args: "$name",
+                adapter_cmd: "ss",
+                adapter_args: "-tuln $name",
             },
             ActionDef {
                 subaction: "delete_socket",
@@ -4322,8 +4322,8 @@ pub static LINUX_CATEGORIES: &[CategoryDef] = &[
                 params: &[
                     ParamDef { name: "name", param_type: "string", description: "Target socket identifier", required: true },
                 ],
-                adapter_cmd: "ss -tuln",
-                adapter_args: "$name",
+                adapter_cmd: "ss",
+                adapter_args: "-tuln $name",
             },
             ActionDef {
                 subaction: "enable_socket",
@@ -4335,8 +4335,8 @@ pub static LINUX_CATEGORIES: &[CategoryDef] = &[
                     ParamDef { name: "name", param_type: "string", description: "Target socket name", required: true },
                     ParamDef { name: "value", param_type: "string", description: "Configuration value", required: false },
                 ],
-                adapter_cmd: "ss -tuln",
-                adapter_args: "$name",
+                adapter_cmd: "ss",
+                adapter_args: "-tuln $name",
             },
             ActionDef {
                 subaction: "disable_socket",
@@ -4348,8 +4348,8 @@ pub static LINUX_CATEGORIES: &[CategoryDef] = &[
                     ParamDef { name: "name", param_type: "string", description: "Target socket name", required: true },
                     ParamDef { name: "value", param_type: "string", description: "Configuration value", required: false },
                 ],
-                adapter_cmd: "ss -tuln",
-                adapter_args: "$name",
+                adapter_cmd: "ss",
+                adapter_args: "-tuln $name",
             },
             ActionDef {
                 subaction: "start_socket",
@@ -4360,8 +4360,8 @@ pub static LINUX_CATEGORIES: &[CategoryDef] = &[
                 params: &[
                     ParamDef { name: "name", param_type: "string", description: "Target socket name", required: true },
                 ],
-                adapter_cmd: "ss -tuln",
-                adapter_args: "$name",
+                adapter_cmd: "ss",
+                adapter_args: "-tuln $name",
             },
             ActionDef {
                 subaction: "stop_socket",
@@ -4372,8 +4372,8 @@ pub static LINUX_CATEGORIES: &[CategoryDef] = &[
                 params: &[
                     ParamDef { name: "name", param_type: "string", description: "Target socket name", required: true },
                 ],
-                adapter_cmd: "ss -tuln",
-                adapter_args: "$name",
+                adapter_cmd: "ss",
+                adapter_args: "-tuln $name",
             },
             ActionDef {
                 subaction: "restart_socket",
@@ -4384,8 +4384,8 @@ pub static LINUX_CATEGORIES: &[CategoryDef] = &[
                 params: &[
                     ParamDef { name: "name", param_type: "string", description: "Target socket name", required: true },
                 ],
-                adapter_cmd: "ss -tuln",
-                adapter_args: "$name",
+                adapter_cmd: "ss",
+                adapter_args: "-tuln $name",
             },
             ActionDef {
                 subaction: "reload_socket",
@@ -4396,8 +4396,8 @@ pub static LINUX_CATEGORIES: &[CategoryDef] = &[
                 params: &[
                     ParamDef { name: "name", param_type: "string", description: "Target socket name", required: true },
                 ],
-                adapter_cmd: "ss -tuln",
-                adapter_args: "$name",
+                adapter_cmd: "ss",
+                adapter_args: "-tuln $name",
             },
             ActionDef {
                 subaction: "update_socket",
@@ -4409,8 +4409,8 @@ pub static LINUX_CATEGORIES: &[CategoryDef] = &[
                     ParamDef { name: "name", param_type: "string", description: "Target socket name", required: true },
                     ParamDef { name: "value", param_type: "string", description: "Configuration value", required: false },
                 ],
-                adapter_cmd: "ss -tuln",
-                adapter_args: "$name",
+                adapter_cmd: "ss",
+                adapter_args: "-tuln $name",
             },
             ActionDef {
                 subaction: "reset_socket",
@@ -4421,8 +4421,8 @@ pub static LINUX_CATEGORIES: &[CategoryDef] = &[
                 params: &[
                     ParamDef { name: "name", param_type: "string", description: "Target socket identifier", required: true },
                 ],
-                adapter_cmd: "ss -tuln",
-                adapter_args: "$name",
+                adapter_cmd: "ss",
+                adapter_args: "-tuln $name",
             },
             ActionDef {
                 subaction: "export_socket",
@@ -4433,8 +4433,8 @@ pub static LINUX_CATEGORIES: &[CategoryDef] = &[
                 params: &[
                     ParamDef { name: "name", param_type: "string", description: "Target socket identifier", required: true },
                 ],
-                adapter_cmd: "ss -tuln",
-                adapter_args: "$name",
+                adapter_cmd: "ss",
+                adapter_args: "-tuln $name",
             },
             ActionDef {
                 subaction: "import_socket",
@@ -4445,8 +4445,8 @@ pub static LINUX_CATEGORIES: &[CategoryDef] = &[
                 params: &[
                     ParamDef { name: "name", param_type: "string", description: "Target socket identifier", required: true },
                 ],
-                adapter_cmd: "ss -tuln",
-                adapter_args: "$name",
+                adapter_cmd: "ss",
+                adapter_args: "-tuln $name",
             },
             ActionDef {
                 subaction: "backup_socket",
@@ -4457,8 +4457,8 @@ pub static LINUX_CATEGORIES: &[CategoryDef] = &[
                 params: &[
                     ParamDef { name: "name", param_type: "string", description: "Target socket name", required: true },
                 ],
-                adapter_cmd: "ss -tuln",
-                adapter_args: "$name",
+                adapter_cmd: "ss",
+                adapter_args: "-tuln $name",
             },
             ActionDef {
                 subaction: "restore_socket",
@@ -4469,8 +4469,8 @@ pub static LINUX_CATEGORIES: &[CategoryDef] = &[
                 params: &[
                     ParamDef { name: "name", param_type: "string", description: "Target socket name", required: true },
                 ],
-                adapter_cmd: "ss -tuln",
-                adapter_args: "$name",
+                adapter_cmd: "ss",
+                adapter_args: "-tuln $name",
             },
             ActionDef {
                 subaction: "audit_socket",
@@ -4481,8 +4481,8 @@ pub static LINUX_CATEGORIES: &[CategoryDef] = &[
                 params: &[
                     ParamDef { name: "name", param_type: "string", description: "Target socket name", required: false },
                 ],
-                adapter_cmd: "ss -tuln",
-                adapter_args: "$name",
+                adapter_cmd: "ss",
+                adapter_args: "-tuln $name",
             },
             ActionDef {
                 subaction: "verify_socket",
@@ -4493,8 +4493,8 @@ pub static LINUX_CATEGORIES: &[CategoryDef] = &[
                 params: &[
                     ParamDef { name: "name", param_type: "string", description: "Target socket name", required: false },
                 ],
-                adapter_cmd: "ss -tuln",
-                adapter_args: "$name",
+                adapter_cmd: "ss",
+                adapter_args: "-tuln $name",
             },
             ActionDef {
                 subaction: "monitor_socket",
@@ -4505,8 +4505,8 @@ pub static LINUX_CATEGORIES: &[CategoryDef] = &[
                 params: &[
                     ParamDef { name: "name", param_type: "string", description: "Target socket name", required: false },
                 ],
-                adapter_cmd: "ss -tuln",
-                adapter_args: "$name",
+                adapter_cmd: "ss",
+                adapter_args: "-tuln $name",
             },
             ActionDef {
                 subaction: "measure_socket",
@@ -4517,8 +4517,8 @@ pub static LINUX_CATEGORIES: &[CategoryDef] = &[
                 params: &[
                     ParamDef { name: "name", param_type: "string", description: "Target socket name", required: false },
                 ],
-                adapter_cmd: "ss -tuln",
-                adapter_args: "$name",
+                adapter_cmd: "ss",
+                adapter_args: "-tuln $name",
             },
             ActionDef {
                 subaction: "clean_socket",
@@ -4530,8 +4530,8 @@ pub static LINUX_CATEGORIES: &[CategoryDef] = &[
                     ParamDef { name: "name", param_type: "string", description: "Target socket name", required: true },
                     ParamDef { name: "value", param_type: "string", description: "Configuration value", required: false },
                 ],
-                adapter_cmd: "ss -tuln",
-                adapter_args: "$name",
+                adapter_cmd: "ss",
+                adapter_args: "-tuln $name",
             },
             ActionDef {
                 subaction: "optimize_socket",
@@ -4543,8 +4543,8 @@ pub static LINUX_CATEGORIES: &[CategoryDef] = &[
                     ParamDef { name: "name", param_type: "string", description: "Target socket name", required: true },
                     ParamDef { name: "value", param_type: "string", description: "Configuration value", required: false },
                 ],
-                adapter_cmd: "ss -tuln",
-                adapter_args: "$name",
+                adapter_cmd: "ss",
+                adapter_args: "-tuln $name",
             },
             ActionDef {
                 subaction: "lock_socket",
@@ -4555,8 +4555,8 @@ pub static LINUX_CATEGORIES: &[CategoryDef] = &[
                 params: &[
                     ParamDef { name: "name", param_type: "string", description: "Target socket name", required: true },
                 ],
-                adapter_cmd: "ss -tuln",
-                adapter_args: "$name",
+                adapter_cmd: "ss",
+                adapter_args: "-tuln $name",
             },
             ActionDef {
                 subaction: "unlock_socket",
@@ -4567,8 +4567,8 @@ pub static LINUX_CATEGORIES: &[CategoryDef] = &[
                 params: &[
                     ParamDef { name: "name", param_type: "string", description: "Target socket name", required: true },
                 ],
-                adapter_cmd: "ss -tuln",
-                adapter_args: "$name",
+                adapter_cmd: "ss",
+                adapter_args: "-tuln $name",
             },
             ActionDef {
                 subaction: "scan_socket",
@@ -4579,8 +4579,8 @@ pub static LINUX_CATEGORIES: &[CategoryDef] = &[
                 params: &[
                     ParamDef { name: "name", param_type: "string", description: "Target socket identifier", required: true },
                 ],
-                adapter_cmd: "ss -tuln",
-                adapter_args: "$name",
+                adapter_cmd: "ss",
+                adapter_args: "-tuln $name",
             },
             ActionDef {
                 subaction: "repair_socket",
@@ -4591,8 +4591,8 @@ pub static LINUX_CATEGORIES: &[CategoryDef] = &[
                 params: &[
                     ParamDef { name: "name", param_type: "string", description: "Target socket identifier", required: true },
                 ],
-                adapter_cmd: "ss -tuln",
-                adapter_args: "$name",
+                adapter_cmd: "ss",
+                adapter_args: "-tuln $name",
             },
             ActionDef {
                 subaction: "inspect_socket",
@@ -4603,8 +4603,8 @@ pub static LINUX_CATEGORIES: &[CategoryDef] = &[
                 params: &[
                     ParamDef { name: "name", param_type: "string", description: "Target socket name", required: false },
                 ],
-                adapter_cmd: "ss -tuln",
-                adapter_args: "$name",
+                adapter_cmd: "ss",
+                adapter_args: "-tuln $name",
             },
             ActionDef {
                 subaction: "tune_socket",
@@ -4616,8 +4616,8 @@ pub static LINUX_CATEGORIES: &[CategoryDef] = &[
                     ParamDef { name: "name", param_type: "string", description: "Target socket name", required: true },
                     ParamDef { name: "value", param_type: "string", description: "Configuration value", required: false },
                 ],
-                adapter_cmd: "ss -tuln",
-                adapter_args: "$name",
+                adapter_cmd: "ss",
+                adapter_args: "-tuln $name",
             },
             ActionDef {
                 subaction: "report_socket",
@@ -4628,8 +4628,8 @@ pub static LINUX_CATEGORIES: &[CategoryDef] = &[
                 params: &[
                     ParamDef { name: "name", param_type: "string", description: "Target socket name", required: false },
                 ],
-                adapter_cmd: "ss -tuln",
-                adapter_args: "$name",
+                adapter_cmd: "ss",
+                adapter_args: "-tuln $name",
             },
             ActionDef {
                 subaction: "trace_socket",
@@ -4640,8 +4640,8 @@ pub static LINUX_CATEGORIES: &[CategoryDef] = &[
                 params: &[
                     ParamDef { name: "name", param_type: "string", description: "Target socket name", required: false },
                 ],
-                adapter_cmd: "ss -tuln",
-                adapter_args: "$name",
+                adapter_cmd: "ss",
+                adapter_args: "-tuln $name",
             },
             ActionDef {
                 subaction: "sync_socket",
@@ -4653,8 +4653,8 @@ pub static LINUX_CATEGORIES: &[CategoryDef] = &[
                     ParamDef { name: "name", param_type: "string", description: "Target socket name", required: true },
                     ParamDef { name: "value", param_type: "string", description: "Configuration value", required: false },
                 ],
-                adapter_cmd: "ss -tuln",
-                adapter_args: "$name",
+                adapter_cmd: "ss",
+                adapter_args: "-tuln $name",
             },
             ActionDef {
                 subaction: "flush_socket",
@@ -4666,8 +4666,8 @@ pub static LINUX_CATEGORIES: &[CategoryDef] = &[
                     ParamDef { name: "name", param_type: "string", description: "Target socket name", required: true },
                     ParamDef { name: "value", param_type: "string", description: "Configuration value", required: false },
                 ],
-                adapter_cmd: "ss -tuln",
-                adapter_args: "$name",
+                adapter_cmd: "ss",
+                adapter_args: "-tuln $name",
             },
             ActionDef {
                 subaction: "mount_socket",
@@ -4679,8 +4679,8 @@ pub static LINUX_CATEGORIES: &[CategoryDef] = &[
                     ParamDef { name: "name", param_type: "string", description: "Target socket name", required: true },
                     ParamDef { name: "value", param_type: "string", description: "Configuration value", required: false },
                 ],
-                adapter_cmd: "ss -tuln",
-                adapter_args: "$name",
+                adapter_cmd: "ss",
+                adapter_args: "-tuln $name",
             },
             ActionDef {
                 subaction: "unmount_socket",
@@ -4692,8 +4692,8 @@ pub static LINUX_CATEGORIES: &[CategoryDef] = &[
                     ParamDef { name: "name", param_type: "string", description: "Target socket name", required: true },
                     ParamDef { name: "value", param_type: "string", description: "Configuration value", required: false },
                 ],
-                adapter_cmd: "ss -tuln",
-                adapter_args: "$name",
+                adapter_cmd: "ss",
+                adapter_args: "-tuln $name",
             },
             ActionDef {
                 subaction: "grant_socket",
@@ -4705,8 +4705,8 @@ pub static LINUX_CATEGORIES: &[CategoryDef] = &[
                     ParamDef { name: "name", param_type: "string", description: "Target socket name", required: true },
                     ParamDef { name: "value", param_type: "string", description: "Configuration value", required: false },
                 ],
-                adapter_cmd: "ss -tuln",
-                adapter_args: "$name",
+                adapter_cmd: "ss",
+                adapter_args: "-tuln $name",
             },
             ActionDef {
                 subaction: "revoke_socket",
@@ -4718,8 +4718,8 @@ pub static LINUX_CATEGORIES: &[CategoryDef] = &[
                     ParamDef { name: "name", param_type: "string", description: "Target socket name", required: true },
                     ParamDef { name: "value", param_type: "string", description: "Configuration value", required: false },
                 ],
-                adapter_cmd: "ss -tuln",
-                adapter_args: "$name",
+                adapter_cmd: "ss",
+                adapter_args: "-tuln $name",
             },
             ActionDef {
                 subaction: "connect_socket",
@@ -4731,8 +4731,8 @@ pub static LINUX_CATEGORIES: &[CategoryDef] = &[
                     ParamDef { name: "name", param_type: "string", description: "Target socket name", required: true },
                     ParamDef { name: "value", param_type: "string", description: "Configuration value", required: false },
                 ],
-                adapter_cmd: "ss -tuln",
-                adapter_args: "$name",
+                adapter_cmd: "ss",
+                adapter_args: "-tuln $name",
             },
             ActionDef {
                 subaction: "disconnect_socket",
@@ -4744,8 +4744,8 @@ pub static LINUX_CATEGORIES: &[CategoryDef] = &[
                     ParamDef { name: "name", param_type: "string", description: "Target socket name", required: true },
                     ParamDef { name: "value", param_type: "string", description: "Configuration value", required: false },
                 ],
-                adapter_cmd: "ss -tuln",
-                adapter_args: "$name",
+                adapter_cmd: "ss",
+                adapter_args: "-tuln $name",
             },
             ActionDef {
                 subaction: "suspend_socket",
@@ -4756,8 +4756,8 @@ pub static LINUX_CATEGORIES: &[CategoryDef] = &[
                 params: &[
                     ParamDef { name: "name", param_type: "string", description: "Target socket name", required: true },
                 ],
-                adapter_cmd: "ss -tuln",
-                adapter_args: "$name",
+                adapter_cmd: "ss",
+                adapter_args: "-tuln $name",
             },
             ActionDef {
                 subaction: "resume_socket",
@@ -4768,8 +4768,8 @@ pub static LINUX_CATEGORIES: &[CategoryDef] = &[
                 params: &[
                     ParamDef { name: "name", param_type: "string", description: "Target socket name", required: true },
                 ],
-                adapter_cmd: "ss -tuln",
-                adapter_args: "$name",
+                adapter_cmd: "ss",
+                adapter_args: "-tuln $name",
             },
             ActionDef {
                 subaction: "format_socket",
@@ -4780,8 +4780,8 @@ pub static LINUX_CATEGORIES: &[CategoryDef] = &[
                 params: &[
                     ParamDef { name: "name", param_type: "string", description: "Target socket identifier", required: true },
                 ],
-                adapter_cmd: "ss -tuln",
-                adapter_args: "$name",
+                adapter_cmd: "ss",
+                adapter_args: "-tuln $name",
             },
             ActionDef {
                 subaction: "compact_socket",
@@ -4793,8 +4793,8 @@ pub static LINUX_CATEGORIES: &[CategoryDef] = &[
                     ParamDef { name: "name", param_type: "string", description: "Target socket name", required: true },
                     ParamDef { name: "value", param_type: "string", description: "Configuration value", required: false },
                 ],
-                adapter_cmd: "ss -tuln",
-                adapter_args: "$name",
+                adapter_cmd: "ss",
+                adapter_args: "-tuln $name",
             },
         ],
     },
@@ -4811,8 +4811,8 @@ pub static LINUX_CATEGORIES: &[CategoryDef] = &[
                 params: &[
                     ParamDef { name: "name", param_type: "string", description: "Target policy name", required: false },
                 ],
-                adapter_cmd: "ufw status",
-                adapter_args: "$name",
+                adapter_cmd: "ufw",
+                adapter_args: "status $name",
             },
             ActionDef {
                 subaction: "set_policy",
@@ -4824,8 +4824,8 @@ pub static LINUX_CATEGORIES: &[CategoryDef] = &[
                     ParamDef { name: "name", param_type: "string", description: "Target policy name", required: true },
                     ParamDef { name: "value", param_type: "string", description: "Configuration value", required: false },
                 ],
-                adapter_cmd: "ufw status",
-                adapter_args: "$name",
+                adapter_cmd: "ufw",
+                adapter_args: "status $name",
             },
             ActionDef {
                 subaction: "list_policy",
@@ -4836,8 +4836,8 @@ pub static LINUX_CATEGORIES: &[CategoryDef] = &[
                 params: &[
                     ParamDef { name: "name", param_type: "string", description: "Target policy name", required: false },
                 ],
-                adapter_cmd: "ufw status",
-                adapter_args: "$name",
+                adapter_cmd: "ufw",
+                adapter_args: "status $name",
             },
             ActionDef {
                 subaction: "query_policy",
@@ -4848,8 +4848,8 @@ pub static LINUX_CATEGORIES: &[CategoryDef] = &[
                 params: &[
                     ParamDef { name: "name", param_type: "string", description: "Target policy name", required: false },
                 ],
-                adapter_cmd: "ufw status",
-                adapter_args: "$name",
+                adapter_cmd: "ufw",
+                adapter_args: "status $name",
             },
             ActionDef {
                 subaction: "check_policy",
@@ -4860,8 +4860,8 @@ pub static LINUX_CATEGORIES: &[CategoryDef] = &[
                 params: &[
                     ParamDef { name: "name", param_type: "string", description: "Target policy name", required: false },
                 ],
-                adapter_cmd: "ufw status",
-                adapter_args: "$name",
+                adapter_cmd: "ufw",
+                adapter_args: "status $name",
             },
             ActionDef {
                 subaction: "test_policy",
@@ -4872,8 +4872,8 @@ pub static LINUX_CATEGORIES: &[CategoryDef] = &[
                 params: &[
                     ParamDef { name: "name", param_type: "string", description: "Target policy name", required: false },
                 ],
-                adapter_cmd: "ufw status",
-                adapter_args: "$name",
+                adapter_cmd: "ufw",
+                adapter_args: "status $name",
             },
             ActionDef {
                 subaction: "find_policy",
@@ -4884,8 +4884,8 @@ pub static LINUX_CATEGORIES: &[CategoryDef] = &[
                 params: &[
                     ParamDef { name: "name", param_type: "string", description: "Target policy name", required: false },
                 ],
-                adapter_cmd: "ufw status",
-                adapter_args: "$name",
+                adapter_cmd: "ufw",
+                adapter_args: "status $name",
             },
             ActionDef {
                 subaction: "search_policy",
@@ -4896,8 +4896,8 @@ pub static LINUX_CATEGORIES: &[CategoryDef] = &[
                 params: &[
                     ParamDef { name: "name", param_type: "string", description: "Target policy name", required: false },
                 ],
-                adapter_cmd: "ufw status",
-                adapter_args: "$name",
+                adapter_cmd: "ufw",
+                adapter_args: "status $name",
             },
             ActionDef {
                 subaction: "create_policy",
@@ -4908,8 +4908,8 @@ pub static LINUX_CATEGORIES: &[CategoryDef] = &[
                 params: &[
                     ParamDef { name: "name", param_type: "string", description: "Target policy name", required: true },
                 ],
-                adapter_cmd: "ufw status",
-                adapter_args: "$name",
+                adapter_cmd: "ufw",
+                adapter_args: "status $name",
             },
             ActionDef {
                 subaction: "delete_policy",
@@ -4920,8 +4920,8 @@ pub static LINUX_CATEGORIES: &[CategoryDef] = &[
                 params: &[
                     ParamDef { name: "name", param_type: "string", description: "Target policy identifier", required: true },
                 ],
-                adapter_cmd: "ufw status",
-                adapter_args: "$name",
+                adapter_cmd: "ufw",
+                adapter_args: "status $name",
             },
             ActionDef {
                 subaction: "enable_policy",
@@ -4933,8 +4933,8 @@ pub static LINUX_CATEGORIES: &[CategoryDef] = &[
                     ParamDef { name: "name", param_type: "string", description: "Target policy name", required: true },
                     ParamDef { name: "value", param_type: "string", description: "Configuration value", required: false },
                 ],
-                adapter_cmd: "ufw status",
-                adapter_args: "$name",
+                adapter_cmd: "ufw",
+                adapter_args: "status $name",
             },
             ActionDef {
                 subaction: "disable_policy",
@@ -4946,8 +4946,8 @@ pub static LINUX_CATEGORIES: &[CategoryDef] = &[
                     ParamDef { name: "name", param_type: "string", description: "Target policy name", required: true },
                     ParamDef { name: "value", param_type: "string", description: "Configuration value", required: false },
                 ],
-                adapter_cmd: "ufw status",
-                adapter_args: "$name",
+                adapter_cmd: "ufw",
+                adapter_args: "status $name",
             },
             ActionDef {
                 subaction: "start_policy",
@@ -4958,8 +4958,8 @@ pub static LINUX_CATEGORIES: &[CategoryDef] = &[
                 params: &[
                     ParamDef { name: "name", param_type: "string", description: "Target policy name", required: true },
                 ],
-                adapter_cmd: "ufw status",
-                adapter_args: "$name",
+                adapter_cmd: "ufw",
+                adapter_args: "status $name",
             },
             ActionDef {
                 subaction: "stop_policy",
@@ -4970,8 +4970,8 @@ pub static LINUX_CATEGORIES: &[CategoryDef] = &[
                 params: &[
                     ParamDef { name: "name", param_type: "string", description: "Target policy name", required: true },
                 ],
-                adapter_cmd: "ufw status",
-                adapter_args: "$name",
+                adapter_cmd: "ufw",
+                adapter_args: "status $name",
             },
             ActionDef {
                 subaction: "restart_policy",
@@ -4982,8 +4982,8 @@ pub static LINUX_CATEGORIES: &[CategoryDef] = &[
                 params: &[
                     ParamDef { name: "name", param_type: "string", description: "Target policy name", required: true },
                 ],
-                adapter_cmd: "ufw status",
-                adapter_args: "$name",
+                adapter_cmd: "ufw",
+                adapter_args: "status $name",
             },
             ActionDef {
                 subaction: "reload_policy",
@@ -4994,8 +4994,8 @@ pub static LINUX_CATEGORIES: &[CategoryDef] = &[
                 params: &[
                     ParamDef { name: "name", param_type: "string", description: "Target policy name", required: true },
                 ],
-                adapter_cmd: "ufw status",
-                adapter_args: "$name",
+                adapter_cmd: "ufw",
+                adapter_args: "status $name",
             },
             ActionDef {
                 subaction: "update_policy",
@@ -5007,8 +5007,8 @@ pub static LINUX_CATEGORIES: &[CategoryDef] = &[
                     ParamDef { name: "name", param_type: "string", description: "Target policy name", required: true },
                     ParamDef { name: "value", param_type: "string", description: "Configuration value", required: false },
                 ],
-                adapter_cmd: "ufw status",
-                adapter_args: "$name",
+                adapter_cmd: "ufw",
+                adapter_args: "status $name",
             },
             ActionDef {
                 subaction: "reset_policy",
@@ -5019,8 +5019,8 @@ pub static LINUX_CATEGORIES: &[CategoryDef] = &[
                 params: &[
                     ParamDef { name: "name", param_type: "string", description: "Target policy identifier", required: true },
                 ],
-                adapter_cmd: "ufw status",
-                adapter_args: "$name",
+                adapter_cmd: "ufw",
+                adapter_args: "status $name",
             },
             ActionDef {
                 subaction: "export_policy",
@@ -5031,8 +5031,8 @@ pub static LINUX_CATEGORIES: &[CategoryDef] = &[
                 params: &[
                     ParamDef { name: "name", param_type: "string", description: "Target policy identifier", required: true },
                 ],
-                adapter_cmd: "ufw status",
-                adapter_args: "$name",
+                adapter_cmd: "ufw",
+                adapter_args: "status $name",
             },
             ActionDef {
                 subaction: "import_policy",
@@ -5043,8 +5043,8 @@ pub static LINUX_CATEGORIES: &[CategoryDef] = &[
                 params: &[
                     ParamDef { name: "name", param_type: "string", description: "Target policy identifier", required: true },
                 ],
-                adapter_cmd: "ufw status",
-                adapter_args: "$name",
+                adapter_cmd: "ufw",
+                adapter_args: "status $name",
             },
             ActionDef {
                 subaction: "backup_policy",
@@ -5055,8 +5055,8 @@ pub static LINUX_CATEGORIES: &[CategoryDef] = &[
                 params: &[
                     ParamDef { name: "name", param_type: "string", description: "Target policy name", required: true },
                 ],
-                adapter_cmd: "ufw status",
-                adapter_args: "$name",
+                adapter_cmd: "ufw",
+                adapter_args: "status $name",
             },
             ActionDef {
                 subaction: "restore_policy",
@@ -5067,8 +5067,8 @@ pub static LINUX_CATEGORIES: &[CategoryDef] = &[
                 params: &[
                     ParamDef { name: "name", param_type: "string", description: "Target policy name", required: true },
                 ],
-                adapter_cmd: "ufw status",
-                adapter_args: "$name",
+                adapter_cmd: "ufw",
+                adapter_args: "status $name",
             },
             ActionDef {
                 subaction: "audit_policy",
@@ -5079,8 +5079,8 @@ pub static LINUX_CATEGORIES: &[CategoryDef] = &[
                 params: &[
                     ParamDef { name: "name", param_type: "string", description: "Target policy name", required: false },
                 ],
-                adapter_cmd: "ufw status",
-                adapter_args: "$name",
+                adapter_cmd: "ufw",
+                adapter_args: "status $name",
             },
             ActionDef {
                 subaction: "verify_policy",
@@ -5091,8 +5091,8 @@ pub static LINUX_CATEGORIES: &[CategoryDef] = &[
                 params: &[
                     ParamDef { name: "name", param_type: "string", description: "Target policy name", required: false },
                 ],
-                adapter_cmd: "ufw status",
-                adapter_args: "$name",
+                adapter_cmd: "ufw",
+                adapter_args: "status $name",
             },
             ActionDef {
                 subaction: "monitor_policy",
@@ -5103,8 +5103,8 @@ pub static LINUX_CATEGORIES: &[CategoryDef] = &[
                 params: &[
                     ParamDef { name: "name", param_type: "string", description: "Target policy name", required: false },
                 ],
-                adapter_cmd: "ufw status",
-                adapter_args: "$name",
+                adapter_cmd: "ufw",
+                adapter_args: "status $name",
             },
             ActionDef {
                 subaction: "measure_policy",
@@ -5115,8 +5115,8 @@ pub static LINUX_CATEGORIES: &[CategoryDef] = &[
                 params: &[
                     ParamDef { name: "name", param_type: "string", description: "Target policy name", required: false },
                 ],
-                adapter_cmd: "ufw status",
-                adapter_args: "$name",
+                adapter_cmd: "ufw",
+                adapter_args: "status $name",
             },
             ActionDef {
                 subaction: "clean_policy",
@@ -5128,8 +5128,8 @@ pub static LINUX_CATEGORIES: &[CategoryDef] = &[
                     ParamDef { name: "name", param_type: "string", description: "Target policy name", required: true },
                     ParamDef { name: "value", param_type: "string", description: "Configuration value", required: false },
                 ],
-                adapter_cmd: "ufw status",
-                adapter_args: "$name",
+                adapter_cmd: "ufw",
+                adapter_args: "status $name",
             },
             ActionDef {
                 subaction: "optimize_policy",
@@ -5141,8 +5141,8 @@ pub static LINUX_CATEGORIES: &[CategoryDef] = &[
                     ParamDef { name: "name", param_type: "string", description: "Target policy name", required: true },
                     ParamDef { name: "value", param_type: "string", description: "Configuration value", required: false },
                 ],
-                adapter_cmd: "ufw status",
-                adapter_args: "$name",
+                adapter_cmd: "ufw",
+                adapter_args: "status $name",
             },
             ActionDef {
                 subaction: "lock_policy",
@@ -5153,8 +5153,8 @@ pub static LINUX_CATEGORIES: &[CategoryDef] = &[
                 params: &[
                     ParamDef { name: "name", param_type: "string", description: "Target policy name", required: true },
                 ],
-                adapter_cmd: "ufw status",
-                adapter_args: "$name",
+                adapter_cmd: "ufw",
+                adapter_args: "status $name",
             },
             ActionDef {
                 subaction: "unlock_policy",
@@ -5165,8 +5165,8 @@ pub static LINUX_CATEGORIES: &[CategoryDef] = &[
                 params: &[
                     ParamDef { name: "name", param_type: "string", description: "Target policy name", required: true },
                 ],
-                adapter_cmd: "ufw status",
-                adapter_args: "$name",
+                adapter_cmd: "ufw",
+                adapter_args: "status $name",
             },
             ActionDef {
                 subaction: "scan_policy",
@@ -5177,8 +5177,8 @@ pub static LINUX_CATEGORIES: &[CategoryDef] = &[
                 params: &[
                     ParamDef { name: "name", param_type: "string", description: "Target policy identifier", required: true },
                 ],
-                adapter_cmd: "ufw status",
-                adapter_args: "$name",
+                adapter_cmd: "ufw",
+                adapter_args: "status $name",
             },
             ActionDef {
                 subaction: "repair_policy",
@@ -5189,8 +5189,8 @@ pub static LINUX_CATEGORIES: &[CategoryDef] = &[
                 params: &[
                     ParamDef { name: "name", param_type: "string", description: "Target policy identifier", required: true },
                 ],
-                adapter_cmd: "ufw status",
-                adapter_args: "$name",
+                adapter_cmd: "ufw",
+                adapter_args: "status $name",
             },
             ActionDef {
                 subaction: "inspect_policy",
@@ -5201,8 +5201,8 @@ pub static LINUX_CATEGORIES: &[CategoryDef] = &[
                 params: &[
                     ParamDef { name: "name", param_type: "string", description: "Target policy name", required: false },
                 ],
-                adapter_cmd: "ufw status",
-                adapter_args: "$name",
+                adapter_cmd: "ufw",
+                adapter_args: "status $name",
             },
             ActionDef {
                 subaction: "tune_policy",
@@ -5214,8 +5214,8 @@ pub static LINUX_CATEGORIES: &[CategoryDef] = &[
                     ParamDef { name: "name", param_type: "string", description: "Target policy name", required: true },
                     ParamDef { name: "value", param_type: "string", description: "Configuration value", required: false },
                 ],
-                adapter_cmd: "ufw status",
-                adapter_args: "$name",
+                adapter_cmd: "ufw",
+                adapter_args: "status $name",
             },
             ActionDef {
                 subaction: "report_policy",
@@ -5226,8 +5226,8 @@ pub static LINUX_CATEGORIES: &[CategoryDef] = &[
                 params: &[
                     ParamDef { name: "name", param_type: "string", description: "Target policy name", required: false },
                 ],
-                adapter_cmd: "ufw status",
-                adapter_args: "$name",
+                adapter_cmd: "ufw",
+                adapter_args: "status $name",
             },
             ActionDef {
                 subaction: "trace_policy",
@@ -5238,8 +5238,8 @@ pub static LINUX_CATEGORIES: &[CategoryDef] = &[
                 params: &[
                     ParamDef { name: "name", param_type: "string", description: "Target policy name", required: false },
                 ],
-                adapter_cmd: "ufw status",
-                adapter_args: "$name",
+                adapter_cmd: "ufw",
+                adapter_args: "status $name",
             },
             ActionDef {
                 subaction: "sync_policy",
@@ -5251,8 +5251,8 @@ pub static LINUX_CATEGORIES: &[CategoryDef] = &[
                     ParamDef { name: "name", param_type: "string", description: "Target policy name", required: true },
                     ParamDef { name: "value", param_type: "string", description: "Configuration value", required: false },
                 ],
-                adapter_cmd: "ufw status",
-                adapter_args: "$name",
+                adapter_cmd: "ufw",
+                adapter_args: "status $name",
             },
             ActionDef {
                 subaction: "flush_policy",
@@ -5264,8 +5264,8 @@ pub static LINUX_CATEGORIES: &[CategoryDef] = &[
                     ParamDef { name: "name", param_type: "string", description: "Target policy name", required: true },
                     ParamDef { name: "value", param_type: "string", description: "Configuration value", required: false },
                 ],
-                adapter_cmd: "ufw status",
-                adapter_args: "$name",
+                adapter_cmd: "ufw",
+                adapter_args: "status $name",
             },
             ActionDef {
                 subaction: "mount_policy",
@@ -5277,8 +5277,8 @@ pub static LINUX_CATEGORIES: &[CategoryDef] = &[
                     ParamDef { name: "name", param_type: "string", description: "Target policy name", required: true },
                     ParamDef { name: "value", param_type: "string", description: "Configuration value", required: false },
                 ],
-                adapter_cmd: "ufw status",
-                adapter_args: "$name",
+                adapter_cmd: "ufw",
+                adapter_args: "status $name",
             },
             ActionDef {
                 subaction: "unmount_policy",
@@ -5290,8 +5290,8 @@ pub static LINUX_CATEGORIES: &[CategoryDef] = &[
                     ParamDef { name: "name", param_type: "string", description: "Target policy name", required: true },
                     ParamDef { name: "value", param_type: "string", description: "Configuration value", required: false },
                 ],
-                adapter_cmd: "ufw status",
-                adapter_args: "$name",
+                adapter_cmd: "ufw",
+                adapter_args: "status $name",
             },
             ActionDef {
                 subaction: "grant_policy",
@@ -5303,8 +5303,8 @@ pub static LINUX_CATEGORIES: &[CategoryDef] = &[
                     ParamDef { name: "name", param_type: "string", description: "Target policy name", required: true },
                     ParamDef { name: "value", param_type: "string", description: "Configuration value", required: false },
                 ],
-                adapter_cmd: "ufw status",
-                adapter_args: "$name",
+                adapter_cmd: "ufw",
+                adapter_args: "status $name",
             },
             ActionDef {
                 subaction: "revoke_policy",
@@ -5316,8 +5316,8 @@ pub static LINUX_CATEGORIES: &[CategoryDef] = &[
                     ParamDef { name: "name", param_type: "string", description: "Target policy name", required: true },
                     ParamDef { name: "value", param_type: "string", description: "Configuration value", required: false },
                 ],
-                adapter_cmd: "ufw status",
-                adapter_args: "$name",
+                adapter_cmd: "ufw",
+                adapter_args: "status $name",
             },
             ActionDef {
                 subaction: "connect_policy",
@@ -5329,8 +5329,8 @@ pub static LINUX_CATEGORIES: &[CategoryDef] = &[
                     ParamDef { name: "name", param_type: "string", description: "Target policy name", required: true },
                     ParamDef { name: "value", param_type: "string", description: "Configuration value", required: false },
                 ],
-                adapter_cmd: "ufw status",
-                adapter_args: "$name",
+                adapter_cmd: "ufw",
+                adapter_args: "status $name",
             },
             ActionDef {
                 subaction: "disconnect_policy",
@@ -5342,8 +5342,8 @@ pub static LINUX_CATEGORIES: &[CategoryDef] = &[
                     ParamDef { name: "name", param_type: "string", description: "Target policy name", required: true },
                     ParamDef { name: "value", param_type: "string", description: "Configuration value", required: false },
                 ],
-                adapter_cmd: "ufw status",
-                adapter_args: "$name",
+                adapter_cmd: "ufw",
+                adapter_args: "status $name",
             },
             ActionDef {
                 subaction: "suspend_policy",
@@ -5354,8 +5354,8 @@ pub static LINUX_CATEGORIES: &[CategoryDef] = &[
                 params: &[
                     ParamDef { name: "name", param_type: "string", description: "Target policy name", required: true },
                 ],
-                adapter_cmd: "ufw status",
-                adapter_args: "$name",
+                adapter_cmd: "ufw",
+                adapter_args: "status $name",
             },
             ActionDef {
                 subaction: "resume_policy",
@@ -5366,8 +5366,8 @@ pub static LINUX_CATEGORIES: &[CategoryDef] = &[
                 params: &[
                     ParamDef { name: "name", param_type: "string", description: "Target policy name", required: true },
                 ],
-                adapter_cmd: "ufw status",
-                adapter_args: "$name",
+                adapter_cmd: "ufw",
+                adapter_args: "status $name",
             },
             ActionDef {
                 subaction: "format_policy",
@@ -5378,8 +5378,8 @@ pub static LINUX_CATEGORIES: &[CategoryDef] = &[
                 params: &[
                     ParamDef { name: "name", param_type: "string", description: "Target policy identifier", required: true },
                 ],
-                adapter_cmd: "ufw status",
-                adapter_args: "$name",
+                adapter_cmd: "ufw",
+                adapter_args: "status $name",
             },
             ActionDef {
                 subaction: "compact_policy",
@@ -5391,8 +5391,8 @@ pub static LINUX_CATEGORIES: &[CategoryDef] = &[
                     ParamDef { name: "name", param_type: "string", description: "Target policy name", required: true },
                     ParamDef { name: "value", param_type: "string", description: "Configuration value", required: false },
                 ],
-                adapter_cmd: "ufw status",
-                adapter_args: "$name",
+                adapter_cmd: "ufw",
+                adapter_args: "status $name",
             },
         ],
     },
@@ -8997,8 +8997,8 @@ pub static LINUX_CATEGORIES: &[CategoryDef] = &[
                 params: &[
                     ParamDef { name: "name", param_type: "string", description: "Target job name", required: false },
                 ],
-                adapter_cmd: "crontab -l",
-                adapter_args: "$name",
+                adapter_cmd: "crontab",
+                adapter_args: "-l $name",
             },
             ActionDef {
                 subaction: "set_job",
@@ -9010,8 +9010,8 @@ pub static LINUX_CATEGORIES: &[CategoryDef] = &[
                     ParamDef { name: "name", param_type: "string", description: "Target job name", required: true },
                     ParamDef { name: "value", param_type: "string", description: "Configuration value", required: false },
                 ],
-                adapter_cmd: "crontab -l",
-                adapter_args: "$name",
+                adapter_cmd: "crontab",
+                adapter_args: "-l $name",
             },
             ActionDef {
                 subaction: "list_job",
@@ -9022,8 +9022,8 @@ pub static LINUX_CATEGORIES: &[CategoryDef] = &[
                 params: &[
                     ParamDef { name: "name", param_type: "string", description: "Target job name", required: false },
                 ],
-                adapter_cmd: "crontab -l",
-                adapter_args: "$name",
+                adapter_cmd: "crontab",
+                adapter_args: "-l $name",
             },
             ActionDef {
                 subaction: "query_job",
@@ -9034,8 +9034,8 @@ pub static LINUX_CATEGORIES: &[CategoryDef] = &[
                 params: &[
                     ParamDef { name: "name", param_type: "string", description: "Target job name", required: false },
                 ],
-                adapter_cmd: "crontab -l",
-                adapter_args: "$name",
+                adapter_cmd: "crontab",
+                adapter_args: "-l $name",
             },
             ActionDef {
                 subaction: "check_job",
@@ -9046,8 +9046,8 @@ pub static LINUX_CATEGORIES: &[CategoryDef] = &[
                 params: &[
                     ParamDef { name: "name", param_type: "string", description: "Target job name", required: false },
                 ],
-                adapter_cmd: "crontab -l",
-                adapter_args: "$name",
+                adapter_cmd: "crontab",
+                adapter_args: "-l $name",
             },
             ActionDef {
                 subaction: "test_job",
@@ -9058,8 +9058,8 @@ pub static LINUX_CATEGORIES: &[CategoryDef] = &[
                 params: &[
                     ParamDef { name: "name", param_type: "string", description: "Target job name", required: false },
                 ],
-                adapter_cmd: "crontab -l",
-                adapter_args: "$name",
+                adapter_cmd: "crontab",
+                adapter_args: "-l $name",
             },
             ActionDef {
                 subaction: "find_job",
@@ -9070,8 +9070,8 @@ pub static LINUX_CATEGORIES: &[CategoryDef] = &[
                 params: &[
                     ParamDef { name: "name", param_type: "string", description: "Target job name", required: false },
                 ],
-                adapter_cmd: "crontab -l",
-                adapter_args: "$name",
+                adapter_cmd: "crontab",
+                adapter_args: "-l $name",
             },
             ActionDef {
                 subaction: "search_job",
@@ -9082,8 +9082,8 @@ pub static LINUX_CATEGORIES: &[CategoryDef] = &[
                 params: &[
                     ParamDef { name: "name", param_type: "string", description: "Target job name", required: false },
                 ],
-                adapter_cmd: "crontab -l",
-                adapter_args: "$name",
+                adapter_cmd: "crontab",
+                adapter_args: "-l $name",
             },
             ActionDef {
                 subaction: "create_job",
@@ -9094,8 +9094,8 @@ pub static LINUX_CATEGORIES: &[CategoryDef] = &[
                 params: &[
                     ParamDef { name: "name", param_type: "string", description: "Target job name", required: true },
                 ],
-                adapter_cmd: "crontab -l",
-                adapter_args: "$name",
+                adapter_cmd: "crontab",
+                adapter_args: "-l $name",
             },
             ActionDef {
                 subaction: "delete_job",
@@ -9106,8 +9106,8 @@ pub static LINUX_CATEGORIES: &[CategoryDef] = &[
                 params: &[
                     ParamDef { name: "name", param_type: "string", description: "Target job identifier", required: true },
                 ],
-                adapter_cmd: "crontab -l",
-                adapter_args: "$name",
+                adapter_cmd: "crontab",
+                adapter_args: "-l $name",
             },
             ActionDef {
                 subaction: "enable_job",
@@ -9119,8 +9119,8 @@ pub static LINUX_CATEGORIES: &[CategoryDef] = &[
                     ParamDef { name: "name", param_type: "string", description: "Target job name", required: true },
                     ParamDef { name: "value", param_type: "string", description: "Configuration value", required: false },
                 ],
-                adapter_cmd: "crontab -l",
-                adapter_args: "$name",
+                adapter_cmd: "crontab",
+                adapter_args: "-l $name",
             },
             ActionDef {
                 subaction: "disable_job",
@@ -9132,8 +9132,8 @@ pub static LINUX_CATEGORIES: &[CategoryDef] = &[
                     ParamDef { name: "name", param_type: "string", description: "Target job name", required: true },
                     ParamDef { name: "value", param_type: "string", description: "Configuration value", required: false },
                 ],
-                adapter_cmd: "crontab -l",
-                adapter_args: "$name",
+                adapter_cmd: "crontab",
+                adapter_args: "-l $name",
             },
             ActionDef {
                 subaction: "start_job",
@@ -9144,8 +9144,8 @@ pub static LINUX_CATEGORIES: &[CategoryDef] = &[
                 params: &[
                     ParamDef { name: "name", param_type: "string", description: "Target job name", required: true },
                 ],
-                adapter_cmd: "crontab -l",
-                adapter_args: "$name",
+                adapter_cmd: "crontab",
+                adapter_args: "-l $name",
             },
             ActionDef {
                 subaction: "stop_job",
@@ -9156,8 +9156,8 @@ pub static LINUX_CATEGORIES: &[CategoryDef] = &[
                 params: &[
                     ParamDef { name: "name", param_type: "string", description: "Target job name", required: true },
                 ],
-                adapter_cmd: "crontab -l",
-                adapter_args: "$name",
+                adapter_cmd: "crontab",
+                adapter_args: "-l $name",
             },
             ActionDef {
                 subaction: "restart_job",
@@ -9168,8 +9168,8 @@ pub static LINUX_CATEGORIES: &[CategoryDef] = &[
                 params: &[
                     ParamDef { name: "name", param_type: "string", description: "Target job name", required: true },
                 ],
-                adapter_cmd: "crontab -l",
-                adapter_args: "$name",
+                adapter_cmd: "crontab",
+                adapter_args: "-l $name",
             },
             ActionDef {
                 subaction: "reload_job",
@@ -9180,8 +9180,8 @@ pub static LINUX_CATEGORIES: &[CategoryDef] = &[
                 params: &[
                     ParamDef { name: "name", param_type: "string", description: "Target job name", required: true },
                 ],
-                adapter_cmd: "crontab -l",
-                adapter_args: "$name",
+                adapter_cmd: "crontab",
+                adapter_args: "-l $name",
             },
             ActionDef {
                 subaction: "update_job",
@@ -9193,8 +9193,8 @@ pub static LINUX_CATEGORIES: &[CategoryDef] = &[
                     ParamDef { name: "name", param_type: "string", description: "Target job name", required: true },
                     ParamDef { name: "value", param_type: "string", description: "Configuration value", required: false },
                 ],
-                adapter_cmd: "crontab -l",
-                adapter_args: "$name",
+                adapter_cmd: "crontab",
+                adapter_args: "-l $name",
             },
             ActionDef {
                 subaction: "reset_job",
@@ -9205,8 +9205,8 @@ pub static LINUX_CATEGORIES: &[CategoryDef] = &[
                 params: &[
                     ParamDef { name: "name", param_type: "string", description: "Target job identifier", required: true },
                 ],
-                adapter_cmd: "crontab -l",
-                adapter_args: "$name",
+                adapter_cmd: "crontab",
+                adapter_args: "-l $name",
             },
             ActionDef {
                 subaction: "export_job",
@@ -9217,8 +9217,8 @@ pub static LINUX_CATEGORIES: &[CategoryDef] = &[
                 params: &[
                     ParamDef { name: "name", param_type: "string", description: "Target job identifier", required: true },
                 ],
-                adapter_cmd: "crontab -l",
-                adapter_args: "$name",
+                adapter_cmd: "crontab",
+                adapter_args: "-l $name",
             },
             ActionDef {
                 subaction: "import_job",
@@ -9229,8 +9229,8 @@ pub static LINUX_CATEGORIES: &[CategoryDef] = &[
                 params: &[
                     ParamDef { name: "name", param_type: "string", description: "Target job identifier", required: true },
                 ],
-                adapter_cmd: "crontab -l",
-                adapter_args: "$name",
+                adapter_cmd: "crontab",
+                adapter_args: "-l $name",
             },
             ActionDef {
                 subaction: "backup_job",
@@ -9241,8 +9241,8 @@ pub static LINUX_CATEGORIES: &[CategoryDef] = &[
                 params: &[
                     ParamDef { name: "name", param_type: "string", description: "Target job name", required: true },
                 ],
-                adapter_cmd: "crontab -l",
-                adapter_args: "$name",
+                adapter_cmd: "crontab",
+                adapter_args: "-l $name",
             },
             ActionDef {
                 subaction: "restore_job",
@@ -9253,8 +9253,8 @@ pub static LINUX_CATEGORIES: &[CategoryDef] = &[
                 params: &[
                     ParamDef { name: "name", param_type: "string", description: "Target job name", required: true },
                 ],
-                adapter_cmd: "crontab -l",
-                adapter_args: "$name",
+                adapter_cmd: "crontab",
+                adapter_args: "-l $name",
             },
             ActionDef {
                 subaction: "audit_job",
@@ -9265,8 +9265,8 @@ pub static LINUX_CATEGORIES: &[CategoryDef] = &[
                 params: &[
                     ParamDef { name: "name", param_type: "string", description: "Target job name", required: false },
                 ],
-                adapter_cmd: "crontab -l",
-                adapter_args: "$name",
+                adapter_cmd: "crontab",
+                adapter_args: "-l $name",
             },
             ActionDef {
                 subaction: "verify_job",
@@ -9277,8 +9277,8 @@ pub static LINUX_CATEGORIES: &[CategoryDef] = &[
                 params: &[
                     ParamDef { name: "name", param_type: "string", description: "Target job name", required: false },
                 ],
-                adapter_cmd: "crontab -l",
-                adapter_args: "$name",
+                adapter_cmd: "crontab",
+                adapter_args: "-l $name",
             },
             ActionDef {
                 subaction: "monitor_job",
@@ -9289,8 +9289,8 @@ pub static LINUX_CATEGORIES: &[CategoryDef] = &[
                 params: &[
                     ParamDef { name: "name", param_type: "string", description: "Target job name", required: false },
                 ],
-                adapter_cmd: "crontab -l",
-                adapter_args: "$name",
+                adapter_cmd: "crontab",
+                adapter_args: "-l $name",
             },
             ActionDef {
                 subaction: "measure_job",
@@ -9301,8 +9301,8 @@ pub static LINUX_CATEGORIES: &[CategoryDef] = &[
                 params: &[
                     ParamDef { name: "name", param_type: "string", description: "Target job name", required: false },
                 ],
-                adapter_cmd: "crontab -l",
-                adapter_args: "$name",
+                adapter_cmd: "crontab",
+                adapter_args: "-l $name",
             },
             ActionDef {
                 subaction: "clean_job",
@@ -9314,8 +9314,8 @@ pub static LINUX_CATEGORIES: &[CategoryDef] = &[
                     ParamDef { name: "name", param_type: "string", description: "Target job name", required: true },
                     ParamDef { name: "value", param_type: "string", description: "Configuration value", required: false },
                 ],
-                adapter_cmd: "crontab -l",
-                adapter_args: "$name",
+                adapter_cmd: "crontab",
+                adapter_args: "-l $name",
             },
             ActionDef {
                 subaction: "optimize_job",
@@ -9327,8 +9327,8 @@ pub static LINUX_CATEGORIES: &[CategoryDef] = &[
                     ParamDef { name: "name", param_type: "string", description: "Target job name", required: true },
                     ParamDef { name: "value", param_type: "string", description: "Configuration value", required: false },
                 ],
-                adapter_cmd: "crontab -l",
-                adapter_args: "$name",
+                adapter_cmd: "crontab",
+                adapter_args: "-l $name",
             },
             ActionDef {
                 subaction: "lock_job",
@@ -9339,8 +9339,8 @@ pub static LINUX_CATEGORIES: &[CategoryDef] = &[
                 params: &[
                     ParamDef { name: "name", param_type: "string", description: "Target job name", required: true },
                 ],
-                adapter_cmd: "crontab -l",
-                adapter_args: "$name",
+                adapter_cmd: "crontab",
+                adapter_args: "-l $name",
             },
             ActionDef {
                 subaction: "unlock_job",
@@ -9351,8 +9351,8 @@ pub static LINUX_CATEGORIES: &[CategoryDef] = &[
                 params: &[
                     ParamDef { name: "name", param_type: "string", description: "Target job name", required: true },
                 ],
-                adapter_cmd: "crontab -l",
-                adapter_args: "$name",
+                adapter_cmd: "crontab",
+                adapter_args: "-l $name",
             },
             ActionDef {
                 subaction: "scan_job",
@@ -9363,8 +9363,8 @@ pub static LINUX_CATEGORIES: &[CategoryDef] = &[
                 params: &[
                     ParamDef { name: "name", param_type: "string", description: "Target job identifier", required: true },
                 ],
-                adapter_cmd: "crontab -l",
-                adapter_args: "$name",
+                adapter_cmd: "crontab",
+                adapter_args: "-l $name",
             },
             ActionDef {
                 subaction: "repair_job",
@@ -9375,8 +9375,8 @@ pub static LINUX_CATEGORIES: &[CategoryDef] = &[
                 params: &[
                     ParamDef { name: "name", param_type: "string", description: "Target job identifier", required: true },
                 ],
-                adapter_cmd: "crontab -l",
-                adapter_args: "$name",
+                adapter_cmd: "crontab",
+                adapter_args: "-l $name",
             },
             ActionDef {
                 subaction: "inspect_job",
@@ -9387,8 +9387,8 @@ pub static LINUX_CATEGORIES: &[CategoryDef] = &[
                 params: &[
                     ParamDef { name: "name", param_type: "string", description: "Target job name", required: false },
                 ],
-                adapter_cmd: "crontab -l",
-                adapter_args: "$name",
+                adapter_cmd: "crontab",
+                adapter_args: "-l $name",
             },
             ActionDef {
                 subaction: "tune_job",
@@ -9400,8 +9400,8 @@ pub static LINUX_CATEGORIES: &[CategoryDef] = &[
                     ParamDef { name: "name", param_type: "string", description: "Target job name", required: true },
                     ParamDef { name: "value", param_type: "string", description: "Configuration value", required: false },
                 ],
-                adapter_cmd: "crontab -l",
-                adapter_args: "$name",
+                adapter_cmd: "crontab",
+                adapter_args: "-l $name",
             },
             ActionDef {
                 subaction: "report_job",
@@ -9412,8 +9412,8 @@ pub static LINUX_CATEGORIES: &[CategoryDef] = &[
                 params: &[
                     ParamDef { name: "name", param_type: "string", description: "Target job name", required: false },
                 ],
-                adapter_cmd: "crontab -l",
-                adapter_args: "$name",
+                adapter_cmd: "crontab",
+                adapter_args: "-l $name",
             },
             ActionDef {
                 subaction: "trace_job",
@@ -9424,8 +9424,8 @@ pub static LINUX_CATEGORIES: &[CategoryDef] = &[
                 params: &[
                     ParamDef { name: "name", param_type: "string", description: "Target job name", required: false },
                 ],
-                adapter_cmd: "crontab -l",
-                adapter_args: "$name",
+                adapter_cmd: "crontab",
+                adapter_args: "-l $name",
             },
             ActionDef {
                 subaction: "sync_job",
@@ -9437,8 +9437,8 @@ pub static LINUX_CATEGORIES: &[CategoryDef] = &[
                     ParamDef { name: "name", param_type: "string", description: "Target job name", required: true },
                     ParamDef { name: "value", param_type: "string", description: "Configuration value", required: false },
                 ],
-                adapter_cmd: "crontab -l",
-                adapter_args: "$name",
+                adapter_cmd: "crontab",
+                adapter_args: "-l $name",
             },
             ActionDef {
                 subaction: "flush_job",
@@ -9450,8 +9450,8 @@ pub static LINUX_CATEGORIES: &[CategoryDef] = &[
                     ParamDef { name: "name", param_type: "string", description: "Target job name", required: true },
                     ParamDef { name: "value", param_type: "string", description: "Configuration value", required: false },
                 ],
-                adapter_cmd: "crontab -l",
-                adapter_args: "$name",
+                adapter_cmd: "crontab",
+                adapter_args: "-l $name",
             },
             ActionDef {
                 subaction: "mount_job",
@@ -9463,8 +9463,8 @@ pub static LINUX_CATEGORIES: &[CategoryDef] = &[
                     ParamDef { name: "name", param_type: "string", description: "Target job name", required: true },
                     ParamDef { name: "value", param_type: "string", description: "Configuration value", required: false },
                 ],
-                adapter_cmd: "crontab -l",
-                adapter_args: "$name",
+                adapter_cmd: "crontab",
+                adapter_args: "-l $name",
             },
             ActionDef {
                 subaction: "unmount_job",
@@ -9476,8 +9476,8 @@ pub static LINUX_CATEGORIES: &[CategoryDef] = &[
                     ParamDef { name: "name", param_type: "string", description: "Target job name", required: true },
                     ParamDef { name: "value", param_type: "string", description: "Configuration value", required: false },
                 ],
-                adapter_cmd: "crontab -l",
-                adapter_args: "$name",
+                adapter_cmd: "crontab",
+                adapter_args: "-l $name",
             },
             ActionDef {
                 subaction: "grant_job",
@@ -9489,8 +9489,8 @@ pub static LINUX_CATEGORIES: &[CategoryDef] = &[
                     ParamDef { name: "name", param_type: "string", description: "Target job name", required: true },
                     ParamDef { name: "value", param_type: "string", description: "Configuration value", required: false },
                 ],
-                adapter_cmd: "crontab -l",
-                adapter_args: "$name",
+                adapter_cmd: "crontab",
+                adapter_args: "-l $name",
             },
             ActionDef {
                 subaction: "revoke_job",
@@ -9502,8 +9502,8 @@ pub static LINUX_CATEGORIES: &[CategoryDef] = &[
                     ParamDef { name: "name", param_type: "string", description: "Target job name", required: true },
                     ParamDef { name: "value", param_type: "string", description: "Configuration value", required: false },
                 ],
-                adapter_cmd: "crontab -l",
-                adapter_args: "$name",
+                adapter_cmd: "crontab",
+                adapter_args: "-l $name",
             },
             ActionDef {
                 subaction: "connect_job",
@@ -9515,8 +9515,8 @@ pub static LINUX_CATEGORIES: &[CategoryDef] = &[
                     ParamDef { name: "name", param_type: "string", description: "Target job name", required: true },
                     ParamDef { name: "value", param_type: "string", description: "Configuration value", required: false },
                 ],
-                adapter_cmd: "crontab -l",
-                adapter_args: "$name",
+                adapter_cmd: "crontab",
+                adapter_args: "-l $name",
             },
             ActionDef {
                 subaction: "disconnect_job",
@@ -9528,8 +9528,8 @@ pub static LINUX_CATEGORIES: &[CategoryDef] = &[
                     ParamDef { name: "name", param_type: "string", description: "Target job name", required: true },
                     ParamDef { name: "value", param_type: "string", description: "Configuration value", required: false },
                 ],
-                adapter_cmd: "crontab -l",
-                adapter_args: "$name",
+                adapter_cmd: "crontab",
+                adapter_args: "-l $name",
             },
             ActionDef {
                 subaction: "suspend_job",
@@ -9540,8 +9540,8 @@ pub static LINUX_CATEGORIES: &[CategoryDef] = &[
                 params: &[
                     ParamDef { name: "name", param_type: "string", description: "Target job name", required: true },
                 ],
-                adapter_cmd: "crontab -l",
-                adapter_args: "$name",
+                adapter_cmd: "crontab",
+                adapter_args: "-l $name",
             },
             ActionDef {
                 subaction: "resume_job",
@@ -9552,8 +9552,8 @@ pub static LINUX_CATEGORIES: &[CategoryDef] = &[
                 params: &[
                     ParamDef { name: "name", param_type: "string", description: "Target job name", required: true },
                 ],
-                adapter_cmd: "crontab -l",
-                adapter_args: "$name",
+                adapter_cmd: "crontab",
+                adapter_args: "-l $name",
             },
             ActionDef {
                 subaction: "format_job",
@@ -9564,8 +9564,8 @@ pub static LINUX_CATEGORIES: &[CategoryDef] = &[
                 params: &[
                     ParamDef { name: "name", param_type: "string", description: "Target job identifier", required: true },
                 ],
-                adapter_cmd: "crontab -l",
-                adapter_args: "$name",
+                adapter_cmd: "crontab",
+                adapter_args: "-l $name",
             },
             ActionDef {
                 subaction: "compact_job",
@@ -9577,8 +9577,8 @@ pub static LINUX_CATEGORIES: &[CategoryDef] = &[
                     ParamDef { name: "name", param_type: "string", description: "Target job name", required: true },
                     ParamDef { name: "value", param_type: "string", description: "Configuration value", required: false },
                 ],
-                adapter_cmd: "crontab -l",
-                adapter_args: "$name",
+                adapter_cmd: "crontab",
+                adapter_args: "-l $name",
             },
         ],
     },

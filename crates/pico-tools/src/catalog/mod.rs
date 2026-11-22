@@ -101,6 +101,35 @@ mod tests {
         );
     }
 
+    #[test]
+    fn test_linux_catalog_adapters_validity() {
+        use crate::catalog::linux::LINUX_CATEGORIES;
+        for cat in LINUX_CATEGORIES {
+            for action in cat.actions {
+                let cmd = action.adapter_cmd;
+                assert!(
+                    !cmd.contains("Get-")
+                        && !cmd.contains("Set-")
+                        && !cmd.contains("New-")
+                        && !cmd.contains("Remove-")
+                        && !cmd.contains("Item")
+                        && !cmd.ends_with(".exe"),
+                    "Linux action {}.{} has Windows command: {}",
+                    cat.name,
+                    action.subaction,
+                    cmd
+                );
+                assert!(
+                    !cmd.contains(' '),
+                    "Linux action {}.{} has multi-word adapter_cmd (must be pure binary): {}",
+                    cat.name,
+                    action.subaction,
+                    cmd
+                );
+            }
+        }
+    }
+
     #[tokio::test]
     async fn test_sample_tool_execution() {
         let tools = get_windows_catalog();

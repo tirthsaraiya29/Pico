@@ -208,7 +208,9 @@ async fn execute_linux_command(
         if let Some(obj) = arguments.as_object() {
             for (k, v) in obj {
                 let val_str = v.as_str().unwrap_or("");
-                path = path.replace(&format!("${}", k), val_str);
+                path = path
+                    .replace(&format!("${{{}}}", k), val_str)
+                    .replace(&format!("${}", k), val_str);
             }
         }
         let content =
@@ -225,12 +227,20 @@ async fn execute_linux_command(
         }));
     }
 
-    let mut cmd = tokio::process::Command::new(meta.adapter_cmd.clone());
-    let mut args: Vec<String> = meta
-        .adapter_args
-        .split_whitespace()
-        .map(|s| s.to_string())
-        .collect();
+    let (binary, extra_cmd_args) = if let Some((cmd, rest)) = meta.adapter_cmd.split_once(' ') {
+        (
+            cmd,
+            rest.split_whitespace()
+                .map(String::from)
+                .collect::<Vec<_>>(),
+        )
+    } else {
+        (meta.adapter_cmd.as_str(), Vec::new())
+    };
+
+    let mut cmd = tokio::process::Command::new(binary);
+    let mut args: Vec<String> = extra_cmd_args;
+    args.extend(meta.adapter_args.split_whitespace().map(|s| s.to_string()));
 
     if let Some(obj) = arguments.as_object() {
         for arg in &mut args {
@@ -239,17 +249,34 @@ async fn execute_linux_command(
                     serde_json::Value::String(s) => s.clone(),
                     other => other.to_string(),
                 };
-                *arg = arg.replace(&format!("${}", k), &val_str);
+                *arg = arg
+                    .replace(&format!("${{{}}}", k), &val_str)
+                    .replace(&format!("${}", k), &val_str);
             }
         }
     }
 
+    // Drop optional placeholders that were not provided in arguments
+    args.retain(|arg| !arg.contains('$'));
+
     cmd.args(&args);
 
     let output = match tokio::time::timeout(timeout, cmd.output()).await {
-        Ok(res) => res.map_err(|e| PicoError::ToolExecution {
-            tool: meta.canonical_id.clone(),
-            message: format!("Failed to execute process: {}", e),
+        Ok(res) => res.map_err(|e| {
+            if e.kind() == std::io::ErrorKind::NotFound {
+                PicoError::ToolExecution {
+                    tool: meta.canonical_id.clone(),
+                    message: format!(
+                        "Tool dependency '{}' is not installed or not in PATH on this system",
+                        binary
+                    ),
+                }
+            } else {
+                PicoError::ToolExecution {
+                    tool: meta.canonical_id.clone(),
+                    message: format!("Failed to execute process '{}': {}", binary, e),
+                }
+            }
         })?,
         Err(_) => {
             return Err(PicoError::ToolExecution {
@@ -266,7 +293,8 @@ async fn execute_linux_command(
         return Err(PicoError::ToolExecution {
             tool: meta.canonical_id.clone(),
             message: format!(
-                "Command exited with code {:?}: {}",
+                "Command '{}' exited with code {:?}: {}",
+                binary,
                 output.status.code(),
                 stderr
             ),
