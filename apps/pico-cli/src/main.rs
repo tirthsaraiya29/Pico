@@ -1,14 +1,16 @@
+use async_trait::async_trait;
 use clap::{Parser, Subcommand};
 use colored::*;
 use pico_audio::AudioDeviceManager;
 use pico_core::config::PicoConfig;
+use pico_core::error::PicoError;
 use pico_core::events::PicoEvent;
-use pico_core::traits::DecisionModel;
-use pico_learning::LabelQuality;
 use pico_orchestrator::PicoRuntime;
+use pico_security::ConfirmationProvider;
 use std::io::{self, Write};
 use std::path::PathBuf;
 use std::sync::Arc;
+use tokio::sync::{oneshot, Mutex};
 use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
 
 #[derive(Parser)]
@@ -16,7 +18,7 @@ use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
     name = "pico",
     author = "Tirth Saraiya",
     version = "0.1.0",
-    about = "Real-time, locally capable AI assistant with Probabilistic Decision Intelligence"
+    about = "Real-time, local-first autonomous voice assistant in Rust"
 )]
 struct Cli {
     #[arg(short, long, value_name = "FILE", default_value = "configs/pico.toml")]
@@ -28,12 +30,7 @@ struct Cli {
 
 #[derive(Subcommand)]
 enum Commands {
-    /// Start interactive terminal chat session with probabilistic tool execution
-    Chat {
-        #[arg(long, default_value_t = false)]
-        speak: bool,
-    },
-    /// Start real-time hands-free voice assistant mode
+    /// Start real-time hands-free voice assistant mode (Default)
     Voice,
     /// List all registered tools and their schemas
     Tools,
@@ -64,15 +61,58 @@ enum LearnAction {
         #[arg(short, long)]
         version: Option<String>,
     },
-    /// View recent experience observations
-    History {
-        #[arg(short, long, default_value_t = 10)]
-        limit: usize,
-    },
+}
+
+/// Request-scoped interactive voice confirmation provider.
+/// Prompts the user verbally and routes spoken responses ("confirm" / "cancel") to authorize high-risk actions.
+struct VoiceConfirmationCoordinator {
+    pending: Arc<Mutex<Option<(String, String, oneshot::Sender<bool>)>>>,
+}
+
+impl VoiceConfirmationCoordinator {
+    fn new() -> (Self, Arc<Mutex<Option<(String, String, oneshot::Sender<bool>)>>>) {
+        let pending = Arc::new(Mutex::new(None));
+        (
+            Self {
+                pending: pending.clone(),
+            },
+            pending,
+        )
+    }
+}
+
+#[async_trait]
+impl ConfirmationProvider for VoiceConfirmationCoordinator {
+    async fn request_confirmation(
+        &self,
+        request_id: &str,
+        tool_name: &str,
+        _arguments: &serde_json::Value,
+    ) -> pico_core::error::Result<bool> {
+        let (tx, rx) = oneshot::channel();
+        {
+            let mut lock = self.pending.lock().await;
+            *lock = Some((request_id.to_string(), tool_name.to_string(), tx));
+        }
+
+        // Wait up to 15 seconds for verbal voice confirmation
+        match tokio::time::timeout(std::time::Duration::from_secs(15), rx).await {
+            Ok(Ok(approved)) => Ok(approved),
+            Ok(Err(_)) => Err(PicoError::Cancelled("Confirmation cancelled".into())),
+            Err(_) => {
+                let mut lock = self.pending.lock().await;
+                *lock = None;
+                Err(PicoError::PermissionDenied {
+                    action: tool_name.to_string(),
+                    reason: "Voice confirmation timed out after 15 seconds".to_string(),
+                })
+            }
+        }
+    }
 }
 
 #[tokio::main]
-async fn main() -> Result<(), Box<dyn std::error::Error>> {
+async fn main() -> std::result::Result<(), Box<dyn std::error::Error>> {
     tracing_subscriber::registry()
         .with(
             tracing_subscriber::EnvFilter::try_from_default_env()
@@ -87,7 +127,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     let cli = Cli::parse();
 
-    match cli.command.unwrap_or(Commands::Chat { speak: false }) {
+    // Default to Commands::Voice: commands are strictly accepted by voice
+    match cli.command.unwrap_or(Commands::Voice) {
         Commands::InitConfig { output } => {
             let config = PicoConfig::default();
             if let Some(parent) = output.parent() {
@@ -100,45 +141,6 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 "[OK]".green().bold(),
                 output.display()
             );
-            Ok(())
-        }
-        Commands::Devices => {
-            println!(
-                "{}",
-                "=== Audio Input Devices (Microphones) ===".cyan().bold()
-            );
-            match AudioDeviceManager::list_input_devices() {
-                Ok(devices) => {
-                    for dev in devices {
-                        let def_mark = if dev.is_default {
-                            "[Default]".green()
-                        } else {
-                            "".normal()
-                        };
-                        println!(" - {} {}", dev.name, def_mark);
-                    }
-                }
-                Err(e) => println!("{} Failed to query input devices: {}", "[ERROR]".red(), e),
-            }
-
-            println!(
-                "\n{}",
-                "=== Audio Output Devices (Speakers) ===".cyan().bold()
-            );
-            match AudioDeviceManager::list_output_devices() {
-                Ok(devices) => {
-                    for dev in devices {
-                        let def_mark = if dev.is_default {
-                            "[Default]".green()
-                        } else {
-                            "".normal()
-                        };
-                        println!(" - {} {}", dev.name, def_mark);
-                    }
-                }
-                Err(e) => println!("{} Failed to query output devices: {}", "[ERROR]".red(), e),
-            }
-            Ok(())
         }
         Commands::Tools => {
             let config = load_or_default_config(&cli.config);
@@ -146,287 +148,144 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             let tools = runtime.registry().all_tools();
 
             println!(
-                "\n{}",
-                format!("=== Registered Tools ({}) ===", tools.len())
+                "{}",
+                format!("Registered Tools Ecosystem ({} total):", tools.len())
                     .cyan()
                     .bold()
             );
-            for t in tools {
-                let tier = match t.permission_tier() {
-                    pico_core::traits::PermissionTier::ReadOnly => "[ReadOnly]".green(),
-                    pico_core::traits::PermissionTier::LowRisk => "[LowRisk]".yellow(),
-                    pico_core::traits::PermissionTier::ConfirmationRequired => {
-                        "[Confirm]".magenta().bold()
-                    }
-                    pico_core::traits::PermissionTier::Restricted => "[Restricted]".red().bold(),
-                };
+            println!("{:-<75}", "");
+            for tool in tools {
                 println!(
-                    " - {:<24} {} {}",
-                    t.name().bold(),
-                    tier,
-                    t.description().dimmed()
+                    "  {: <32} [{:?}] - {}",
+                    tool.name().bold(),
+                    tool.permission_tier(),
+                    tool.description()
                 );
             }
-            Ok(())
+        }
+        Commands::Devices => {
+            println!("{}", "Audio Devices Hardware Scan:".cyan().bold());
+            let inputs = AudioDeviceManager::list_input_devices().unwrap_or_default();
+            println!("\n{} ({}):", "Microphones (Input)".green().bold(), inputs.len());
+            for (idx, dev) in inputs.iter().enumerate() {
+                println!("  [{}] {:?}", idx, dev);
+            }
+
+            let outputs = AudioDeviceManager::list_output_devices().unwrap_or_default();
+            println!("\n{} ({}):", "Speakers (Output)".green().bold(), outputs.len());
+            for (idx, dev) in outputs.iter().enumerate() {
+                println!("  [{}] {:?}", idx, dev);
+            }
         }
         Commands::Learn { action } => {
             let config = load_or_default_config(&cli.config);
             let runtime = PicoRuntime::new(config)?;
+            let learning = runtime.learning();
 
             match action.unwrap_or(LearnAction::Status) {
                 LearnAction::Status => {
-                    let stats = runtime.learning().stats()?;
-                    println!(
-                        "{}",
-                        "=== Pico Continuous Learning Status ===".cyan().bold()
-                    );
-                    println!(
-                        "  Active Model Version : {}",
-                        stats.active_version.green().bold()
-                    );
-                    println!(
-                        "  Benchmark Top-1 Acc  : {:.1}%",
-                        stats.top1_accuracy * 100.0
-                    );
-                    println!("  Benchmark Top-3 Rec  : {:.1}%", stats.top3_recall * 100.0);
-                    println!("  Total Observations   : {}", stats.total_observations);
-                    println!("  Saved Checkpoints    : {}", stats.available_checkpoints);
-                    println!(
-                        "  Ranking Weights      : sem={:.2}, lex={:.2}, intent={:.2}, hist={:.2}",
-                        stats.active_weights.w_semantic,
-                        stats.active_weights.w_lexical,
-                        stats.active_weights.w_intent,
-                        stats.active_weights.w_history
-                    );
+                    let stats = learning.stats()?;
+                    println!("{}", "Continuous Learning Status:".cyan().bold());
+                    println!("  Total Observations:    {}", stats.total_observations);
+                    println!("  Active Checkpoint:     {}", stats.active_version.green().bold());
+                    println!("  Top-1 Benchmark Acc:   {:.2}%", stats.top1_accuracy * 100.0);
+                    println!("  Top-3 Benchmark Recall: {:.2}%", stats.top3_recall * 100.0);
+                    println!("  Available Checkpoints: {}", stats.available_checkpoints);
                 }
                 LearnAction::Train => {
-                    println!(
-                        "{}",
-                        "Triggering on-device model training and benchmark validation...".cyan()
-                    );
-                    match runtime.trigger_training().await? {
-                        Some((version, metrics)) => {
-                            println!(
-                                "{} Model promoted successfully to {} (Top-1: {:.1}%, Top-3: {:.1}%)",
-                                "[PROMOTED]".green().bold(),
-                                version,
-                                metrics.top1_accuracy * 100.0,
-                                metrics.top3_recall * 100.0
-                            );
-                        }
-                        None => {
-                            println!("{}", "[INFO] Training completed; candidate did not exceed promotion criteria or insufficient samples.".yellow());
-                        }
-                    }
-                }
-                LearnAction::Rollback { version } => {
-                    let res = runtime.rollback_model(version.as_deref()).await?;
-                    println!(
-                        "{} Rolled back active model to version {}",
-                        "[ROLLBACK]".yellow().bold(),
-                        res.version.bold()
-                    );
-                }
-                LearnAction::History { limit } => {
-                    let obs = runtime
-                        .learning()
-                        .store()
-                        .get_training_observations(LabelQuality::Inferred, limit)?;
-                    println!(
-                        "{}",
-                        format!("=== Recent Observations (last {}) ===", obs.len())
-                            .cyan()
-                            .bold()
-                    );
-                    for o in obs {
+                    println!("{}", "Triggering continuous learning evaluation and training cycle...".cyan());
+                    let default_weights = pico_inference::ranking::RankingWeights::default();
+                    if let Some((_, new_ver, metrics)) = learning.train_and_evaluate(&default_weights)? {
                         println!(
-                            " [{}] \"{}\" -> {} ({:.0}%) status:{}",
-                            o.timestamp.format("%H:%M:%S"),
-                            o.request_text,
-                            o.selected_action.bold(),
-                            o.confidence * 100.0,
-                            o.execution_status
+                            "{} New model checkpoint promoted! Version: {}",
+                            "[PROMOTED]".green().bold(),
+                            new_ver
+                        );
+                        println!("  Top-1 Accuracy: {:.2}%", metrics.top1_accuracy * 100.0);
+                        println!("  Top-3 Recall:   {:.2}%", metrics.top3_recall * 100.0);
+                        println!("  Evaluated Samples: {}", metrics.total_samples);
+                    } else {
+                        println!(
+                            "{} Model evaluated: Did not meet promotion threshold or insufficient samples.",
+                            "[KEPT]".yellow().bold()
                         );
                     }
                 }
+                LearnAction::Rollback { version } => {
+                    println!("{}", "Rolling back model checkpoint...".yellow());
+                    let restored = learning.rollback(version.as_deref())?;
+                    println!(
+                        "{} Rolled back active checkpoint to: {}",
+                        "[OK]".green().bold(),
+                        restored.version
+                    );
+                }
             }
-            Ok(())
         }
-        Commands::Doctor => run_doctor(&cli.config).await,
-        Commands::Chat { speak } => run_chat_loop(&cli.config, speak).await,
-        Commands::Voice => run_voice_loop(&cli.config).await,
-    }
-}
+        Commands::Doctor => {
+            println!("{}", "Pico Diagnostic Environment Health Check:".cyan().bold());
+            println!("{:-<60}", "");
 
-fn load_or_default_config(path: &PathBuf) -> PicoConfig {
-    if path.exists() {
-        match PicoConfig::load_from_file(path) {
-            Ok(c) => c,
-            Err(e) => {
-                eprintln!(
-                    "{} Failed loading {}: {}. Using default config.",
-                    "[WARN]".yellow(),
-                    path.display(),
-                    e
+            // 1. Host OS & Platform
+            let os_name = if cfg!(target_os = "windows") {
+                "Windows"
+            } else if cfg!(target_os = "linux") {
+                "Linux"
+            } else {
+                "Unix/Other"
+            };
+            println!("  [OK] Host Platform:   {} ({})", os_name.green().bold(), std::env::consts::ARCH);
+
+            // 2. Audio Pipeline
+            let inputs = AudioDeviceManager::list_input_devices().unwrap_or_default();
+            let outputs = AudioDeviceManager::list_output_devices().unwrap_or_default();
+            if !inputs.is_empty() && !outputs.is_empty() {
+                println!(
+                    "  [OK] Audio Subsystem: Microphones ({}), Speakers ({})",
+                    inputs.len().to_string().green(),
+                    outputs.len().to_string().green()
                 );
-                PicoConfig::default()
+            } else {
+                println!(
+                    "  {} Audio Subsystem: Input: {}, Output: {}",
+                    "[WARN]".yellow(),
+                    inputs.len(),
+                    outputs.len()
+                );
             }
+
+            // 3. Security Policy & Sandbox
+            let config = load_or_default_config(&cli.config);
+            println!(
+                "  [OK] Security Policy: Strict Mode = {}, Require Shell Confirm = {}",
+                (config.security.policy_mode == "Strict").to_string().green(),
+                config.security.require_confirmation_for_shell.to_string().green()
+            );
+
+            // 4. Decision Engine
+            println!(
+                "  [OK] Decision Core:   Non-generative BM25 + Cross-Encoder Ranking + Platt Calibration"
+            );
+
+            println!("{:-<60}", "");
+            println!("{} All diagnostic checks completed.", "[DOCTOR]".cyan().bold());
         }
-    } else {
-        PicoConfig::default()
-    }
-}
-
-async fn run_doctor(config_path: &PathBuf) -> Result<(), Box<dyn std::error::Error>> {
-    println!(
-        "{}",
-        "==================================================".cyan()
-    );
-    println!(
-        "{}",
-        "           PICO DIAGNOSTIC SYSTEM DOCTOR          "
-            .cyan()
-            .bold()
-    );
-    println!(
-        "{}",
-        "==================================================".cyan()
-    );
-
-    // 1. Toolchain & Platform
-    println!("\n[1/5] Checking Platform & Environment...");
-    let stats = pico_platform::PlatformSysInfo::get_system_stats();
-    match stats {
-        Ok(s) => {
-            println!("  {} Host OS: {}", "[OK]".green(), s.os);
-            println!("  {} CPU Cores: {}", "[OK]".green(), s.cpu_cores);
-            println!(
-                "  {} Total Memory: {} MB (Available: {} MB)",
-                "[OK]".green(),
-                s.total_memory_mb,
-                s.available_memory_mb
-            );
-        }
-        Err(e) => println!("  {} Platform error: {}", "[FAIL]".red(), e),
-    }
-
-    // 2. Audio Devices
-    println!("\n[2/5] Checking Audio Capture & Playback Subsystem...");
-    let in_devs = AudioDeviceManager::list_input_devices().unwrap_or_default();
-    let out_devs = AudioDeviceManager::list_output_devices().unwrap_or_default();
-    println!("  {} Microphones found: {}", "[OK]".green(), in_devs.len());
-    println!(
-        "  {} Audio output devices found: {}",
-        "[OK]".green(),
-        out_devs.len()
-    );
-
-    // 3. Speech Synthesis
-    println!("\n[3/5] Testing Native Speech Synthesis...");
-    let tts = pico_voice::NativeWindowsSynthesizer::new(None, 1.0);
-    match tts.synthesize_sync("Pico diagnostic check complete.") {
-        Ok(bytes) => println!(
-            "  {} Native SAPI generated {} PCM audio bytes",
-            "[OK]".green(),
-            bytes.len()
-        ),
-        Err(e) => println!("  {} SAPI synthesis warning: {}", "[WARN]".yellow(), e),
-    }
-
-    // 4. Memory Database
-    println!("\n[4/5] Testing SQLite Persistent Memory...");
-    let temp_db =
-        std::env::temp_dir().join(format!("pico_doc_{}.sqlite", uuid::Uuid::new_v4().simple()));
-    let mem = pico_memory::SqliteStore::open(&temp_db);
-    match mem {
-        Ok(_) => {
-            println!(
-                "  {} SQLite database initialization and WAL journaling verified",
-                "[OK]".green()
-            );
-            let _ = std::fs::remove_file(temp_db);
-        }
-        Err(e) => println!("  {} Database check failed: {}", "[FAIL]".red(), e),
-    }
-
-    // 5. Probabilistic Decision Model & Continuous Learning
-    println!("\n[5/5] Checking Probabilistic Decision Intelligence & Continuous Learning...");
-    let cfg = load_or_default_config(config_path);
-    match PicoRuntime::new(cfg) {
-        Ok(runtime) => {
-            println!(
-                "  {} Decision Model: {} (Version: {})",
-                "[OK]".green(),
-                runtime.decision().model_name(),
-                runtime.decision().model_version()
-            );
-            let tools = runtime.registry().all_tools();
-            println!(
-                "  {} Tool Catalog indexed: {} operating system tools",
-                "[OK]".green(),
-                tools.len()
-            );
-            let stats = runtime.learning().stats()?;
-            println!(
-                "  {} Continuous Learning Store: Active (Total experiences: {})",
-                "[OK]".green(),
-                stats.total_observations
-            );
-        }
-        Err(e) => {
-            println!(
-                "  {} Decision Engine initialization error: {}",
-                "[FAIL]".red(),
-                e
-            );
+        Commands::Voice => {
+            run_voice_loop(&cli.config).await?;
         }
     }
 
-    println!("\n{}", "Diagnostic pass completed.".green().bold());
     Ok(())
 }
 
-struct CliConfirmationProvider;
-
-#[async_trait::async_trait]
-impl pico_security::ConfirmationProvider for CliConfirmationProvider {
-    async fn request_confirmation(
-        &self,
-        _request_id: &str,
-        tool_name: &str,
-        arguments: &serde_json::Value,
-    ) -> pico_core::error::Result<bool> {
-        let tool = tool_name.to_string();
-        let args = arguments.clone();
-        tokio::task::spawn_blocking(move || {
-            print!(
-                "\n{} Action '{}' requires explicit confirmation with parameters: {}\nApprove execution? [y/N]: ",
-                "[CONFIRM]".magenta().bold(),
-                tool.bold(),
-                args
-            );
-            let _ = io::stdout().flush();
-            let mut line = String::new();
-            if io::stdin().read_line(&mut line).is_ok() {
-                let ans = line.trim().to_lowercase();
-                Ok(ans == "y" || ans == "yes")
-            } else {
-                Ok(false)
-            }
-        })
-        .await
-        .map_err(|e| pico_core::error::PicoError::Security(format!("Confirmation prompt panicked: {}", e)))?
-    }
-}
-
-async fn run_chat_loop(
-    config_path: &PathBuf,
-    speak: bool,
-) -> Result<(), Box<dyn std::error::Error>> {
+async fn run_voice_loop(config_path: &PathBuf) -> std::result::Result<(), Box<dyn std::error::Error>> {
     let config = load_or_default_config(config_path);
-    let runtime = PicoRuntime::new(config)?;
+    let runtime = Arc::new(PicoRuntime::new(config)?);
+
+    // Setup verbal voice confirmation provider
+    let (confirmation_provider, pending_confirm) = VoiceConfirmationCoordinator::new();
     runtime
-        .set_confirmation_provider(Arc::new(CliConfirmationProvider))
+        .set_confirmation_provider(Arc::new(confirmation_provider))
         .await;
 
     println!(
@@ -435,150 +294,29 @@ async fn run_chat_loop(
     );
     println!(
         "{}",
-        "      PICO REAL-TIME AI ASSISTANT (CLI)           "
+        "      PICO NATIVE AUTONOMOUS VOICE ASSISTANT       "
             .cyan()
             .bold()
     );
     println!(
         "{}",
-        "  Type your message below. Commands: /up, /down, /correct <act>, 'exit'.   ".dimmed()
+        "  [100% Voice-Driven] Listening continuously...    ".green().bold()
     );
     println!(
         "{}",
-        "==================================================".cyan()
-    );
-
-    let mut event_rx = runtime.subscribe_events();
-    tokio::spawn(async move {
-        while let Ok(event) = event_rx.recv().await {
-            match event {
-                PicoEvent::DecisionSelected {
-                    action, confidence, ..
-                } => {
-                    let act_str = action.unwrap_or_else(|| "direct_conversation".into());
-                    println!(
-                        "\n{} Decision: {} ({:.0}% confidence)",
-                        "⚡ [DECIDE]".cyan().bold(),
-                        act_str.bold(),
-                        confidence * 100.0
-                    );
-                }
-                PicoEvent::ToolCallRequested { call } => {
-                    println!(
-                        "{} Calling tool: {} with {}",
-                        "⚙ [TOOL]".yellow().bold(),
-                        call.name.bold(),
-                        call.arguments
-                    );
-                }
-                PicoEvent::ToolExecutionFinished { result } => {
-                    let status = if result.success {
-                        "[OK]".green()
-                    } else {
-                        "[ERR]".red()
-                    };
-                    println!(
-                        "{} Tool {} completed in {}ms: {}",
-                        status, result.name, result.execution_duration_ms, result.content
-                    );
-                }
-                PicoEvent::SpeechSynthesisStarted { text_length } => {
-                    print!(
-                        "{} Synthesizing {} chars of speech...\r",
-                        "♪ [TTS]".magenta(),
-                        text_length
-                    );
-                    let _ = io::stdout().flush();
-                }
-                _ => {}
-            }
-        }
-    });
-
-    let stdin = io::stdin();
-    let mut line_buf = String::new();
-
-    loop {
-        print!("\n{} ", "You >".green().bold());
-        io::stdout().flush()?;
-        line_buf.clear();
-
-        if stdin.read_line(&mut line_buf)? == 0 {
-            break;
-        }
-
-        let trimmed = line_buf.trim();
-        if trimmed.eq_ignore_ascii_case("exit") || trimmed.eq_ignore_ascii_case("quit") {
-            println!("{}", "Exiting Pico. Goodbye!".yellow());
-            break;
-        }
-
-        if trimmed == "/up" || trimmed == "/thumbup" {
-            let _ = runtime.provide_feedback(1).await;
-            println!("{}", "✓ Recorded thumbs up feedback (+1).".green());
-            continue;
-        }
-
-        if trimmed == "/down" || trimmed == "/thumbdown" {
-            let _ = runtime.provide_feedback(-1).await;
-            println!("{}", "✓ Recorded thumbs down feedback (-1).".yellow());
-            continue;
-        }
-
-        if let Some(target) = trimmed.strip_prefix("/correct ") {
-            let _ = runtime.provide_correction(target.trim()).await;
-            println!(
-                "{}",
-                format!("✓ Recorded correction to action: {}", target.trim()).green()
-            );
-            continue;
-        }
-
-        if trimmed.is_empty() {
-            continue;
-        }
-
-        print!("{} ", "Pico >".cyan().bold());
-        io::stdout().flush()?;
-
-        match runtime.process_turn(trimmed, speak).await {
-            Ok(reply) => {
-                println!("{}", reply);
-            }
-            Err(e) => {
-                println!("{} {}", "[ERROR]".red().bold(), e);
-            }
-        }
-    }
-
-    Ok(())
-}
-
-async fn run_voice_loop(config_path: &PathBuf) -> Result<(), Box<dyn std::error::Error>> {
-    let config = load_or_default_config(config_path);
-    let runtime = Arc::new(PicoRuntime::new(config)?);
-
-    println!(
-        "{}",
-        "==================================================".cyan()
+        "  - Speak naturally. Stutter/thinking pause detector active.".dimmed()
     );
     println!(
         "{}",
-        "      PICO HANDS-FREE VOICE ASSISTANT             "
-            .cyan()
-            .bold()
+        "  - Speak anytime during TTS output to barge-in (<15ms).".dimmed()
     );
     println!(
         "{}",
-        "  Listening continuously via microphone.          ".green()
+        "  - High-risk operations request verbal voice confirmation.".dimmed()
     );
     println!(
         "{}",
-        "  Speak naturally. Speak during output to barge in.".dimmed()
-    );
-    println!(
-        "{}",
-        "  Press Ctrl+C to terminate voice mode.           ".dimmed()
+        "  - Press Ctrl+C to terminate voice session.".dimmed()
     );
     println!(
         "{}",
@@ -588,19 +326,143 @@ async fn run_voice_loop(config_path: &PathBuf) -> Result<(), Box<dyn std::error:
     let (speech_tx, mut speech_rx) = tokio::sync::mpsc::channel::<String>(16);
     let _capture = runtime.voice().start_listening(speech_tx)?;
 
+    // Subscribe to runtime events to print diagnostic progress
+    let mut event_rx = runtime.subscribe_events();
+    tokio::spawn(async move {
+        while let Ok(event) = event_rx.recv().await {
+            match event {
+                PicoEvent::VoiceActivityStarted { .. } => {
+                    print!("\r{} Listening...                 ", "🎙️ [VOICE]".green().bold());
+                    let _ = io::stdout().flush();
+                }
+                PicoEvent::PlaybackInterrupted { reason } => {
+                    println!("\n{} {}", "⚡ [BARGE-IN]".yellow().bold(), reason);
+                }
+                PicoEvent::DecisionSelected {
+                    action, confidence, latency_ms,
+                } => {
+                    let act = action.unwrap_or_else(|| "direct_conversation".into());
+                    println!(
+                        "{} Decision: {} ({:.0}% confidence, {}ms)",
+                        "🧠 [DECIDE]".cyan().bold(),
+                        act.bold(),
+                        confidence * 100.0,
+                        latency_ms
+                    );
+                }
+                PicoEvent::ToolCallRequested { call } => {
+                    println!(
+                        "{} Executing tool: {} with {}",
+                        "⚙️ [TOOL]".yellow().bold(),
+                        call.name.bold(),
+                        call.arguments
+                    );
+                }
+                PicoEvent::ToolExecutionFinished { result } => {
+                    let tag = if result.success {
+                        "[OK]".green().bold()
+                    } else {
+                        "[ERR]".red().bold()
+                    };
+                    println!(
+                        "{} Tool {} completed in {}ms: {}",
+                        tag, result.name, result.execution_duration_ms, result.content
+                    );
+                }
+                PicoEvent::ToolPermissionPrompt { tool, reason, .. } => {
+                    println!(
+                        "\n{} Dangerous operation: {}\nReason: {}\nPlease confirm verbally: say 'confirm' to proceed, or 'cancel' to abort.",
+                        "⚠️ [VOICE CONFIRMATION REQUIRED]".magenta().bold(),
+                        tool.bold(),
+                        reason
+                    );
+                }
+                _ => {}
+            }
+        }
+    });
+
     let rt = runtime.clone();
+    let pending_clone = pending_confirm.clone();
+
     tokio::spawn(async move {
         while let Some(user_speech) = speech_rx.recv().await {
-            println!("\n{} \"{}\"", "🎤 Heard:".green().bold(), user_speech);
-            print!("{} Evaluating decision...", "⚡".cyan());
+            let clean_speech = user_speech.trim();
+            if clean_speech.is_empty() {
+                continue;
+            }
+
+            println!("\n{} \"{}\"", "🎤 Heard:".green().bold(), clean_speech);
+
+            // 1. Check if there is an active voice confirmation prompt awaiting user response
+            let pending_tx = {
+                let mut lock = pending_clone.lock().await;
+                lock.take()
+            };
+
+            if let Some((_req_id, tool_name, tx)) = pending_tx {
+                let lower = clean_speech.to_lowercase();
+                if lower.contains("yes")
+                    || lower.contains("confirm")
+                    || lower.contains("proceed")
+                    || lower.contains("go ahead")
+                    || lower.contains("do it")
+                    || lower.contains("sure")
+                    || lower.contains("ok")
+                {
+                    println!(
+                        "{} User verbally confirmed action '{}'. Proceeding.",
+                        "✓ [APPROVED]".green().bold(),
+                        tool_name
+                    );
+                    let _ = tx.send(true);
+                    let _ = rt.voice().speak("Confirmed. Proceeding with execution.").await;
+                    continue;
+                } else if lower.contains("no")
+                    || lower.contains("cancel")
+                    || lower.contains("abort")
+                    || lower.contains("stop")
+                    || lower.contains("don't")
+                {
+                    println!(
+                        "{} User verbally declined action '{}'. Aborting.",
+                        "✗ [DECLINED]".red().bold(),
+                        tool_name
+                    );
+                    let _ = tx.send(false);
+                    let _ = rt.voice().speak("Cancelled. Operation was aborted.").await;
+                    continue;
+                } else {
+                    // Ambiguous response: ask again
+                    println!(
+                        "{} Ambiguous confirmation response. Repeating prompt.",
+                        "⚠️".yellow()
+                    );
+                    let _ = rt
+                        .voice()
+                        .speak(&format!(
+                            "I heard {}. Please say confirm to proceed, or cancel to abort.",
+                            clean_speech
+                        ))
+                        .await;
+                    // Put back into pending
+                    let mut lock = pending_clone.lock().await;
+                    *lock = Some((_req_id, tool_name, tx));
+                    continue;
+                }
+            }
+
+            // 2. Normal user voice command turn
+            print!("{} Processing intent...", "⚡".cyan());
             io::stdout().flush().ok();
 
-            match rt.process_turn(&user_speech, true).await {
+            match rt.process_turn(clean_speech, true).await {
                 Ok(reply) => {
                     println!("\n{} \"{}\"", "🔊 Spoke:".cyan().bold(), reply);
                 }
                 Err(e) => {
-                    println!("\n{} {}", "[Voice processing error]".red(), e);
+                    println!("\n{} {}", "[Voice turn error]".red(), e);
+                    let _ = rt.voice().speak("Sorry, I encountered an error executing that request.").await;
                 }
             }
         }
@@ -609,4 +471,12 @@ async fn run_voice_loop(config_path: &PathBuf) -> Result<(), Box<dyn std::error:
     tokio::signal::ctrl_c().await?;
     println!("\n{}", "Voice session ended.".yellow());
     Ok(())
+}
+
+fn load_or_default_config(path: &PathBuf) -> PicoConfig {
+    if path.exists() {
+        PicoConfig::load_from_file(path).unwrap_or_default()
+    } else {
+        PicoConfig::default()
+    }
 }

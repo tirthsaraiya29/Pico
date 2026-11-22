@@ -141,12 +141,38 @@ impl SecurityPolicy {
     ) -> Result<()> {
         match tier {
             PermissionTier::Restricted => {
-                warn!(tool = %tool_name, "Security violation: Attempted execution of Restricted tool");
-                Err(PicoError::PermissionDenied {
-                    action: tool_name.to_string(),
-                    reason: "Tool is marked Restricted and cannot be executed under any policy"
-                        .to_string(),
-                })
+                let request_id = uuid::Uuid::new_v4().to_string();
+                if let Some(ref provider) = self.confirmation_provider {
+                    let approved = provider
+                        .request_confirmation(&request_id, tool_name, arguments)
+                        .await?;
+                    if approved {
+                        // High-risk/dangerous action explicitly approved by the user
+                        Ok(())
+                    } else {
+                        Err(PicoError::PermissionDenied {
+                            action: tool_name.to_string(),
+                            reason: "Dangerous action was declined by the user".to_string(),
+                        })
+                    }
+                } else if let Some(ref handler) = self.confirmation_handler {
+                    let approved = (handler)(tool_name, arguments)?;
+                    if approved {
+                        Ok(())
+                    } else {
+                        Err(PicoError::PermissionDenied {
+                            action: tool_name.to_string(),
+                            reason: "Dangerous action was declined by the user".to_string(),
+                        })
+                    }
+                } else {
+                    warn!(tool = %tool_name, "High-risk tool execution denied: Requires explicit confirmation");
+                    Err(PicoError::PermissionDenied {
+                        action: tool_name.to_string(),
+                        reason: "Tool is high-risk/dangerous and requires explicit user voice confirmation, but no interactive confirmation provider is attached"
+                            .to_string(),
+                    })
+                }
             }
             PermissionTier::ConfirmationRequired => {
                 let request_id = uuid::Uuid::new_v4().to_string();

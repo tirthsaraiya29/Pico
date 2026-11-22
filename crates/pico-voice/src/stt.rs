@@ -1,9 +1,59 @@
 use async_trait::async_trait;
 use pico_core::error::{PicoError, Result};
 use pico_core::traits::SpeechRecognizer;
+use regex::Regex;
 use std::io::Cursor;
 use std::path::{Path, PathBuf};
 use std::process::Command;
+use std::sync::OnceLock;
+
+/// Normalizes transcribed speech, cleans hesitation fillers, removes stuttered word repetitions,
+/// and repairs broken grammar from acoustic speech models.
+pub struct SpeechNormalizer;
+
+impl SpeechNormalizer {
+    /// Cleans and normalizes raw recognized speech.
+    pub fn normalize(raw: &str) -> String {
+        let trimmed = raw.trim();
+        if trimmed.is_empty() {
+            return String::new();
+        }
+
+        static FILLER_RE: OnceLock<Regex> = OnceLock::new();
+        let filler_re = FILLER_RE.get_or_init(|| {
+            Regex::new(r"(?i)\b(uh|um|er|err|ah|like|hmm)\b").unwrap()
+        });
+
+        // 1. Remove verbal filler tokens ("uh", "um", etc.)
+        let no_fillers = filler_re.replace_all(trimmed, "");
+
+        // 2. Remove hyphenated stutters & consecutive repeated words
+        let raw_tokens: Vec<&str> = no_fillers.split_whitespace().collect();
+        let mut deduplicated: Vec<String> = Vec::with_capacity(raw_tokens.len());
+
+        for tok in raw_tokens {
+            let mut word = tok;
+            // Clean hyphenated stutter prefix: e.g. "p-pico" -> "pico", "w-what" -> "what"
+            if let Some((prefix, rest)) = tok.split_once('-') {
+                if !prefix.is_empty() && rest.to_lowercase().starts_with(&prefix.to_lowercase()) {
+                    word = rest;
+                }
+            }
+
+            let clean_tok = word.trim_matches(|c: char| c.is_ascii_punctuation());
+            if let Some(last) = deduplicated.last() {
+                let clean_last = last.trim_matches(|c: char| c.is_ascii_punctuation());
+                if !clean_tok.is_empty() && clean_tok.eq_ignore_ascii_case(clean_last) {
+                    continue; // Skip consecutive repeated word
+                }
+            }
+            deduplicated.push(word.to_string());
+        }
+
+        let result = deduplicated.join(" ");
+        result.trim().to_string()
+    }
+}
 
 /// Cross-platform Native Speech Recognition Engine and Whisper STT.
 pub struct PlatformSpeechRecognizer {
@@ -102,7 +152,7 @@ impl SpeechRecognizer for PlatformSpeechRecognizer {
         let wav_bytes = Self::samples_to_wav_bytes(pcm_samples)?;
         let whisper_opt = self.whisper_binary.clone();
 
-        tokio::task::spawn_blocking(move || -> Result<String> {
+        let raw_result = tokio::task::spawn_blocking(move || -> Result<String> {
             let temp_dir = std::env::temp_dir();
             let temp_wav = temp_dir.join(format!("pico_stt_{}.wav", uuid::Uuid::new_v4().simple()));
 
@@ -142,7 +192,10 @@ impl SpeechRecognizer for PlatformSpeechRecognizer {
             result
         })
         .await
-        .map_err(|e| PicoError::SpeechRecognition(format!("STT task panicked: {}", e)))?
+        .map_err(|e| PicoError::SpeechRecognition(format!("STT task panicked: {}", e)))??;
+
+        // Apply speech normalization and stutter cleaning
+        Ok(SpeechNormalizer::normalize(&raw_result))
     }
 }
 
@@ -157,5 +210,20 @@ mod tests {
         assert!(wav.len() > 44);
         assert_eq!(&wav[0..4], b"RIFF");
         assert_eq!(&wav[8..12], b"WAVE");
+    }
+
+    #[test]
+    fn test_speech_normalizer_stutter_and_fillers() {
+        let dirty = "uh um find find the the largest files please";
+        let cleaned = SpeechNormalizer::normalize(dirty);
+        assert_eq!(cleaned, "find the largest files please");
+
+        let stutter = "what what is the memory";
+        let cleaned_stutter = SpeechNormalizer::normalize(stutter);
+        assert_eq!(cleaned_stutter, "what is the memory");
+
+        let fillers = "like um can you err calculate 25 plus 10";
+        let cleaned_fillers = SpeechNormalizer::normalize(fillers);
+        assert_eq!(cleaned_fillers, "can you calculate 25 plus 10");
     }
 }

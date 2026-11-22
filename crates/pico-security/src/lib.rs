@@ -136,6 +136,40 @@ mod tests {
         assert!(res.is_err());
     }
 
+    #[tokio::test]
+    async fn test_restricted_tool_allowed_with_user_confirmation() {
+        let mut mgr = ChannelConfirmationManager::new(Duration::from_millis(500));
+        let prompt_captured = std::sync::Arc::new(std::sync::Mutex::new(None));
+        let prompt_clone = prompt_captured.clone();
+
+        mgr.set_prompt_callback(Arc::new(move |req_id, _tool, _| {
+            *prompt_clone.lock().unwrap() = Some(req_id.to_string());
+        }));
+
+        let mgr = Arc::new(mgr);
+        let mut policy = SecurityPolicy::new(true, true);
+        policy.set_confirmation_provider(mgr.clone());
+
+        let policy_task = tokio::spawn(async move {
+            policy
+                .verify_permission(
+                    "system_format_drive",
+                    PermissionTier::Restricted,
+                    &serde_json::json!({ "drive": "D:" }),
+                )
+                .await
+        });
+
+        tokio::time::sleep(Duration::from_millis(20)).await;
+        let req_id = prompt_captured.lock().unwrap().clone().unwrap();
+
+        // User confirms the dangerous operation
+        let _ = mgr.respond(&req_id, true).await;
+
+        let result = policy_task.await.unwrap();
+        assert!(result.is_ok(), "Dangerous command should be allowed when explicitly confirmed by user");
+    }
+
     #[test]
     fn test_input_sanitizer_prompt_injection() {
         assert!(InputSanitizer::contains_prompt_injection(

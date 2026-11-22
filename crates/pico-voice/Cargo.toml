@@ -16,3 +16,4 @@ serde_json = { workspace = true }
 hound = { workspace = true }
 chrono = { workspace = true }
 uuid = { workspace = true }
+regex = { workspace = true }
