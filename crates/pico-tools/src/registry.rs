@@ -26,8 +26,17 @@ impl ToolRegistry {
 
     /// Registers a tool in the registry.
     pub fn register(&mut self, tool: Arc<dyn Tool>) {
-        info!(name = %tool.name(), "Registered tool");
+        debug!(name = %tool.name(), "Registered tool");
         self.tools.insert(tool.name().to_string(), tool);
+    }
+
+    /// Registers a batch of tools into the registry efficiently.
+    pub fn register_batch(&mut self, tools: Vec<Arc<dyn Tool>>) {
+        let count = tools.len();
+        for tool in tools {
+            self.tools.insert(tool.name().to_string(), tool);
+        }
+        info!(count = count, "Registered batch of tools");
     }
 
     /// Sets tool execution timeout.

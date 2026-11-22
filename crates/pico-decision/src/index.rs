@@ -32,6 +32,16 @@ impl ToolIndex {
         Self::default()
     }
 
+    /// Number of indexed tools.
+    pub fn len(&self) -> usize {
+        self.tools.len()
+    }
+
+    /// Returns true if no tools are indexed.
+    pub fn is_empty(&self) -> bool {
+        self.tools.is_empty()
+    }
+
     /// Registers an executable tool into the search index.
     pub fn register_tool(&mut self, tool: &Arc<dyn Tool>, category: &str, os: &str) {
         let entry = ToolEntry {
@@ -235,5 +245,70 @@ mod tests {
             index.retrieve_candidates("Which process is using RAM?", "windows", None, 2);
         assert_eq!(candidates.len(), 2);
         assert_eq!(candidates[0].name, "sys.list_processes");
+    }
+
+    #[test]
+    fn test_bm25_retrieval_at_massive_scale() {
+        let mut index = ToolIndex::new();
+        // Register 2,000 synthetic tools spanning various domains
+        for i in 0..2200 {
+            let cat = match (i / 2) % 22 {
+                0 => "filesystem",
+                1 => "storage",
+                2 => "process",
+                3 => "services",
+                4 => "apps",
+                5 => "diagnostics",
+                6 => "network_config",
+                7 => "network_monitor",
+                8 => "security",
+                9 => "permissions",
+                10 => "registry_config",
+                11 => "devices",
+                12 => "display",
+                13 => "audio",
+                14 => "power",
+                15 => "scheduler",
+                16 => "logs",
+                17 => "packages",
+                18 => "developer",
+                19 => "backup",
+                20 => "clipboard_shell",
+                _ => "maintenance",
+            };
+
+            let os = if i % 2 == 0 { "windows" } else { "linux" };
+            index.add_entry(ToolEntry {
+                name: format!("{}.{}.action_{}", os, cat, i),
+                description: format!(
+                    "Execute action {} for {} management and diagnostic control",
+                    i, cat
+                ),
+                category: cat.to_string(),
+                os: os.to_string(),
+                permission_tier: PermissionTier::LowRisk,
+                parameters_schema: serde_json::json!({}),
+            });
+        }
+
+        assert_eq!(index.len(), 2200);
+
+        // Benchmark retrieval latency
+        let start = std::time::Instant::now();
+        let results = index.retrieve_candidates(
+            "mute speaker volume audio endpoint",
+            "windows",
+            Some("audio"),
+            5,
+        );
+        let duration = start.elapsed();
+
+        assert!(!results.is_empty());
+        assert!(
+            duration.as_micros() < 5000,
+            "BM25 retrieval across 2200 tools must be sub-5ms (expected <1ms), took {:?}",
+            duration
+        );
+        assert!(results.iter().any(|cand| cand.category == "audio"));
     }
 }

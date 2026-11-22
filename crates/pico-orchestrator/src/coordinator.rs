@@ -65,21 +65,33 @@ impl PicoRuntime {
             let tool_idx = decision.tool_index();
             let mut idx = tool_idx.write().unwrap();
             for tool in registry.all_tools() {
-                let cat = match tool.name() {
-                    n if n.starts_with("sys.") || n.contains("system") => "system",
-                    n if n.starts_with("process.") || n.contains("process") => "process",
-                    n if n.starts_with("fs.") || n.contains("file") => "filesystem",
-                    n if n.starts_with("audio.") || n.contains("volume") => "audio",
-                    n if n.starts_with("power.") || n.contains("lock") => "power",
-                    n if n.starts_with("network.") || n.contains("ping") => "network",
-                    n if n.contains("calc") || n.contains("math") => "calculator",
-                    n if n.contains("timer") => "timer",
-                    n if n.contains("clip") => "clipboard",
-                    n if n.contains("web") || n.contains("http") => "network",
-                    _ => "utility",
+                let parts: Vec<&str> = tool.name().split('.').collect();
+                let cat = if (tool.name().starts_with("windows.")
+                    || tool.name().starts_with("linux."))
+                    && parts.len() >= 2
+                {
+                    parts[1]
+                } else {
+                    match tool.name() {
+                        n if n.starts_with("sys.") || n.contains("system") => "system",
+                        n if n.starts_with("process.") || n.contains("process") => "process",
+                        n if n.starts_with("fs.") || n.contains("file") => "filesystem",
+                        n if n.starts_with("audio.") || n.contains("volume") => "audio",
+                        n if n.starts_with("power.") || n.contains("lock") => "power",
+                        n if n.starts_with("network.") || n.contains("ping") => "network",
+                        n if n.contains("calc") || n.contains("math") => "calculator",
+                        n if n.contains("timer") => "timer",
+                        n if n.contains("clip") => "clipboard",
+                        n if n.contains("web") || n.contains("http") => "network",
+                        _ => "utility",
+                    }
                 };
 
-                let os = if tool.name().starts_with("audio.") || tool.name().starts_with("power.") {
+                let os = if tool.name().starts_with("windows.") {
+                    "windows"
+                } else if tool.name().starts_with("linux.") {
+                    "linux"
+                } else if tool.name().starts_with("audio.") || tool.name().starts_with("power.") {
                     "windows"
                 } else {
                     "all"

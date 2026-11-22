@@ -1,5 +1,6 @@
 pub mod audio_tools;
 pub mod calculator_parser;
+pub mod catalog;
 pub mod command_tools;
 pub mod filesystem_tools;
 pub mod network_tools;
@@ -9,6 +10,7 @@ pub mod system_tools;
 pub mod utility_tools;
 
 pub use audio_tools::{MuteAudioTool, SetMasterVolumeTool};
+pub use catalog::{get_linux_catalog, get_massive_tool_catalog, get_windows_catalog};
 pub use command_tools::ExecuteShellCommandTool;
 pub use filesystem_tools::{ReadFileTool, SearchFilesTool, WriteFileTool};
 pub use network_tools::PingHostTool;
@@ -22,7 +24,8 @@ pub use utility_tools::{CalculatorTool, ClipboardTool, FetchWebContentTool, Mana
 use pico_security::{AuditLogger, PathSandbox, SecurityPolicy};
 use std::sync::Arc;
 
-/// Builds the default standard tool registry populated with all core OS and utility tools.
+/// Builds the default standard tool registry populated with all core OS and utility tools,
+/// as well as the complete massive 2,000+ OS tool ecosystem.
 pub fn build_default_registry(
     security_policy: SecurityPolicy,
     sandbox: Arc<PathSandbox>,
@@ -60,6 +63,9 @@ pub fn build_default_registry(
     reg.register(Arc::new(ManageTimerTool));
     reg.register(Arc::new(ClipboardTool));
     reg.register(Arc::new(FetchWebContentTool::new()));
+
+    // Massive OS Tool Ecosystem (> 2,000 tools across 22 operational domains)
+    reg.register_batch(catalog::get_massive_tool_catalog());
 
     reg
 }

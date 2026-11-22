@@ -37,7 +37,8 @@ Unlike traditional assistants that depend on heavyweight generative Large Langua
 - **Non-Generative Probabilistic Decision Intelligence**:
   - Sub-millisecond decision latency (< 1ms vs 1,500ms+ for LLMs).
   - Fast non-generative intent classification with capability affinity mapping.
-  - Inverted BM25 tool catalog indexing supporting 1,000+ OS-specific tools.
+  - Massive OS Tool Ecosystem: 1,056 Windows tools & 1,056 Linux tools (2,112 total) spanning 22 operational domains.
+  - Inverted BM25 tool catalog indexing supporting 2,000+ OS tools with platform filtering (< 1ms candidate retrieval).
   - Multi-feature neural cross-encoder ranking combining semantic, lexical, intent, and historical signals.
   - Calibrated probability distributions via temperature-scaled Softmax.
   - Automatic confidence thresholding and ambiguity-margin clarification triggers.
@@ -148,7 +149,7 @@ Verify your hardware, audio devices, native speech synthesis, SQLite database, p
 
 [5/5] Checking Probabilistic Decision Intelligence & Continuous Learning...
   [OK] Decision Model: pico-probabilistic-engine (Version: pico-decision-v1.0.0)
-  [OK] Tool Catalog indexed: 17 operating system tools
+  [OK] Tool Catalog indexed: 2129 operating system tools
   [OK] Continuous Learning Store: Active (Total experiences: 0)
 
 Diagnostic pass completed.
