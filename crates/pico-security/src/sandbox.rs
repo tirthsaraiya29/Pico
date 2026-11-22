@@ -100,38 +100,47 @@ impl PathSandbox {
             )));
         }
 
-        // 6. Canonicalize existing path or normalize parent hierarchy
-        let normalized = if path.exists() {
-            normalize_existing_path(path).map_err(|e| {
+        // 6. Resolve absolute path & canonicalize deepest existing ancestor
+        let absolute_path = if path.is_absolute() {
+            path.to_path_buf()
+        } else {
+            let cwd = std::env::current_dir().unwrap_or_else(|_| PathBuf::from("."));
+            cwd.join(path)
+        };
+
+        let mut curr = absolute_path.as_path();
+        let mut non_existing_suffixes = Vec::new();
+        while !curr.exists() {
+            if let Some(file_name) = curr.file_name() {
+                non_existing_suffixes.push(file_name);
+            }
+            if let Some(parent) = curr.parent() {
+                curr = parent;
+            } else {
+                break;
+            }
+        }
+
+        let canonical_base = if curr.exists() {
+            normalize_existing_path(curr).map_err(|e| {
                 PicoError::Security(format!(
                     "Failed to canonicalize path {}: {}",
-                    path.display(),
+                    curr.display(),
                     e
                 ))
             })?
-        } else if let Some(parent) = path.parent() {
-            if parent.as_os_str().is_empty() {
-                let cwd = std::env::current_dir().unwrap_or_else(|_| PathBuf::from("."));
-                normalize_existing_path(&cwd).unwrap_or(cwd).join(path)
-            } else if parent.exists() {
-                let canonical_parent = normalize_existing_path(parent).map_err(|e| {
-                    PicoError::Security(format!(
-                        "Failed to canonicalize parent {}: {}",
-                        parent.display(),
-                        e
-                    ))
-                })?;
-                canonical_parent.join(path.file_name().unwrap_or_default())
-            } else {
-                path.to_path_buf()
-            }
         } else {
-            path.to_path_buf()
+            curr.to_path_buf()
         };
+
+        let mut normalized = canonical_base;
+        for suffix in non_existing_suffixes.into_iter().rev() {
+            normalized.push(suffix);
+        }
 
         // 7. Check against forbidden / critical system roots
         for blocked in &self.blocked_roots {
-            if path_starts_with_case_insensitive(&normalized, blocked) {
+            if path_is_within(&normalized, blocked) {
                 return Err(PicoError::Security(format!(
                     "Access to sensitive system path '{}' is forbidden by security policy",
                     normalized.display()
@@ -167,11 +176,11 @@ impl PathSandbox {
             return Ok(normalized);
         }
 
-        // 10. Ensure path lies within at least one allowed root (case-insensitively on Windows)
+        // 10. Ensure path lies within at least one allowed root
         let is_allowed = self
             .allowed_roots
             .iter()
-            .any(|root| path_starts_with_case_insensitive(&normalized, root));
+            .any(|root| path_is_within(&normalized, root));
 
         if !is_allowed {
             return Err(PicoError::Security(format!(
@@ -195,18 +204,30 @@ fn normalize_existing_path(path: &Path) -> std::io::Result<PathBuf> {
     }
 }
 
-/// Case-insensitive path prefix comparison for Windows compatibility
-fn path_starts_with_case_insensitive(path: &Path, root: &Path) -> bool {
-    let p_str = path
-        .to_string_lossy()
-        .to_ascii_lowercase()
-        .replace('/', "\\");
-    let r_str = root
-        .to_string_lossy()
-        .to_ascii_lowercase()
-        .replace('/', "\\");
-    let r_clean = r_str.trim_end_matches('\\');
-    p_str == r_clean || p_str.starts_with(&format!("{}\\", r_clean))
+/// Platform-aware path prefix comparison.
+/// Windows: case-insensitive with backslash normalization.
+/// Linux/Unix: case-sensitive with forward-slash normalization.
+fn path_is_within(path: &Path, root: &Path) -> bool {
+    #[cfg(windows)]
+    {
+        let p_str = path
+            .to_string_lossy()
+            .to_ascii_lowercase()
+            .replace('/', "\\");
+        let r_str = root
+            .to_string_lossy()
+            .to_ascii_lowercase()
+            .replace('/', "\\");
+        let r_clean = r_str.trim_end_matches('\\');
+        p_str == r_clean || p_str.starts_with(&format!("{}\\", r_clean))
+    }
+    #[cfg(not(windows))]
+    {
+        let p_str = path.to_string_lossy().replace('\\', "/");
+        let r_str = root.to_string_lossy().replace('\\', "/");
+        let r_clean = r_str.trim_end_matches('/');
+        p_str == r_clean || p_str.starts_with(&format!("{}/", r_clean))
+    }
 }
 
 /// Checks whether a filename stem is a reserved Windows legacy device name
@@ -270,5 +291,43 @@ mod tests {
     fn test_drive_relative_paths_blocked() {
         let sandbox = PathSandbox::new(vec![PathBuf::from(".")], vec![]);
         assert!(sandbox.validate_path("C:relative_file.txt").is_err());
+    }
+
+    #[test]
+    fn test_non_existent_nested_path_in_allowed_root() {
+        let sandbox = PathSandbox::new(vec![PathBuf::from(".")], vec![]);
+        let non_existent = PathBuf::from("./target/test_sandbox_dummy/nested/new_file.txt");
+        let validated = sandbox.validate_path(&non_existent);
+        assert!(
+            validated.is_ok(),
+            "Validation failed: {:?}",
+            validated.err()
+        );
+    }
+
+    #[test]
+    fn test_path_is_within_platform_rules() {
+        #[cfg(windows)]
+        {
+            assert!(path_is_within(
+                Path::new("C:\\Users\\Test\\Data\\file.txt"),
+                Path::new("c:/users/test")
+            ));
+            assert!(!path_is_within(
+                Path::new("C:\\Windows\\System32\\cmd.exe"),
+                Path::new("C:\\Users\\Test")
+            ));
+        }
+        #[cfg(not(windows))]
+        {
+            assert!(path_is_within(
+                Path::new("/home/user/project/file.txt"),
+                Path::new("/home/user/project")
+            ));
+            assert!(!path_is_within(
+                Path::new("/etc/shadow"),
+                Path::new("/home/user/project")
+            ));
+        }
     }
 }
