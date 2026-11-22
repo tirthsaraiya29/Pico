@@ -201,7 +201,49 @@ impl ToolIndex {
     }
 }
 
-/// Tokenizer: lowercases, splits on non-alphanumeric chars, filters stop-words and single characters.
+/// Simple deterministic suffix stemmer for lexical retrieval normalization.
+fn stem(word: &str) -> &str {
+    let w = word;
+    if w.len() > 5 {
+        if let Some(s) = w.strip_suffix("ing") {
+            return s;
+        }
+        if let Some(s) = w.strip_suffix("tion") {
+            return s;
+        }
+        if let Some(s) = w.strip_suffix("ions") {
+            return s;
+        }
+        if let Some(s) = w.strip_suffix("ment") {
+            return s;
+        }
+    }
+    if w.len() > 4 {
+        if let Some(s) = w.strip_suffix("ed") {
+            return s;
+        }
+        if let Some(s) = w.strip_suffix("er") {
+            return s;
+        }
+        if let Some(s) = w.strip_suffix("or") {
+            return s;
+        }
+        if let Some(s) = w.strip_suffix("es") {
+            return s;
+        }
+    }
+    if w.len() > 3 {
+        if let Some(s) = w.strip_suffix('s') {
+            return s;
+        }
+        if let Some(s) = w.strip_suffix('e') {
+            return s;
+        }
+    }
+    w
+}
+
+/// Tokenizer: lowercases, splits on non-alphanumeric chars, filters stop-words, and produces word and stem tokens.
 fn tokenize(text: &str) -> Vec<String> {
     let stop_words: HashSet<&str> = [
         "a", "an", "the", "and", "or", "in", "on", "at", "to", "for", "of", "with", "by", "is",
@@ -211,11 +253,19 @@ fn tokenize(text: &str) -> Vec<String> {
     .cloned()
     .collect();
 
-    text.to_lowercase()
+    let mut tokens = Vec::new();
+    for t in text
+        .to_lowercase()
         .split(|c: char| !c.is_alphanumeric() && c != '_' && c != '.')
         .filter(|t| t.len() >= 2 && !stop_words.contains(t))
-        .map(|t| t.to_string())
-        .collect()
+    {
+        tokens.push(t.to_string());
+        let s = stem(t);
+        if s != t && s.len() >= 3 {
+            tokens.push(s.to_string());
+        }
+    }
+    tokens
 }
 
 #[cfg(test)]

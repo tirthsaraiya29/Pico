@@ -42,4 +42,46 @@ mod tests {
         assert_eq!(facts.len(), 1);
         assert!(facts[0].contains("User prefers concise"));
     }
+
+    #[tokio::test]
+    async fn test_preferences_lifecycle() {
+        let manager = MemoryManager::in_memory(MemoryConfig::default()).unwrap();
+        manager
+            .set_preference("editor".into(), "vscode".into())
+            .await
+            .unwrap();
+
+        let val = manager.get_preference("editor".into()).await.unwrap();
+        assert_eq!(val, Some("vscode".to_string()));
+
+        let list = manager.list_preferences().await.unwrap();
+        assert_eq!(list.len(), 1);
+        assert_eq!(list[0], ("editor".to_string(), "vscode".to_string()));
+
+        let deleted = manager.delete_preference("editor".into()).await.unwrap();
+        assert!(deleted);
+        let val_after = manager.get_preference("editor".into()).await.unwrap();
+        assert_eq!(val_after, None);
+    }
+
+    #[tokio::test]
+    async fn test_facts_lifecycle() {
+        let manager = MemoryManager::in_memory(MemoryConfig::default()).unwrap();
+        manager
+            .remember_fact("system", "Target OS is Linux")
+            .await
+            .unwrap();
+
+        let all = manager.list_facts(None).await.unwrap();
+        assert_eq!(all.len(), 1);
+        assert_eq!(all[0].1, "system");
+        assert_eq!(all[0].2, "Target OS is Linux");
+
+        let id = all[0].0.clone();
+        let deleted = manager.delete_fact(id).await.unwrap();
+        assert!(deleted);
+
+        let remaining = manager.list_facts(None).await.unwrap();
+        assert!(remaining.is_empty());
+    }
 }

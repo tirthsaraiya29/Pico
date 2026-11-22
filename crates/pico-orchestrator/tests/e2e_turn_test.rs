@@ -177,3 +177,61 @@ async fn test_e2e_probabilistic_turn_and_learning() {
             || direct_reply.contains("assist")
     );
 }
+
+#[tokio::test]
+async fn test_e2e_multistep_autonomous_execution() {
+    let mut config = PicoConfig::default();
+    config.security.audit_log_path = std::path::PathBuf::new();
+    config.memory.database_path = std::env::temp_dir().join(format!(
+        "pico_e2e_multi_{}.sqlite",
+        uuid::Uuid::new_v4().simple()
+    ));
+    config.learning.database_path = std::env::temp_dir().join(format!(
+        "pico_e2e_multi_learn_{}.sqlite",
+        uuid::Uuid::new_v4().simple()
+    ));
+
+    let runtime = PicoRuntime::new(config).expect("Runtime initialization failed");
+
+    // Compound multi-step request: evaluate two distinct actions
+    let reply = runtime
+        .process_turn("Calculate 10 + 20 and then Calculate 50 * 2", false)
+        .await
+        .expect("Multi-step turn processing failed");
+
+    assert!(reply.contains("30"), "Expected 30 in reply, got: {}", reply);
+    assert!(
+        reply.contains("100"),
+        "Expected 100 in reply, got: {}",
+        reply
+    );
+}
+
+#[tokio::test]
+async fn test_e2e_loop_detection() {
+    let mut config = PicoConfig::default();
+    config.security.audit_log_path = std::path::PathBuf::new();
+    config.memory.database_path = std::env::temp_dir().join(format!(
+        "pico_e2e_loop_{}.sqlite",
+        uuid::Uuid::new_v4().simple()
+    ));
+    config.learning.database_path = std::env::temp_dir().join(format!(
+        "pico_e2e_loop_learn_{}.sqlite",
+        uuid::Uuid::new_v4().simple()
+    ));
+
+    let runtime = PicoRuntime::new(config).expect("Runtime initialization failed");
+
+    // Execute repeating identical command in sequence
+    let reply = runtime
+        .process_turn("Calculate 40 + 2 and then Calculate 40 + 2", false)
+        .await
+        .expect("Turn processing failed");
+
+    assert!(
+        reply.contains("Execution halted: action 'calculator' was already performed")
+            || reply.contains("42"),
+        "Expected loop detection warning, got: {}",
+        reply
+    );
+}

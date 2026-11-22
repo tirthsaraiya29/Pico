@@ -29,6 +29,69 @@ impl MemoryManager {
         let budgeted = ContextBudgeter::budget_messages(&all_msgs, self.config.max_history_tokens);
         Ok(budgeted)
     }
+
+    /// Lists all facts in memory, optionally filtered by category.
+    pub async fn list_facts(
+        &self,
+        category: Option<String>,
+    ) -> Result<Vec<(String, String, String, String)>> {
+        let store = self.store.clone();
+        tokio::task::spawn_blocking(move || store.get_all_facts(category.as_deref()))
+            .await
+            .map_err(|e| {
+                pico_core::error::PicoError::Memory(format!("List facts panicked: {}", e))
+            })?
+    }
+
+    /// Deletes a fact by ID.
+    pub async fn delete_fact(&self, id: String) -> Result<bool> {
+        let store = self.store.clone();
+        tokio::task::spawn_blocking(move || store.delete_fact(&id))
+            .await
+            .map_err(|e| {
+                pico_core::error::PicoError::Memory(format!("Delete fact panicked: {}", e))
+            })?
+    }
+
+    /// Sets or updates a persistent user preference key-value pair.
+    pub async fn set_preference(&self, key: String, value: String) -> Result<()> {
+        let store = self.store.clone();
+        tokio::task::spawn_blocking(move || store.set_preference(&key, &value))
+            .await
+            .map_err(|e| {
+                pico_core::error::PicoError::Memory(format!("Set preference panicked: {}", e))
+            })?
+    }
+
+    /// Retrieves a user preference value by key.
+    pub async fn get_preference(&self, key: String) -> Result<Option<String>> {
+        let store = self.store.clone();
+        tokio::task::spawn_blocking(move || store.get_preference(&key))
+            .await
+            .map_err(|e| {
+                pico_core::error::PicoError::Memory(format!("Get preference panicked: {}", e))
+            })?
+    }
+
+    /// Lists all stored user preferences.
+    pub async fn list_preferences(&self) -> Result<Vec<(String, String)>> {
+        let store = self.store.clone();
+        tokio::task::spawn_blocking(move || store.list_preferences())
+            .await
+            .map_err(|e| {
+                pico_core::error::PicoError::Memory(format!("List preferences panicked: {}", e))
+            })?
+    }
+
+    /// Deletes a user preference by key.
+    pub async fn delete_preference(&self, key: String) -> Result<bool> {
+        let store = self.store.clone();
+        tokio::task::spawn_blocking(move || store.delete_preference(&key))
+            .await
+            .map_err(|e| {
+                pico_core::error::PicoError::Memory(format!("Delete preference panicked: {}", e))
+            })?
+    }
 }
 
 #[async_trait]

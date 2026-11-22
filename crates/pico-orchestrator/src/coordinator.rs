@@ -210,169 +210,229 @@ impl PicoRuntime {
         let user_msg = Message::new_user(sid, user_input);
         self.memory.save_message(&user_msg).await?;
 
-        let _ = self.event_tx.send(PicoEvent::DecisionStarted {
-            request: user_input.to_string(),
-            candidate_count: 15,
-        });
+        // 2. Contextual memory retrieval (facts and preferences)
+        let relevant_facts = self
+            .memory
+            .search_relevant_context(user_input, 3)
+            .await
+            .unwrap_or_default();
+        let user_prefs = self.memory.list_preferences().await.unwrap_or_default();
+        if !relevant_facts.is_empty() || !user_prefs.is_empty() {
+            info!(
+                facts = relevant_facts.len(),
+                preferences = user_prefs.len(),
+                "Retrieved relevant contextual memory"
+            );
+        }
 
-        // 2. Evaluate objective through Decision Engine
-        let decision_outcome = self.decision.decide(user_input).await?;
+        let sub_queries = split_compound_queries(user_input);
+        let total_sub_queries = sub_queries.len();
+        let mut step_responses: Vec<String> = Vec::new();
+        let mut executed_actions: Vec<(String, serde_json::Value)> = Vec::new();
 
-        let final_text = match decision_outcome {
-            DecisionResult::DirectConversation { response } => {
-                let _ = self.event_tx.send(PicoEvent::DecisionSelected {
-                    action: None,
-                    confidence: 1.0,
-                    latency_ms: t_start.elapsed().as_millis() as u64,
-                });
-
-                // Record assistant message
-                let asst_msg = Message::new_assistant(sid, &response, None);
-                self.memory.save_message(&asst_msg).await?;
-                response
+        for (q_idx, query) in sub_queries.iter().enumerate() {
+            if turn_cancel.load(Ordering::Relaxed) || self.is_cancelled.load(Ordering::Relaxed) {
+                return Err(PicoError::Cancelled("Turn was cancelled by user".into()));
             }
-            DecisionResult::ClarificationRequired {
-                prompt,
-                top_candidates,
-            } => {
-                let _ = self.event_tx.send(PicoEvent::ClarificationRequested {
-                    question: prompt.clone(),
-                    candidates: top_candidates
-                        .iter()
-                        .map(|c| c.action_name.clone())
-                        .collect(),
-                });
 
-                // Persist as clarified observation
-                let obs_id = uuid::Uuid::new_v4().to_string();
-                let obs = ObservationRecord {
-                    id: obs_id.clone(),
-                    timestamp: Utc::now(),
-                    request_text: user_input.to_string(),
-                    primary_intent: "ambiguous".to_string(),
-                    candidate_names: top_candidates
-                        .iter()
-                        .map(|c| c.action_name.clone())
-                        .collect(),
-                    candidate_scores: top_candidates.iter().map(|c| c.probability).collect(),
-                    selected_action: "clarify".to_string(),
-                    confidence: top_candidates.first().map(|c| c.probability).unwrap_or(0.0),
-                    execution_status: "clarified".to_string(),
-                    latency_ms: t_start.elapsed().as_millis() as u64,
-                    user_feedback: None,
-                    corrected_action: None,
-                    quality: LabelQuality::Inferred,
-                };
-                let _ = self.learning.record_observation(obs);
-                *self.last_observation_id.lock().await = Some(obs_id.clone());
-
-                let asst_msg = Message::new_assistant(sid, &prompt, None);
-                self.memory.save_message(&asst_msg).await?;
-                prompt
+            if q_idx >= 5 {
+                warn!("Autonomous execution step limit of 5 reached; halting.");
+                step_responses.push("Reached maximum autonomous step limit (5).".into());
+                break;
             }
-            DecisionResult::ActionSelected {
-                action_name,
-                arguments,
-                confidence,
-                ranked_scores,
-            } => {
-                let _ = self.event_tx.send(PicoEvent::CandidatesRanked {
-                    candidates: ranked_scores.clone(),
-                });
 
-                let _ = self.event_tx.send(PicoEvent::DecisionSelected {
-                    action: Some(action_name.clone()),
-                    confidence,
-                    latency_ms: t_start.elapsed().as_millis() as u64,
+            if total_sub_queries > 1 {
+                let _ = self.event_tx.send(PicoEvent::StatusUpdate {
+                    status: format!("Step {}/{}: {}", q_idx + 1, total_sub_queries, query),
                 });
+            }
 
-                if turn_cancel.load(Ordering::Relaxed) || self.is_cancelled.load(Ordering::Relaxed)
-                {
-                    return Err(PicoError::Cancelled("Turn was cancelled by user".into()));
+            let _ = self.event_tx.send(PicoEvent::DecisionStarted {
+                request: query.to_string(),
+                candidate_count: 15,
+            });
+
+            // Evaluate objective through Decision Engine
+            let decision_outcome = self.decision.decide(query).await?;
+
+            match decision_outcome {
+                DecisionResult::DirectConversation { response } => {
+                    let _ = self.event_tx.send(PicoEvent::DecisionSelected {
+                        action: None,
+                        confidence: 1.0,
+                        latency_ms: t_start.elapsed().as_millis() as u64,
+                    });
+                    step_responses.push(response);
                 }
+                DecisionResult::ClarificationRequired {
+                    prompt,
+                    top_candidates,
+                } => {
+                    let _ = self.event_tx.send(PicoEvent::ClarificationRequested {
+                        question: prompt.clone(),
+                        candidates: top_candidates
+                            .iter()
+                            .map(|c| c.action_name.clone())
+                            .collect(),
+                    });
 
-                let call_id = uuid::Uuid::new_v4().to_string();
-                let tool_call = ToolCall {
-                    id: call_id.clone(),
-                    name: action_name.clone(),
-                    arguments: arguments.clone(),
-                    reason: None,
-                };
+                    // Persist observation
+                    let obs_id = uuid::Uuid::new_v4().to_string();
+                    let obs = ObservationRecord {
+                        id: obs_id.clone(),
+                        timestamp: Utc::now(),
+                        request_text: query.to_string(),
+                        primary_intent: "ambiguous".to_string(),
+                        candidate_names: top_candidates
+                            .iter()
+                            .map(|c| c.action_name.clone())
+                            .collect(),
+                        candidate_scores: top_candidates.iter().map(|c| c.probability).collect(),
+                        selected_action: "clarify".to_string(),
+                        confidence: top_candidates.first().map(|c| c.probability).unwrap_or(0.0),
+                        execution_status: "clarified".to_string(),
+                        latency_ms: t_start.elapsed().as_millis() as u64,
+                        user_feedback: None,
+                        corrected_action: None,
+                        quality: LabelQuality::Inferred,
+                    };
+                    let _ = self.learning.record_observation(obs);
+                    *self.last_observation_id.lock().await = Some(obs_id);
 
-                let _ = self.event_tx.send(PicoEvent::ToolCallRequested {
-                    call: tool_call.clone(),
-                });
-
-                let _ = self.event_tx.send(PicoEvent::ToolExecutionStarted {
-                    call_id: call_id.clone(),
-                    tool: action_name.clone(),
-                });
-
-                // Execute tool via secured registry
-                let result = self
-                    .registry
-                    .execute_call(&call_id, &action_name, arguments.clone())
-                    .await;
-
-                let _ = self.event_tx.send(PicoEvent::ToolExecutionFinished {
-                    result: result.clone(),
-                });
-
-                // Deterministic outcome synthesis
-                let synthesized = ResponseSynthesizer::format_tool_result(
-                    &action_name,
-                    &arguments,
-                    &result.content,
-                );
-
-                // Save tool result and assistant response into memory
-                let tool_msg = Message::new_tool_result(sid, &result);
-                self.memory.save_message(&tool_msg).await?;
-
-                let asst_msg = Message::new_assistant(sid, &synthesized, Some(vec![tool_call]));
-                self.memory.save_message(&asst_msg).await?;
-
-                // Record structured experience observation into continuous learning dataset
-                let obs_id = uuid::Uuid::new_v4().to_string();
-                let obs = ObservationRecord {
-                    id: obs_id.clone(),
-                    timestamp: Utc::now(),
-                    request_text: user_input.to_string(),
-                    primary_intent: action_name.clone(),
-                    candidate_names: ranked_scores
-                        .iter()
-                        .map(|c| c.action_name.clone())
-                        .collect(),
-                    candidate_scores: ranked_scores.iter().map(|c| c.probability).collect(),
-                    selected_action: action_name.clone(),
+                    step_responses.push(prompt);
+                    break;
+                }
+                DecisionResult::ActionSelected {
+                    action_name,
+                    arguments,
                     confidence,
-                    execution_status: if result.success {
-                        "success".into()
-                    } else {
-                        "failure".into()
-                    },
-                    latency_ms: t_start.elapsed().as_millis() as u64,
-                    user_feedback: None,
-                    corrected_action: None,
-                    quality: if result.success {
-                        LabelQuality::ExecutionOutcome
-                    } else {
-                        LabelQuality::Inferred
-                    },
-                };
+                    ranked_scores,
+                } => {
+                    // Loop detection
+                    if executed_actions
+                        .iter()
+                        .any(|(a, args)| a == &action_name && args == &arguments)
+                    {
+                        warn!(
+                            action = %action_name,
+                            args = ?arguments,
+                            "Loop detected: repeating identical action with identical arguments"
+                        );
+                        step_responses.push(format!(
+                            "Execution halted: action '{}' was already performed with identical arguments in this turn.",
+                            action_name
+                        ));
+                        break;
+                    }
+                    executed_actions.push((action_name.clone(), arguments.clone()));
 
-                let _ = self.learning.record_observation(obs);
-                *self.last_observation_id.lock().await = Some(obs_id.clone());
+                    let _ = self.event_tx.send(PicoEvent::CandidatesRanked {
+                        candidates: ranked_scores.clone(),
+                    });
 
-                let _ = self.event_tx.send(PicoEvent::ExperienceObserved {
-                    observation_id: obs_id,
-                    action: action_name,
-                    success: result.success,
-                });
+                    let _ = self.event_tx.send(PicoEvent::DecisionSelected {
+                        action: Some(action_name.clone()),
+                        confidence,
+                        latency_ms: t_start.elapsed().as_millis() as u64,
+                    });
 
-                synthesized
+                    if turn_cancel.load(Ordering::Relaxed)
+                        || self.is_cancelled.load(Ordering::Relaxed)
+                    {
+                        return Err(PicoError::Cancelled("Turn was cancelled by user".into()));
+                    }
+
+                    let call_id = uuid::Uuid::new_v4().to_string();
+                    let tool_call = ToolCall {
+                        id: call_id.clone(),
+                        name: action_name.clone(),
+                        arguments: arguments.clone(),
+                        reason: None,
+                    };
+
+                    let _ = self.event_tx.send(PicoEvent::ToolCallRequested {
+                        call: tool_call.clone(),
+                    });
+
+                    let _ = self.event_tx.send(PicoEvent::ToolExecutionStarted {
+                        call_id: call_id.clone(),
+                        tool: action_name.clone(),
+                    });
+
+                    // Execute tool via secured registry
+                    let result = self
+                        .registry
+                        .execute_call(&call_id, &action_name, arguments.clone())
+                        .await;
+
+                    let _ = self.event_tx.send(PicoEvent::ToolExecutionFinished {
+                        result: result.clone(),
+                    });
+
+                    // Save tool result into memory
+                    let tool_msg = Message::new_tool_result(sid, &result);
+                    self.memory.save_message(&tool_msg).await?;
+
+                    // Inspect outcome
+                    let synthesized = ResponseSynthesizer::format_tool_result(
+                        &action_name,
+                        &arguments,
+                        &result.content,
+                    );
+
+                    // Record learning observation
+                    let obs_id = uuid::Uuid::new_v4().to_string();
+                    let obs = ObservationRecord {
+                        id: obs_id.clone(),
+                        timestamp: Utc::now(),
+                        request_text: query.to_string(),
+                        primary_intent: action_name.clone(),
+                        candidate_names: ranked_scores
+                            .iter()
+                            .map(|c| c.action_name.clone())
+                            .collect(),
+                        candidate_scores: ranked_scores.iter().map(|c| c.probability).collect(),
+                        selected_action: action_name.clone(),
+                        confidence,
+                        execution_status: if result.success {
+                            "success".into()
+                        } else {
+                            "failure".into()
+                        },
+                        latency_ms: t_start.elapsed().as_millis() as u64,
+                        user_feedback: None,
+                        corrected_action: None,
+                        quality: if result.success {
+                            LabelQuality::ExecutionOutcome
+                        } else {
+                            LabelQuality::Inferred
+                        },
+                    };
+                    let _ = self.learning.record_observation(obs);
+                    *self.last_observation_id.lock().await = Some(obs_id.clone());
+
+                    let _ = self.event_tx.send(PicoEvent::ExperienceObserved {
+                        observation_id: obs_id,
+                        action: action_name,
+                        success: result.success,
+                    });
+
+                    step_responses.push(synthesized);
+
+                    // If an execution step failed and was not recoverable, stop compound sequence
+                    if !result.success {
+                        warn!(
+                            "Step failed; stopping compound execution to prevent cascading errors."
+                        );
+                        break;
+                    }
+                }
             }
-        };
+        }
+
+        let final_text = step_responses.join("\n\n");
+        let asst_msg = Message::new_assistant(sid, &final_text, None);
+        self.memory.save_message(&asst_msg).await?;
 
         // 3. Spoken response synthesis if requested
         if speak_response && !final_text.is_empty() {
@@ -488,5 +548,38 @@ impl PicoRuntime {
     /// Access the runtime config.
     pub fn config(&self) -> &PicoConfig {
         &self.config
+    }
+}
+
+/// Splits compound multi-step commands into sequenced independent queries.
+fn split_compound_queries(input: &str) -> Vec<String> {
+    // Split on sequential multi-step delimiters
+    let delimiters = [" and then ", " then ", "; ", " && "];
+    let lower = input.to_lowercase();
+    let mut matched_delim = None;
+    for delim in delimiters {
+        if lower.contains(delim) {
+            matched_delim = Some(delim);
+            break;
+        }
+    }
+
+    if let Some(delim) = matched_delim {
+        let mut parts = Vec::new();
+        let mut cur = input;
+        while let Some(pos) = cur.to_lowercase().find(delim) {
+            let left = cur[..pos].trim();
+            if !left.is_empty() {
+                parts.push(left.to_string());
+            }
+            cur = &cur[pos + delim.len()..];
+        }
+        let rest = cur.trim();
+        if !rest.is_empty() {
+            parts.push(rest.to_string());
+        }
+        parts
+    } else {
+        vec![input.trim().to_string()]
     }
 }

@@ -50,8 +50,15 @@ impl SqliteStore {
                 access_count INTEGER DEFAULT 0
             );
 
+            CREATE TABLE IF NOT EXISTS preferences (
+                key TEXT PRIMARY KEY,
+                value TEXT NOT NULL,
+                updated_at TEXT NOT NULL
+            );
+
             CREATE INDEX IF NOT EXISTS idx_messages_session ON messages(session_id, timestamp);
             CREATE INDEX IF NOT EXISTS idx_memories_category ON memories(category);
+            CREATE INDEX IF NOT EXISTS idx_preferences_key ON preferences(key);
             "#,
         )
         .map_err(|e| PicoError::Memory(format!("Failed to initialize SQLite schema: {}", e)))?;
@@ -93,6 +100,12 @@ impl SqliteStore {
                 fact TEXT NOT NULL,
                 created_at TEXT NOT NULL,
                 access_count INTEGER DEFAULT 0
+            );
+
+            CREATE TABLE IF NOT EXISTS preferences (
+                key TEXT PRIMARY KEY,
+                value TEXT NOT NULL,
+                updated_at TEXT NOT NULL
             );
             "#,
         )
@@ -234,6 +247,44 @@ impl SqliteStore {
         Ok(())
     }
 
+    pub fn get_all_facts(
+        &self,
+        category: Option<&str>,
+    ) -> Result<Vec<(String, String, String, String)>> {
+        let conn = self.conn.lock().unwrap_or_else(|p| p.into_inner());
+        if let Some(cat) = category {
+            let mut stmt = conn
+                .prepare("SELECT id, category, fact, created_at FROM memories WHERE category = ?1 ORDER BY created_at DESC")
+                .map_err(|e| PicoError::Memory(e.to_string()))?;
+            let rows = stmt
+                .query_map(params![cat], |row| {
+                    Ok((row.get(0)?, row.get(1)?, row.get(2)?, row.get(3)?))
+                })
+                .map_err(|e| PicoError::Memory(e.to_string()))?;
+            Ok(rows.flatten().collect())
+        } else {
+            let mut stmt = conn
+                .prepare(
+                    "SELECT id, category, fact, created_at FROM memories ORDER BY created_at DESC",
+                )
+                .map_err(|e| PicoError::Memory(e.to_string()))?;
+            let rows = stmt
+                .query_map([], |row| {
+                    Ok((row.get(0)?, row.get(1)?, row.get(2)?, row.get(3)?))
+                })
+                .map_err(|e| PicoError::Memory(e.to_string()))?;
+            Ok(rows.flatten().collect())
+        }
+    }
+
+    pub fn delete_fact(&self, id: &str) -> Result<bool> {
+        let conn = self.conn.lock().unwrap_or_else(|p| p.into_inner());
+        let count = conn
+            .execute("DELETE FROM memories WHERE id = ?1", params![id])
+            .map_err(|e| PicoError::Memory(format!("Failed to delete fact: {}", e)))?;
+        Ok(count > 0)
+    }
+
     pub fn search_facts(&self, query: &str, limit: usize) -> Result<Vec<String>> {
         let conn = self.conn.lock().unwrap_or_else(|p| p.into_inner());
         let pattern = format!("%{}%", query);
@@ -248,5 +299,46 @@ impl SqliteStore {
 
         let facts: Vec<String> = rows.flatten().collect();
         Ok(facts)
+    }
+
+    pub fn set_preference(&self, key: &str, value: &str) -> Result<()> {
+        let conn = self.conn.lock().unwrap_or_else(|p| p.into_inner());
+        let now = chrono::Utc::now().to_rfc3339();
+        conn.execute(
+            "INSERT OR REPLACE INTO preferences (key, value, updated_at) VALUES (?1, ?2, ?3)",
+            params![key, value, now],
+        )
+        .map_err(|e| PicoError::Memory(format!("Failed to set preference: {}", e)))?;
+        Ok(())
+    }
+
+    pub fn get_preference(&self, key: &str) -> Result<Option<String>> {
+        let conn = self.conn.lock().unwrap_or_else(|p| p.into_inner());
+        let mut stmt = conn
+            .prepare("SELECT value FROM preferences WHERE key = ?1")
+            .map_err(|e| PicoError::Memory(e.to_string()))?;
+        let mut rows = stmt
+            .query_map(params![key], |row| row.get(0))
+            .map_err(|e| PicoError::Memory(e.to_string()))?;
+        Ok(rows.next().and_then(|r| r.ok()))
+    }
+
+    pub fn list_preferences(&self) -> Result<Vec<(String, String)>> {
+        let conn = self.conn.lock().unwrap_or_else(|p| p.into_inner());
+        let mut stmt = conn
+            .prepare("SELECT key, value FROM preferences ORDER BY key ASC")
+            .map_err(|e| PicoError::Memory(e.to_string()))?;
+        let rows = stmt
+            .query_map([], |row| Ok((row.get(0)?, row.get(1)?)))
+            .map_err(|e| PicoError::Memory(e.to_string()))?;
+        Ok(rows.flatten().collect())
+    }
+
+    pub fn delete_preference(&self, key: &str) -> Result<bool> {
+        let conn = self.conn.lock().unwrap_or_else(|p| p.into_inner());
+        let count = conn
+            .execute("DELETE FROM preferences WHERE key = ?1", params![key])
+            .map_err(|e| PicoError::Memory(format!("Failed to delete preference: {}", e)))?;
+        Ok(count > 0)
     }
 }
