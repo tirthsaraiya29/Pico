@@ -40,7 +40,17 @@ jobs:
         run: cargo clippy --workspace --all-targets --all-features -- -D warnings
 
       - name: Run Test Suite
-        run: cargo test --workspace --all-features
+        shell: pwsh
+        run: |
+          cargo test --workspace --all-features -- --nocapture 2>&1 | Tee-Object -FilePath test_log.txt
+          $testExit = $LASTEXITCODE
+          if ($testExit -ne 0) {
+            "### Test Suite Failure Report" | Out-File -FilePath $env:GITHUB_STEP_SUMMARY -Encoding utf8
+            "```text" | Out-File -FilePath $env:GITHUB_STEP_SUMMARY -Append -Encoding utf8
+            Get-Content test_log.txt -Tail 150 | Out-File -FilePath $env:GITHUB_STEP_SUMMARY -Append -Encoding utf8
+            "```" | Out-File -FilePath $env:GITHUB_STEP_SUMMARY -Append -Encoding utf8
+            exit $testExit
+          }
 
       - name: Build Release
         run: cargo build --workspace --release
