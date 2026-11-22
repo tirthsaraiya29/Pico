@@ -1,0 +1,119 @@
+name: "Bug Report"
+description: "Report a reproducible bug in Pico."
+title: "[Bug]: "
+labels:
+  - bug
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for helping improve Pico!
+
+        Before submitting, check existing issues to avoid duplicates.
+        Do not include passwords, private keys, tokens, or sensitive OS secrets.
+        For security vulnerabilities, use [GitHub Private Security Advisories](https://github.com/tirthsaraiya29/Pico/security/advisories/new) instead.
+
+  - type: dropdown
+    id: component
+    attributes:
+      label: Affected component
+      description: Which part of Pico is affected?
+      options:
+        - Voice Pipeline (Audio capture, VAD, barge-in)
+        - Speech Recognition (STT, local engine)
+        - Speech Synthesis (TTS, Windows SAPI, Linux speech-dispatcher)
+        - Decision Engine (Intent, BM25, ranking, embeddings)
+        - Probability Calibration (Platt scaling, ambiguity detection)
+        - Native Desktop Application (Rust GUI, audio visualizer)
+        - CLI (pico-cli, doctor, devices)
+        - Native Windows Tools / OS Adapters
+        - Native Linux Tools / OS Adapters
+        - Security & Sandbox (Path boundary, voice confirmation)
+        - Autonomous Orchestrator (Multi-step execution, verification)
+        - Memory & Context (SQLite, facts, preferences)
+        - Continuous Learning (Evaluation suite, promotion gates)
+        - Build & Packaging (test.bat, test.sh, Cargo)
+        - Other / Unsure
+    validations:
+      required: true
+
+  - type: textarea
+    id: description
+    attributes:
+      label: Describe the bug
+      description: Explain what happened and its impact.
+      placeholder: Describe the issue you encountered in detail.
+    validations:
+      required: true
+
+  - type: textarea
+    id: reproduce
+    attributes:
+      label: Steps to reproduce
+      description: Provide clear, numbered steps to reproduce the issue.
+      placeholder: |
+        1. Launch Pico using...
+        2. Speak or issue command: "..."
+        3. Observe the behavior...
+    validations:
+      required: true
+
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected behaviour
+      description: What did you expect to happen?
+    validations:
+      required: true
+
+  - type: textarea
+    id: actual
+    attributes:
+      label: Actual behaviour
+      description: What happened instead?
+    validations:
+      required: true
+
+  - type: input
+    id: version
+    attributes:
+      label: Pico version or commit
+      description: Provide the version, build, or commit hash if known.
+      placeholder: "e.g. v0.1.0 or git commit hash"
+    validations:
+      required: false
+
+  - type: input
+    id: os_env
+    attributes:
+      label: Operating System & Hardware
+      description: Windows edition / Linux distribution and CPU architecture.
+      placeholder: "e.g. Windows 11 23H2 (Intel Core Ultra 7 356H) or Ubuntu 24.04 LTS x86_64"
+    validations:
+      required: true
+
+  - type: input
+    id: audio_env
+    attributes:
+      label: Audio Device Environment (if applicable)
+      description: Microphone / speaker hardware and sample rates if voice-related.
+      placeholder: "e.g. Realtek High Definition Audio (16kHz / 48kHz)"
+    validations:
+      required: false
+
+  - type: textarea
+    id: logs
+    attributes:
+      label: Logs and terminal output
+      description: Include relevant error messages, terminal output, or logs. Redact sensitive info.
+      render: text
+    validations:
+      required: false
+
+  - type: textarea
+    id: additional
+    attributes:
+      label: Additional context
+      description: Any other context, screenshots, or files that might help investigate.
+    validations:
+      required: false

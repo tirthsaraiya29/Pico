@@ -1,0 +1,40 @@
+name: "Appreciation & Feedback"
+description: "Share appreciation, real-world experience, or constructive feedback for Pico."
+title: "[Appreciation]: "
+labels:
+  - appreciation
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thank you for taking the time to share your feedback and experience with Pico!
+        Whether you love Pico's voice responsiveness, offline privacy, or have ideas to share,
+        your message is appreciated.
+
+  - type: textarea
+    id: message
+    attributes:
+      label: Your message
+      description: What would you like to share about your experience with Pico?
+      placeholder: |
+        Tell us how you use Pico, what you love about it,
+        or how it has improved your daily desktop workflow.
+    validations:
+      required: true
+
+  - type: textarea
+    id: feedback
+    attributes:
+      label: Constructive suggestions or feedback (optional)
+      description: What could make Pico even better?
+      placeholder: Share any constructive thoughts, ideas, or feedback.
+    validations:
+      required: false
+
+  - type: checkboxes
+    id: acknowledgements
+    attributes:
+      label: Before submitting
+      options:
+        - label: I have not included any sensitive passwords, private keys, tokens, or confidential data.
+          required: true

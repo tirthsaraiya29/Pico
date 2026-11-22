@@ -1,0 +1,73 @@
+name: "Feature Request"
+description: "Suggest a new feature, OS tool, or capability for Pico."
+title: "[Feature]: "
+labels:
+  - enhancement
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for helping shape the future of Pico!
+
+        Pico is a strictly non-generative, local-first autonomous voice assistant in Rust.
+        Please describe the problem or use case first.
+
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem or use case
+      description: What limitation, missing capability, or workflow need are you experiencing?
+      placeholder: |
+        As a user, I want Pico to be able to...
+        so that I can...
+    validations:
+      required: true
+
+  - type: textarea
+    id: solution
+    attributes:
+      label: Proposed solution
+      description: Describe how you envision Pico addressing this problem.
+      placeholder: Describe the feature, voice interaction, or OS tool capability.
+    validations:
+      required: true
+
+  - type: dropdown
+    id: component
+    attributes:
+      label: Relevant component
+      description: Which part of Pico would this primarily affect?
+      options:
+        - Voice Pipeline (VAD, barge-in, audio capture)
+        - Speech-to-Text & Text-to-Speech
+        - Decision Engine & Semantic Retrieval
+        - Probability Calibration & Ambiguity Handling
+        - Native Desktop Application
+        - CLI Tooling & Diagnostics
+        - Native Windows Tools / OS Adapters
+        - Native Linux Tools / OS Adapters
+        - Security Sandbox & Voice Confirmation
+        - Autonomous Multi-step Orchestration
+        - Contextual Memory & Fact Retrieval
+        - Continuous Learning & Model Promotion
+        - Performance & Low-latency Optimizations
+        - Other / Unsure
+    validations:
+      required: true
+
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives considered
+      description: Have you considered any alternative workarounds or approaches?
+      placeholder: Describe any alternatives considered.
+    validations:
+      required: false
+
+  - type: textarea
+    id: additional
+    attributes:
+      label: Additional context
+      description: Add any relevant mockups, workflow steps, or references.
+    validations:
+      required: false
