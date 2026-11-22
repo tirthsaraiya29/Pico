@@ -132,6 +132,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .route("/ws", get(ws_handler))
         .route("/api/status", get(status_handler))
         .route("/api/tools", get(tools_handler))
+        .route("/api/learning", get(learning_handler))
         .fallback_service(ServeDir::new(&ui_dir))
         .layer(DefaultBodyLimit::max(MAX_WS_MESSAGE_BYTES))
         .layer(middleware::from_fn(security_headers_middleware))
@@ -270,6 +271,29 @@ async fn tools_handler(
     axum::Json(serde_json::json!({ "tools": defs })).into_response()
 }
 
+async fn learning_handler(
+    headers: HeaderMap,
+    Query(params): Query<AuthParams>,
+    State(state): State<AppState>,
+) -> impl IntoResponse {
+    if !is_authorized(&headers, params.token.as_deref(), &state.auth_token) {
+        return (StatusCode::UNAUTHORIZED, "Unauthorized").into_response();
+    }
+
+    match state.runtime.learning().stats() {
+        Ok(stats) => axum::Json(serde_json::json!({
+            "status": "success",
+            "stats": stats
+        }))
+        .into_response(),
+        Err(e) => (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            format!("Error retrieving learning stats: {}", e),
+        )
+            .into_response(),
+    }
+}
+
 async fn ws_handler(
     ws: WebSocketUpgrade,
     headers: HeaderMap,
@@ -354,6 +378,38 @@ async fn handle_socket(socket: WebSocket, state: AppState) {
                         }
                         "reset_session" => {
                             rt.reset_session().await;
+                        }
+                        "feedback" => {
+                            let vote = req.get("vote").and_then(|v| v.as_i64()).unwrap_or(1) as i32;
+                            let rt_clone = rt.clone();
+                            tokio::spawn(async move {
+                                let _ = rt_clone.provide_feedback(vote).await;
+                            });
+                        }
+                        "correct" => {
+                            if let Some(target) = req.get("target").and_then(|v| v.as_str()) {
+                                let rt_clone = rt.clone();
+                                let target_str = target.to_string();
+                                tokio::spawn(async move {
+                                    let _ = rt_clone.provide_correction(&target_str).await;
+                                });
+                            }
+                        }
+                        "train" => {
+                            let rt_clone = rt.clone();
+                            tokio::spawn(async move {
+                                let _ = rt_clone.trigger_training().await;
+                            });
+                        }
+                        "rollback" => {
+                            let version = req
+                                .get("version")
+                                .and_then(|v| v.as_str())
+                                .map(String::from);
+                            let rt_clone = rt.clone();
+                            tokio::spawn(async move {
+                                let _ = rt_clone.rollback_model(version.as_deref()).await;
+                            });
                         }
                         _ => {}
                     }

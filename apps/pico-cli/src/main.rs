@@ -3,6 +3,8 @@ use colored::*;
 use pico_audio::AudioDeviceManager;
 use pico_core::config::PicoConfig;
 use pico_core::events::PicoEvent;
+use pico_core::traits::DecisionModel;
+use pico_learning::LabelQuality;
 use pico_orchestrator::PicoRuntime;
 use std::io::{self, Write};
 use std::path::PathBuf;
@@ -14,7 +16,7 @@ use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
     name = "pico",
     author = "Tirth Saraiya",
     version = "0.1.0",
-    about = "Real-time, locally capable AI voice assistant"
+    about = "Real-time, locally capable AI assistant with Probabilistic Decision Intelligence"
 )]
 struct Cli {
     #[arg(short, long, value_name = "FILE", default_value = "configs/pico.toml")]
@@ -26,7 +28,7 @@ struct Cli {
 
 #[derive(Subcommand)]
 enum Commands {
-    /// Start interactive terminal chat session with tool execution
+    /// Start interactive terminal chat session with probabilistic tool execution
     Chat {
         #[arg(long, default_value_t = false)]
         speak: bool,
@@ -37,12 +39,35 @@ enum Commands {
     Tools,
     /// Enumerate audio input and output devices
     Devices,
+    /// Continuous learning controls, checkpoints, and experience dataset
+    Learn {
+        #[command(subcommand)]
+        action: Option<LearnAction>,
+    },
     /// Run diagnostic environment health checks
     Doctor,
     /// Generate a fresh configuration file
     InitConfig {
         #[arg(short, long, default_value = "configs/pico.toml")]
         output: PathBuf,
+    },
+}
+
+#[derive(Subcommand)]
+enum LearnAction {
+    /// Show current learning statistics and active model checkpoint
+    Status,
+    /// Trigger continuous learning training cycle and promotion evaluation
+    Train,
+    /// Roll back to a previous model checkpoint
+    Rollback {
+        #[arg(short, long)]
+        version: Option<String>,
+    },
+    /// View recent experience observations
+    History {
+        #[arg(short, long, default_value_t = 10)]
+        limit: usize,
     },
 }
 
@@ -118,37 +143,118 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         Commands::Tools => {
             let config = load_or_default_config(&cli.config);
             let runtime = PicoRuntime::new(config)?;
-            let defs = runtime.registry().get_tool_definitions();
+            let tools = runtime.registry().all_tools();
+
             println!(
-                "{} Registered Tools ({} total):\n",
-                "=== PICO TOOL REGISTRY ===".cyan().bold(),
-                defs.len()
+                "\n{}",
+                format!("=== Registered Tools ({}) ===", tools.len())
+                    .cyan()
+                    .bold()
             );
-            for d in defs {
-                let name = d
-                    .pointer("/function/name")
-                    .and_then(|v| v.as_str())
-                    .unwrap_or("unknown");
-                let desc = d
-                    .pointer("/function/description")
-                    .and_then(|v| v.as_str())
-                    .unwrap_or("");
-                println!("• {}: {}", name.yellow().bold(), desc);
+            for t in tools {
+                let tier = match t.permission_tier() {
+                    pico_core::traits::PermissionTier::ReadOnly => "[ReadOnly]".green(),
+                    pico_core::traits::PermissionTier::LowRisk => "[LowRisk]".yellow(),
+                    pico_core::traits::PermissionTier::ConfirmationRequired => {
+                        "[Confirm]".magenta().bold()
+                    }
+                    pico_core::traits::PermissionTier::Restricted => "[Restricted]".red().bold(),
+                };
+                println!(
+                    " - {:<24} {} {}",
+                    t.name().bold(),
+                    tier,
+                    t.description().dimmed()
+                );
             }
             Ok(())
         }
-        Commands::Doctor => {
-            run_doctor(&cli.config).await?;
+        Commands::Learn { action } => {
+            let config = load_or_default_config(&cli.config);
+            let runtime = PicoRuntime::new(config)?;
+
+            match action.unwrap_or(LearnAction::Status) {
+                LearnAction::Status => {
+                    let stats = runtime.learning().stats()?;
+                    println!(
+                        "{}",
+                        "=== Pico Continuous Learning Status ===".cyan().bold()
+                    );
+                    println!(
+                        "  Active Model Version : {}",
+                        stats.active_version.green().bold()
+                    );
+                    println!(
+                        "  Benchmark Top-1 Acc  : {:.1}%",
+                        stats.top1_accuracy * 100.0
+                    );
+                    println!("  Benchmark Top-3 Rec  : {:.1}%", stats.top3_recall * 100.0);
+                    println!("  Total Observations   : {}", stats.total_observations);
+                    println!("  Saved Checkpoints    : {}", stats.available_checkpoints);
+                    println!(
+                        "  Ranking Weights      : sem={:.2}, lex={:.2}, intent={:.2}, hist={:.2}",
+                        stats.active_weights.w_semantic,
+                        stats.active_weights.w_lexical,
+                        stats.active_weights.w_intent,
+                        stats.active_weights.w_history
+                    );
+                }
+                LearnAction::Train => {
+                    println!(
+                        "{}",
+                        "Triggering on-device model training and benchmark validation...".cyan()
+                    );
+                    match runtime.trigger_training().await? {
+                        Some((version, metrics)) => {
+                            println!(
+                                "{} Model promoted successfully to {} (Top-1: {:.1}%, Top-3: {:.1}%)",
+                                "[PROMOTED]".green().bold(),
+                                version,
+                                metrics.top1_accuracy * 100.0,
+                                metrics.top3_recall * 100.0
+                            );
+                        }
+                        None => {
+                            println!("{}", "[INFO] Training completed; candidate did not exceed promotion criteria or insufficient samples.".yellow());
+                        }
+                    }
+                }
+                LearnAction::Rollback { version } => {
+                    let res = runtime.rollback_model(version.as_deref()).await?;
+                    println!(
+                        "{} Rolled back active model to version {}",
+                        "[ROLLBACK]".yellow().bold(),
+                        res.version.bold()
+                    );
+                }
+                LearnAction::History { limit } => {
+                    let obs = runtime
+                        .learning()
+                        .store()
+                        .get_training_observations(LabelQuality::Inferred, limit)?;
+                    println!(
+                        "{}",
+                        format!("=== Recent Observations (last {}) ===", obs.len())
+                            .cyan()
+                            .bold()
+                    );
+                    for o in obs {
+                        println!(
+                            " [{}] \"{}\" -> {} ({:.0}%) status:{}",
+                            o.timestamp.format("%H:%M:%S"),
+                            o.request_text,
+                            o.selected_action.bold(),
+                            o.confidence * 100.0,
+                            o.execution_status
+                        );
+                    }
+                }
+            }
             Ok(())
         }
-        Commands::Chat { speak } => {
-            run_chat_loop(&cli.config, speak).await?;
-            Ok(())
-        }
-        Commands::Voice => {
-            run_voice_loop(&cli.config).await?;
-            Ok(())
-        }
+        Commands::Doctor => run_doctor(&cli.config).await,
+        Commands::Chat { speak } => run_chat_loop(&cli.config, speak).await,
+        Commands::Voice => run_voice_loop(&cli.config).await,
     }
 }
 
@@ -243,39 +349,36 @@ async fn run_doctor(config_path: &PathBuf) -> Result<(), Box<dyn std::error::Err
         Err(e) => println!("  {} Database check failed: {}", "[FAIL]".red(), e),
     }
 
-    // 5. Inference Connectivity
-    println!("\n[5/5] Checking Local Inference Provider (Ollama / Llama.cpp)...");
+    // 5. Probabilistic Decision Model & Continuous Learning
+    println!("\n[5/5] Checking Probabilistic Decision Intelligence & Continuous Learning...");
     let cfg = load_or_default_config(config_path);
-    let url = format!("{}/api/tags", cfg.inference.endpoint.trim_end_matches('/'));
-    match reqwest::get(&url).await {
-        Ok(resp) => {
-            if resp.status().is_success() {
-                println!(
-                    "  {} Ollama service reachable at {}",
-                    "[OK]".green(),
-                    cfg.inference.endpoint
-                );
-                println!(
-                    "  {} Target model configured: {}",
-                    "[OK]".green(),
-                    cfg.inference.model
-                );
-            } else {
-                println!(
-                    "  {} Ollama returned HTTP {}",
-                    "[WARN]".yellow(),
-                    resp.status()
-                );
-            }
+    match PicoRuntime::new(cfg) {
+        Ok(runtime) => {
+            println!(
+                "  {} Decision Model: {} (Version: {})",
+                "[OK]".green(),
+                runtime.decision().model_name(),
+                runtime.decision().model_version()
+            );
+            let tools = runtime.registry().all_tools();
+            println!(
+                "  {} Tool Catalog indexed: {} operating system tools",
+                "[OK]".green(),
+                tools.len()
+            );
+            let stats = runtime.learning().stats()?;
+            println!(
+                "  {} Continuous Learning Store: Active (Total experiences: {})",
+                "[OK]".green(),
+                stats.total_observations
+            );
         }
         Err(e) => {
             println!(
-                "  {} Inference endpoint ({}) unreachable: {}",
-                "[WARN]".yellow(),
-                cfg.inference.endpoint,
+                "  {} Decision Engine initialization error: {}",
+                "[FAIL]".red(),
                 e
             );
-            println!("     Make sure Ollama is running (`ollama serve`) or adjust endpoint in configs/pico.toml");
         }
     }
 
@@ -302,7 +405,7 @@ async fn run_chat_loop(
     );
     println!(
         "{}",
-        "  Type your message below. Type 'exit' to quit.   ".dimmed()
+        "  Type your message below. Commands: /up, /down, /correct <act>, 'exit'.   ".dimmed()
     );
     println!(
         "{}",
@@ -313,9 +416,20 @@ async fn run_chat_loop(
     tokio::spawn(async move {
         while let Ok(event) = event_rx.recv().await {
             match event {
+                PicoEvent::DecisionSelected {
+                    action, confidence, ..
+                } => {
+                    let act_str = action.unwrap_or_else(|| "direct_conversation".into());
+                    println!(
+                        "\n{} Decision: {} ({:.0}% confidence)",
+                        "⚡ [DECIDE]".cyan().bold(),
+                        act_str.bold(),
+                        confidence * 100.0
+                    );
+                }
                 PicoEvent::ToolCallRequested { call } => {
                     println!(
-                        "\n{} Calling tool: {} with {}",
+                        "{} Calling tool: {} with {}",
                         "⚙ [TOOL]".yellow().bold(),
                         call.name.bold(),
                         call.arguments
@@ -361,6 +475,27 @@ async fn run_chat_loop(
         if trimmed.eq_ignore_ascii_case("exit") || trimmed.eq_ignore_ascii_case("quit") {
             println!("{}", "Exiting Pico. Goodbye!".yellow());
             break;
+        }
+
+        if trimmed == "/up" || trimmed == "/thumbup" {
+            let _ = runtime.provide_feedback(1).await;
+            println!("{}", "✓ Recorded thumbs up feedback (+1).".green());
+            continue;
+        }
+
+        if trimmed == "/down" || trimmed == "/thumbdown" {
+            let _ = runtime.provide_feedback(-1).await;
+            println!("{}", "✓ Recorded thumbs down feedback (-1).".yellow());
+            continue;
+        }
+
+        if let Some(target) = trimmed.strip_prefix("/correct ") {
+            let _ = runtime.provide_correction(target.trim()).await;
+            println!(
+                "{}",
+                format!("✓ Recorded correction to action: {}", target.trim()).green()
+            );
+            continue;
         }
 
         if trimmed.is_empty() {
@@ -421,7 +556,7 @@ async fn run_voice_loop(config_path: &PathBuf) -> Result<(), Box<dyn std::error:
     tokio::spawn(async move {
         while let Some(user_speech) = speech_rx.recv().await {
             println!("\n{} \"{}\"", "🎤 Heard:".green().bold(), user_speech);
-            print!("{} Thinking and responding...", "⚡".cyan());
+            print!("{} Evaluating decision...", "⚡".cyan());
             io::stdout().flush().ok();
 
             match rt.process_turn(&user_speech, true).await {

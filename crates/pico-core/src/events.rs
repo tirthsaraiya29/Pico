@@ -1,4 +1,5 @@
 use crate::session::{SessionId, ToolCall, ToolResult};
+use crate::traits::CandidateScore;
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 
@@ -36,20 +37,42 @@ pub enum PicoEvent {
         latency_ms: u64,
     },
 
-    // Model Reasoning & Generation
-    InferenceStarted {
-        model: String,
-        prompt_tokens: usize,
+    // Probabilistic Decision Intelligence
+    DecisionStarted {
+        request: String,
+        candidate_count: usize,
     },
-    TokenChunk {
-        token: String,
+    CandidatesRanked {
+        candidates: Vec<CandidateScore>,
     },
-    ThinkingChunk {
-        thinking: String,
-    },
-    InferenceFinished {
-        total_tokens: usize,
+    DecisionSelected {
+        action: Option<String>,
+        confidence: f32,
         latency_ms: u64,
+    },
+    ClarificationRequested {
+        question: String,
+        candidates: Vec<String>,
+    },
+
+    // Continuous Learning & Experience
+    ExperienceObserved {
+        observation_id: String,
+        action: String,
+        success: bool,
+    },
+    ModelTrainingStarted {
+        version: String,
+        eligible_observations: usize,
+    },
+    ModelTrainingCompleted {
+        version: String,
+        top1_accuracy: f32,
+        top3_accuracy: f32,
+        promoted: bool,
+    },
+    ModelRollbackOccurred {
+        target_version: String,
     },
 
     // Structured Tools

@@ -10,6 +10,8 @@ pico-core = { workspace = true }
 pico-security = { workspace = true }
 pico-platform = { workspace = true }
 pico-inference = { workspace = true }
+pico-decision = { workspace = true }
+pico-learning = { workspace = true }
 pico-tools = { workspace = true }
 pico-audio = { workspace = true }
 pico-voice = { workspace = true }

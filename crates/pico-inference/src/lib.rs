@@ -1,49 +1,35 @@
-pub mod factory;
-pub mod llamacpp;
-pub mod ollama;
-pub mod openai;
-pub mod structured;
+//! Non-generative machine learning & ranking inference crate for Pico.
+//! Focuses on dense semantic embeddings, multi-feature cross-encoder scoring, and probability calibration.
 
-pub use factory::InferenceFactory;
-pub use llamacpp::LlamaCppProvider;
-pub use ollama::OllamaProvider;
-pub use openai::OpenAiCompatibleProvider;
-pub use structured::StructuredDecisionParser;
+pub mod calibration;
+pub mod embeddings;
+pub mod ranking;
+
+pub use calibration::Calibrator;
+pub use embeddings::{EmbeddingVector, SemanticEmbedder, EMBEDDING_DIM};
+pub use ranking::{CrossEncoderRanker, RankingWeights};
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use pico_core::config::InferenceConfig;
 
     #[test]
-    fn test_inference_factory_creation() {
-        let cfg1 = InferenceConfig {
-            provider: "ollama".into(),
-            ..Default::default()
-        };
-        let provider = InferenceFactory::create_provider(&cfg1);
-        assert_eq!(provider.provider_name(), "ollama");
+    fn test_inference_pipeline_end_to_end() {
+        let ranker = CrossEncoderRanker::default();
+        let (raw, sem, lex) = ranker.score_candidate(
+            "What is the CPU and memory utilization?",
+            "sys.get_system_info",
+            "Retrieves operating system details, CPU load, and available RAM statistics",
+            1.0,
+            1.0,
+        );
 
-        let cfg2 = InferenceConfig {
-            provider: "openai".into(),
-            ..Default::default()
-        };
-        let openai_provider = InferenceFactory::create_provider(&cfg2);
-        assert_eq!(openai_provider.provider_name(), "openai");
-    }
+        assert!(raw > 0.5);
+        assert!(sem > 0.0);
+        assert!(lex > 0.0);
 
-    #[tokio::test]
-    async fn test_live_ollama_call() {
-        use pico_core::traits::InferenceProvider;
-        let provider =
-            OllamaProvider::new("http://127.0.0.1:11434", "granite4.2:latest", 0.2, None);
-        let msgs = vec![pico_core::session::Message::new_user(
-            pico_core::session::SessionId::new(),
-            "Respond with the word PICO_TEST_OK and nothing else",
-        )];
-        match provider.generate_response(&msgs, None, None).await {
-            Ok(resp) => println!("LIVE OLLAMA SUCCESS: {}", resp.content),
-            Err(e) => println!("LIVE OLLAMA ERROR: {:?}", e),
-        }
+        let probs = Calibrator::softmax_calibrate(&[raw, 0.1, 0.05], 1.0);
+        assert_eq!(probs.len(), 3);
+        assert!(probs[0] > probs[1]);
     }
 }

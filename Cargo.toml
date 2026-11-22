@@ -4,6 +4,8 @@ members = [
     "crates/pico-security",
     "crates/pico-platform",
     "crates/pico-inference",
+    "crates/pico-decision",
+    "crates/pico-learning",
     "crates/pico-tools",
     "crates/pico-audio",
     "crates/pico-voice",
@@ -26,6 +28,8 @@ pico-core = { path = "crates/pico-core" }
 pico-security = { path = "crates/pico-security" }
 pico-platform = { path = "crates/pico-platform" }
 pico-inference = { path = "crates/pico-inference" }
+pico-decision = { path = "crates/pico-decision" }
+pico-learning = { path = "crates/pico-learning" }
 pico-tools = { path = "crates/pico-tools" }
 pico-audio = { path = "crates/pico-audio" }
 pico-voice = { path = "crates/pico-voice" }
@@ -36,7 +40,6 @@ pico-orchestrator = { path = "crates/pico-orchestrator" }
 tokio = { version = "1.41", features = ["full"] }
 async-trait = "0.1"
 futures = "0.3"
-futures-util = "0.3"
 
 # Serialization & Config
 serde = { version = "1.0", features = ["derive"] }
@@ -50,7 +53,6 @@ tracing-subscriber = { version = "0.3", features = ["env-filter", "fmt", "json"]
 
 # Network & HTTP
 reqwest = { version = "0.12", features = ["json", "stream"] }
-eventsource-stream = "0.2"
 
 # Utilities
 chrono = { version = "0.4", features = ["serde"] }

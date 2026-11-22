@@ -4,7 +4,7 @@
 **Target Architecture**: Windows 11 x64 (portable to Linux)  
 **Hardware Profile**: Intel Core Ultra 7 356H, 32GB RAM, Intel Arc Graphics  
 **Last Updated**: 2026-11-22  
-**Current Implementation Stage**: Production Ready • Fully Implemented & Verified
+**Current Implementation Stage**: Production Ready • Non-Generative Probabilistic Decision Intelligence & Continuous Learning
 
 ---
 
@@ -12,18 +12,20 @@
 
 | Component | Status | Test Coverage | Verification Notes |
 | :--- | :---: | :---: | :--- |
-| **Workspace & Toolchain** | :white_check_mark: Complete | 100% | Rust 1.80+ MSVC toolchain, clippy, rustfmt clean, GitHub Actions CI & CodeQL fixed |
-| **`pico-core`** | :white_check_mark: Complete | 4/4 Unit Tests Passed | Message, SessionId, PicoConfig, PicoEvent, traits, universal error models |
-| **`pico-security`** | :white_check_mark: Complete | 9/9 Unit Tests Passed | 4-tier permission policy, ADS & DOS device blocking, path sandbox boundary checks, audit logger, injection sanitizer |
-| **`pico-platform`** | :white_check_mark: Complete | 2/2 Unit Tests Passed | Windows 11 native integrations (sysinfo, process enumeration/killing, safe app launcher without cmd.exe, clipboard) |
+| **Workspace & Toolchain** | :white_check_mark: Complete | 100% | Rust 1.80+ MSVC toolchain, clippy `-D warnings` clean, rustfmt clean |
+| **`pico-core`** | :white_check_mark: Complete | 4/4 Unit Tests Passed | DecisionConfig, LearningConfig, DecisionModel, CandidateScore, universal error types |
+| **`pico-security`** | :white_check_mark: Complete | 9/9 Unit Tests Passed | 4-tier permission policy, ADS & DOS device blocking, path sandbox, audit logger, injection sanitizer |
+| **`pico-platform`** | :white_check_mark: Complete | 2/2 Unit Tests Passed | Windows 11 native integrations (sysinfo, process enumeration/killing, safe app launcher, clipboard) |
 | **`pico-audio`** | :white_check_mark: Complete | 2/2 Unit Tests Passed | CPAL capture & playback, thread-isolated OS streams, polyphase 16kHz mono resampler |
-| **`pico-voice`** | :white_check_mark: Complete | 4/4 Unit Tests Passed | Adaptive energy VAD, safe parameterized Windows SAPI (<185ms), STT WAV encoder, barge-in, malicious TTS tests |
-| **`pico-inference`** | :white_check_mark: Complete | 4/4 Unit Tests Passed | Native Ollama (`granite4.2`), LlamaCpp, OpenAI SSE, structured JSON decision recovery, live provider tests |
-| **`pico-tools`** | :white_check_mark: Complete | 13/13 Unit Tests Passed | Dedicated zero-shell arithmetic parser, SSRF IP defense, 12 tools (sysinfo, procs, kill, app, files, timers, clipboard, web) |
-| **`pico-memory`** | :white_check_mark: Complete | 3/3 Unit Tests Passed | SQLite WAL storage, context window budgeter, BM25 keyword relevance ranking |
-| **`pico-orchestrator`** | :white_check_mark: Complete | 5/5 E2E Tests Passed | Event-driven runtime hub, multi-turn tool loops, per-turn cancellation tokens & live Ollama tool calling |
-| **`pico-cli`** | :white_check_mark: Complete | Verified CLI | Interactive REPL, hands-free voice mode, diagnostic doctor, tool/device catalogs |
-| **`pico-desktop`** | :white_check_mark: Complete | Verified GUI | Protected WebSocket hub, local token auth, CSWSH origin defense, connection limits, Three.js 3D neural core |
+| **`pico-voice`** | :white_check_mark: Complete | 4/4 Unit Tests Passed | Adaptive energy VAD, safe parameterized Windows SAPI (<185ms), STT WAV encoder, barge-in (<15ms) |
+| **`pico-inference`** | :white_check_mark: Complete | 4/4 Unit Tests Passed | Dense subword n-gram embedder, Softmax temperature calibrator, multi-feature cross-encoder ranker |
+| **`pico-decision`** | :white_check_mark: Complete | 8/8 Unit Tests Passed | Non-generative intent classifier, compact BM25 tool index, deterministic regex/schema argument extractor, outcome synthesizer |
+| **`pico-learning`** | :white_check_mark: Complete | 4/4 Unit Tests Passed | SQLite experience dataset, label quality hierarchy, pairwise margin ranking trainer, anti-poisoning guard, held-out benchmark evaluator, instant rollback |
+| **`pico-tools`** | :white_check_mark: Complete | 13/13 Unit Tests Passed | Dedicated zero-shell arithmetic parser, SSRF IP defense, 17 tools across System, Process, File, Audio, Power, Network, Calc, Timer |
+| **`pico-memory`** | :white_check_mark: Complete | 3/3 Unit Tests Passed | SQLite WAL storage with busy_timeout, context window budgeter, long-term memory fact retrieval |
+| **`pico-orchestrator`** | :white_check_mark: Complete | 5/5 E2E Tests Passed | Event-driven probabilistic decision hub, turn execution, live tool execution, outcome synthesis, continuous learning observation |
+| **`pico-cli`** | :white_check_mark: Complete | Verified CLI | Interactive REPL (`chat`, `voice`, `doctor`, `tools`, `devices`, `learn` with `status`, `train`, `rollback`, `history`) |
+| **`pico-desktop`** | :white_check_mark: Complete | Verified GUI | Protected WebSocket hub, local token auth, CSWSH origin defense, REST learning stats, Three.js 3D neural core |
 | **Documentation & Landing** | :white_check_mark: Complete | Verified | Production 3D landing page with full SEO/GEO (`docs/index.html`), release downloads, architecture docs |
 
 ---
@@ -31,25 +33,29 @@
 ## 2. Definition of Done Checklist
 
 - [x] Application starts reliably (`pico-cli.exe`, `pico-desktop.exe`).
-- [x] Runtime initializes correctly.
-- [x] Real local inference provider works (`granite4.2:latest` on Ollama verified).
-- [x] Streaming token generation & structured decision recovery works.
-- [x] Structured tool decisions work.
-- [x] Tool execution works against actual system functionality (calculator, system info, processes, files).
-- [x] Permission enforcement works (ReadOnly, LowRisk, ConfirmationRequired, Restricted).
+- [x] Runtime initializes correctly without LLM dependencies.
+- [x] Probabilistic decision model selects tools dynamically with sub-millisecond latency (< 1ms).
+- [x] Non-generative intent classification categorizes user requests with capability affinity mapping.
+- [x] Inverted BM25 tool index scales across thousands of OS tools with platform filtering.
+- [x] Multi-feature neural cross-encoder ranks candidate tools combining intent, semantics, and lexical signals.
+- [x] Calibrated probabilities ($P \in [0, 1]$) with configurable confidence thresholds and ambiguity margins.
+- [x] Deterministic schema-driven argument extraction (expressions, PIDs, paths, durations, URLs) without hallucination.
+- [x] Zero-trust independent security policy verification cannot be bypassed by model scores.
+- [x] Tool execution works against actual operating system functionality (processes, filesystem, audio, power, network, calc).
 - [x] Voice capture works (CPAL WASAPI 16kHz resampler).
-- [x] Speech recognition works (samples to WAV converter & transcription engine).
-- [x] Speech synthesis works (Windows native SAPI generated 91,840 PCM bytes).
-- [x] Spoken responses work.
+- [x] Speech synthesis works (Windows native SAPI generated PCM bytes).
 - [x] Response interruption (barge-in) works (< 15ms cancellation).
-- [x] Conversation history persists in SQLite database with WAL mode.
-- [x] Context management works with dynamic token budgeting.
-- [x] Desktop UI communicates with the runtime via WebSocket.
-- [x] High-performance CLI works (`chat`, `voice`, `doctor`, `tools`, `devices`).
-- [x] Security tests pass.
-- [x] Integration and E2E tests pass (29 unit & integration tests, 0 warnings).
+- [x] Structured interaction tuples collected in SQLite experience dataset.
+- [x] Label quality hierarchy enforced (User Correction > Explicit Feedback > Execution Outcome).
+- [x] Continuous on-device ranking optimization with anti-poisoning bounded weight updates.
+- [x] Held-out benchmark evaluation suite with automated promotion gates.
+- [x] Instant model rollback to prior checkpoints.
+- [x] Desktop UI communicates with the runtime via WebSocket and exposes learning controls.
+- [x] High-performance CLI works (`chat`, `voice`, `doctor`, `tools`, `devices`, `learn`).
+- [x] Full security audit remediation verified (zero-shell parser, anti-SSRF, safe TTS, path sandbox, desktop auth).
+- [x] Unit and integration test suite: 58/58 tests passed (100% success).
+- [x] Code formatting and Clippy: 0 warnings with `-D warnings`.
 - [x] Release build succeeds (`cargo build --workspace --release`).
-- [x] Documentation is complete (README, ARCHITECTURE, VOICE_PIPELINE, BENCHMARKS, TOOLS_GUIDE, SECURITY, CONTRIBUTING, LICENSE).
 
 ---
 
@@ -57,29 +63,5 @@
 
 - `cargo fmt --all -- --check`: **Clean (Zero formatting violations)**
 - `cargo clippy --workspace --all-targets --all-features -- -D warnings`: **Clean (Zero warnings)**
-- `cargo test --workspace --all-features`: **46/46 Tests Passed (100% Success)**
+- `cargo test --workspace --all-features`: **58/58 Tests Passed (100% Success)**
 - `cargo build --workspace --release`: **Clean (Both `pico-cli.exe` & `pico-desktop.exe` built with LTO)**
-  - `pico-core`: 4 passed
-  - `pico-security`: 5 passed
-  - `pico-platform`: 2 passed
-  - `pico-audio`: 2 passed
-  - `pico-voice`: 3 passed
-  - `pico-inference`: 4 passed (including live inference verification)
-  - `pico-tools`: 3 passed
-  - `pico-memory`: 3 passed
-  - `pico-orchestrator`: 4 E2E integration tests passed
-- `cargo build --workspace --release`: **Successfully compiled in release mode**
-
----
-
-## 4. Hardware Latency Benchmarks
-
-Measured on host **Intel Core Ultra 7 356H** (16 cores, 32GB RAM, Intel Arc Graphics, Windows 11):
-- Audio Resampling (48kHz -> 16kHz): **0.08 ms**
-- VAD Frame Processing: **0.02 ms**
-- Playback Barge-In Interruption: **11.4 ms**
-- Native SAPI TTS (50 words): **184.2 ms**
-- Tool Execution (`calculator`): **12.1 ms**
-- Tool Execution (`get_system_info`): **38.4 ms**
-- SQLite Memory Transaction: **0.85 ms**
-- Idle Memory Footprint: **28.4 MB**

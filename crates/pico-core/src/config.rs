@@ -6,7 +6,10 @@ use std::path::{Path, PathBuf};
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Default)]
 pub struct PicoConfig {
     #[serde(default)]
-    pub inference: InferenceConfig,
+    pub decision: DecisionConfig,
+
+    #[serde(default)]
+    pub learning: LearningConfig,
 
     #[serde(default)]
     pub voice: VoiceConfig,
@@ -41,14 +44,14 @@ impl PicoConfig {
 
     /// Validates configuration parameters.
     pub fn validate(&self) -> Result<()> {
-        if self.inference.endpoint.is_empty() {
+        if self.decision.confidence_threshold <= 0.0 || self.decision.confidence_threshold > 1.0 {
             return Err(PicoError::Config(
-                "Inference endpoint cannot be empty".into(),
+                "Decision confidence threshold must be between 0.0 and 1.0".into(),
             ));
         }
-        if self.inference.model.is_empty() {
+        if self.decision.max_candidates == 0 {
             return Err(PicoError::Config(
-                "Inference model name cannot be empty".into(),
+                "Decision max candidates must be greater than zero".into(),
             ));
         }
         if self.audio.sample_rate == 0 {
@@ -60,38 +63,71 @@ impl PicoConfig {
     }
 }
 
-/// Inference engine configuration.
+/// Probabilistic Decision Model configuration.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-pub struct InferenceConfig {
-    /// Provider type: "ollama", "llamacpp", or "openai"
-    pub provider: String,
-    /// Base URL endpoint (e.g. "http://127.0.0.1:11434")
-    pub endpoint: String,
-    /// Model identifier (e.g. "granite4.2:latest", "gpt-oss:20b-cloud")
-    pub model: String,
-    /// Optional API key for remote providers
-    pub api_key: Option<String>,
-    /// Sampling temperature (0.0 to 1.0)
-    pub temperature: f32,
-    /// Maximum context window size in tokens
-    pub context_window: usize,
-    /// Request timeout in seconds
-    pub timeout_seconds: u64,
-    /// System prompt persona
-    pub system_prompt: String,
+pub struct DecisionConfig {
+    /// Active decision model version
+    pub model_version: String,
+    /// Minimum calibrated probability threshold to automatically execute an action
+    pub confidence_threshold: f32,
+    /// Maximum candidate tools retrieved for ranking evaluation
+    pub max_candidates: usize,
+    /// Whether neural cross-encoder candidate scoring is active
+    pub enable_cross_encoder: bool,
+    /// Temperature scaling factor for probability calibration
+    pub calibration_temperature: f32,
+    /// Margin between top 2 candidate probabilities below which clarification is requested
+    pub clarification_margin: f32,
+    /// Path to model artifacts directory
+    pub model_dir: PathBuf,
 }
 
-impl Default for InferenceConfig {
+impl Default for DecisionConfig {
     fn default() -> Self {
         Self {
-            provider: "ollama".into(),
-            endpoint: "http://127.0.0.1:11434".into(),
-            model: "granite4.2:latest".into(),
-            api_key: None,
-            temperature: 0.2,
-            context_window: 8192,
-            timeout_seconds: 60,
-            system_prompt: "You are Pico, an ultra-fast, capable, local AI voice assistant. Answer concisely, directly, and naturally. When tools are necessary to complete a user task, select and call them directly.".into(),
+            model_version: "pico-decision-v1.0.0".into(),
+            confidence_threshold: 0.60,
+            max_candidates: 15,
+            enable_cross_encoder: true,
+            calibration_temperature: 1.0,
+            clarification_margin: 0.08,
+            model_dir: PathBuf::from("models/decision"),
+        }
+    }
+}
+
+/// Continuous on-device learning & experience dataset configuration.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct LearningConfig {
+    /// Whether continuous experience collection is active
+    pub enabled: bool,
+    /// SQLite database path for persistent structured experiences
+    pub database_path: PathBuf,
+    /// Enable automatic retraining on idle when sufficient eligible experiences accumulate
+    pub auto_train: bool,
+    /// Minimum newly validated observations required to trigger candidate retraining
+    pub min_observations_for_retraining: usize,
+    /// Maximum retained observations in the experience database
+    pub max_dataset_entries: usize,
+    /// Fraction of observations reserved for held-out promotion evaluation
+    pub evaluation_heldout_ratio: f32,
+    /// Minimum Top-1 evaluation accuracy required to promote a newly trained candidate model
+    pub min_promotion_accuracy: f32,
+    /// Step size learning rate for gradient optimization
+    pub learning_rate: f32,
+}
+
+impl Default for LearningConfig {
+    fn default() -> Self {
+        Self {
+            enabled: true,
+            database_path: PathBuf::from("data/experiences.sqlite"),
+            auto_train: false,
+            min_observations_for_retraining: 25,
+            max_dataset_entries: 50_000,
+            evaluation_heldout_ratio: 0.20,
+            min_promotion_accuracy: 0.85,
+            learning_rate: 0.05,
         }
     }
 }
@@ -138,16 +174,16 @@ impl Default for VoiceConfig {
 /// Low-level audio hardware configuration.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct AudioConfig {
-    /// Audio sampling rate in Hertz (standard 16000 for voice)
+    /// Target sample rate (Hz) for speech processing pipeline
     pub sample_rate: u32,
-    /// Number of audio channels (1 = mono)
+    /// Target channels: 1 = mono, 2 = stereo
     pub channels: u16,
-    /// Specific input audio device name (or default if None)
+    /// Internal audio chunk frame size (e.g. 512 for 32ms at 16kHz)
+    pub chunk_size: usize,
+    /// Hardware input device name override (None = OS default)
     pub input_device: Option<String>,
-    /// Specific output audio device name (or default if None)
+    /// Hardware output device name override (None = OS default)
     pub output_device: Option<String>,
-    /// Audio buffer frame chunk size
-    pub buffer_size: u32,
 }
 
 impl Default for AudioConfig {
@@ -155,76 +191,86 @@ impl Default for AudioConfig {
         Self {
             sample_rate: 16000,
             channels: 1,
+            chunk_size: 512,
             input_device: None,
             output_device: None,
-            buffer_size: 512,
         }
     }
 }
 
-/// Security and permission settings.
+/// Zero-trust system security & sandboxing configuration.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct SecurityConfig {
-    /// Default execution permission policy: "Strict", "ConfirmationPrompt", "Permissive"
+    /// Policy enforcement mode: "Strict" or "Permissive"
     pub policy_mode: String,
-    /// Directories allowed for file read/write operations
-    pub allowed_directories: Vec<PathBuf>,
-    /// Explicitly forbidden system paths
-    pub blocked_directories: Vec<PathBuf>,
-    /// Always prompt for confirmation before executing shell commands
+    /// Require explicit interactive confirmation for high-risk operations
     pub require_confirmation_for_shell: bool,
-    /// Path to security audit log
+    /// Whitelisted directories permitted for file operations
+    pub allowed_directories: Vec<PathBuf>,
+    /// Explicitly forbidden system directories
+    pub blocked_directories: Vec<PathBuf>,
+    /// Maximum execution time for tools in seconds
+    pub command_timeout_seconds: u64,
+    /// Audit log file path
     pub audit_log_path: PathBuf,
 }
 
 impl Default for SecurityConfig {
     fn default() -> Self {
         Self {
-            policy_mode: "ConfirmationPrompt".into(),
+            policy_mode: "Strict".into(),
+            require_confirmation_for_shell: true,
             allowed_directories: vec![PathBuf::from(".")],
             blocked_directories: vec![
                 PathBuf::from("C:\\Windows\\System32"),
-                PathBuf::from("C:\\Windows"),
+                PathBuf::from("C:\\Windows\\SysWOW64"),
+                PathBuf::from("/etc"),
+                PathBuf::from("/bin"),
             ],
-            require_confirmation_for_shell: true,
-            audit_log_path: PathBuf::from("pico_audit.log"),
+            command_timeout_seconds: 30,
+            audit_log_path: PathBuf::from("logs/security_audit.jsonl"),
         }
     }
 }
 
-/// Long-term memory and context budgeting settings.
+/// SQLite persistent conversational memory configuration.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct MemoryConfig {
-    /// Path to SQLite database file
+    /// SQLite file location
     pub database_path: PathBuf,
+    /// Maximum historical conversation messages budgeted for context
+    pub max_history_messages: usize,
     /// Maximum tokens reserved for active conversation history
     pub max_history_tokens: usize,
-    /// Total context window budget
-    pub context_budget: usize,
-    /// Number of turns before generating a summary
-    pub auto_summarize_turns: usize,
+    /// Maximum context token capacity
+    pub token_budget: usize,
+    /// Recency decay half-life in days
+    pub decay_half_life_days: f32,
 }
 
 impl Default for MemoryConfig {
     fn default() -> Self {
         Self {
-            database_path: PathBuf::from("pico_memory.sqlite"),
+            database_path: PathBuf::from("data/pico_memory.sqlite"),
+            max_history_messages: 50,
             max_history_tokens: 4096,
-            context_budget: 8192,
-            auto_summarize_turns: 12,
+            token_budget: 4096,
+            decay_half_life_days: 14.0,
         }
     }
 }
 
-/// Local web/desktop interface server settings.
+/// Desktop and local Web interface configuration.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct DesktopConfig {
     /// Local HTTP/WebSocket server port
     pub port: u16,
-    /// Local address to bind (defaults to 127.0.0.1 for security)
+    /// Server bind address
     pub bind_address: String,
-    /// Auto-launch browser on start
+    /// Automatically open default browser on launch
     pub auto_open_browser: bool,
+    /// Theme preference: "dark" or "light"
+    pub theme: String,
 }
 
 impl Default for DesktopConfig {
@@ -233,6 +279,7 @@ impl Default for DesktopConfig {
             port: 3124,
             bind_address: "127.0.0.1".into(),
             auto_open_browser: true,
+            theme: "dark".into(),
         }
     }
 }

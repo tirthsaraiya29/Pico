@@ -18,6 +18,7 @@ impl SqliteStore {
         // Enable Write-Ahead Logging for concurrency and performance
         conn.execute_batch(
             r#"
+            PRAGMA busy_timeout = 5000;
             PRAGMA journal_mode = WAL;
             PRAGMA synchronous = NORMAL;
             PRAGMA foreign_keys = ON;

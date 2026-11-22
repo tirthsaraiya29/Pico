@@ -10,6 +10,10 @@ async fn test_e2e_runtime_initialization_and_events() {
     config.security.allowed_directories = vec![std::path::PathBuf::from(".")];
     config.memory.database_path =
         std::env::temp_dir().join(format!("pico_e2e_{}.sqlite", uuid::Uuid::new_v4().simple()));
+    config.learning.database_path = std::env::temp_dir().join(format!(
+        "pico_e2e_l1_{}.sqlite",
+        uuid::Uuid::new_v4().simple()
+    ));
 
     let runtime = PicoRuntime::new(config).expect("Runtime initialization failed");
     let mut rx = runtime.subscribe_events();
@@ -33,6 +37,10 @@ async fn test_e2e_tool_registry_and_permissions() {
     config.security.allowed_directories = vec![std::path::PathBuf::from(".")];
     config.memory.database_path = std::env::temp_dir().join(format!(
         "pico_e2e_tools_{}.sqlite",
+        uuid::Uuid::new_v4().simple()
+    ));
+    config.learning.database_path = std::env::temp_dir().join(format!(
+        "pico_e2e_l2_{}.sqlite",
         uuid::Uuid::new_v4().simple()
     ));
 
@@ -74,6 +82,10 @@ async fn test_e2e_memory_persistence_and_retrieval() {
         uuid::Uuid::new_v4().simple()
     ));
     config.memory.database_path = temp_db.clone();
+    config.learning.database_path = std::env::temp_dir().join(format!(
+        "pico_e2e_l3_{}.sqlite",
+        uuid::Uuid::new_v4().simple()
+    ));
 
     let runtime = PicoRuntime::new(config).expect("Runtime initialization failed");
     let memory = runtime.memory();
@@ -104,6 +116,10 @@ async fn test_e2e_runtime_cancellation() {
         "pico_e2e_cancel_{}.sqlite",
         uuid::Uuid::new_v4().simple()
     ));
+    config.learning.database_path = std::env::temp_dir().join(format!(
+        "pico_e2e_l4_{}.sqlite",
+        uuid::Uuid::new_v4().simple()
+    ));
 
     let runtime = Arc::new(PicoRuntime::new(config).expect("Runtime initialization failed"));
     let rt_clone = runtime.clone();
@@ -113,27 +129,39 @@ async fn test_e2e_runtime_cancellation() {
 }
 
 #[tokio::test]
-async fn test_e2e_live_turn_with_ollama() {
+async fn test_e2e_probabilistic_turn_and_learning() {
     let mut config = PicoConfig::default();
     config.memory.database_path = std::env::temp_dir().join(format!(
-        "pico_e2e_live_{}.sqlite",
+        "pico_e2e_decision_{}.sqlite",
+        uuid::Uuid::new_v4().simple()
+    ));
+    config.learning.database_path = std::env::temp_dir().join(format!(
+        "pico_e2e_learn_{}.sqlite",
         uuid::Uuid::new_v4().simple()
     ));
 
     let runtime = PicoRuntime::new(config).expect("Runtime initialization failed");
-    match runtime
-        .process_turn(
-            "What is 25 * 4? Calculate this using the calculator tool.",
-            false,
-        )
+
+    // 1. Test probabilistic calculation decision and execution
+    let reply = runtime
+        .process_turn("Calculate 25 * 4", false)
         .await
-    {
-        Ok(reply) => {
-            println!("LIVE REASONING & TOOL RESULT: {}", reply);
-            assert!(!reply.is_empty());
-        }
-        Err(e) => {
-            println!("Ollama live turn note: {:?}", e);
-        }
-    }
+        .expect("Turn processing failed");
+
+    assert!(
+        reply.contains("100"),
+        "Expected 100 in reply, got: {}",
+        reply
+    );
+
+    // 2. Test providing feedback
+    let fb_res = runtime.provide_feedback(1).await;
+    assert!(fb_res.is_ok());
+
+    // 3. Test direct conversation
+    let direct_reply = runtime
+        .process_turn("Hello, who are you?", false)
+        .await
+        .expect("Direct turn failed");
+    assert!(direct_reply.contains("Pico"));
 }

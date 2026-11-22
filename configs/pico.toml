@@ -1,20 +1,31 @@
 # Pico System Configuration File
-# Optimized for local execution on Windows 11 x64 (Intel Core Ultra 7 356H, 32GB RAM)
+# Non-Generative Probabilistic Decision Intelligence & Continuous Learning
+# Optimized for local execution on Windows 11 x64 (Intel Core Ultra 7 356H, 32GB RAM, Intel Arc Graphics)
 
-[inference]
-provider = "ollama"                         # Options: "ollama", "llamacpp", "openai"
-endpoint = "http://127.0.0.1:11434"         # Local Ollama endpoint
-model = "granite4.2:latest"                 # Default local GGUF model
-temperature = 0.2
-context_window = 8192
-timeout_seconds = 180
-system_prompt = "You are Pico, an ultra-fast, capable, local AI voice assistant. Answer concisely, directly, and naturally. When tools are necessary to complete a user task, select and call them directly."
+[decision]
+model_version = "pico-decision-v1.0.0"
+confidence_threshold = 0.60
+max_candidates = 15
+enable_cross_encoder = true
+calibration_temperature = 1.0
+clarification_margin = 0.08
+model_dir = "models/decision"
+
+[learning]
+enabled = true
+database_path = "data/experiences.sqlite"
+auto_train = false
+min_observations_for_retraining = 25
+max_dataset_entries = 50000
+evaluation_heldout_ratio = 0.20
+min_promotion_accuracy = 0.85
+learning_rate = 0.05
 
 [voice]
 vad_threshold = 0.015                       # Energy threshold for voice detection
 silence_duration_ms = 700                   # Milliseconds of silence before speech finalization
-stt_engine = "whisper"                      # Options: "whisper", "local", "cloud"
-tts_engine = "native_sapi"                  # Options: "native_sapi", "piper", "cloud"
+stt_engine = "whisper"                      # Options: "whisper", "local"
+tts_engine = "native_sapi"                  # Options: "native_sapi", "piper"
 speech_rate = 1.0                           # 0.5 to 2.0 playback rate
 push_to_talk = false                        # Set true for manual key trigger
 ptt_key = "Space"
@@ -23,25 +34,28 @@ enable_barge_in = true                      # Immediately interrupts playback wh
 [audio]
 sample_rate = 16000                         # 16kHz standard for speech processing
 channels = 1                                # Mono
-buffer_size = 512
+chunk_size = 512
 
 [security]
-policy_mode = "ConfirmationPrompt"          # Options: "Strict", "ConfirmationPrompt", "Permissive"
+policy_mode = "Strict"                      # Options: "Strict", "Permissive"
 allowed_directories = ["."]
 blocked_directories = [
     "C:\\Windows",
     "C:\\Windows\\System32"
 ]
 require_confirmation_for_shell = true
-audit_log_path = "pico_audit.log"
+audit_log_path = "logs/security_audit.jsonl"
+command_timeout_seconds = 30
 
 [memory]
-database_path = "pico_memory.sqlite"
+database_path = "data/pico_memory.sqlite"
+max_history_messages = 50
 max_history_tokens = 4096
-context_budget = 8192
-auto_summarize_turns = 12
+token_budget = 4096
+decay_half_life_days = 14.0
 
 [desktop]
 port = 3124
 bind_address = "127.0.0.1"
 auto_open_browser = true
+theme = "dark"

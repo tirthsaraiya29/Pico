@@ -7,15 +7,5 @@ license.workspace = true
 
 [dependencies]
 pico-core = { workspace = true }
-tokio = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }
-reqwest = { workspace = true }
-eventsource-stream = { workspace = true }
-futures = { workspace = true }
-futures-util = { workspace = true }
-async-trait = { workspace = true }
-async-stream = "0.3"
-tracing = { workspace = true }
-regex = { workspace = true }
-uuid = { workspace = true }

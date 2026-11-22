@@ -5,15 +5,15 @@ pub mod session;
 pub mod traits;
 
 pub use config::{
-    AudioConfig, DesktopConfig, InferenceConfig, MemoryConfig, PicoConfig, SecurityConfig,
-    VoiceConfig,
+    AudioConfig, DecisionConfig, DesktopConfig, LearningConfig, MemoryConfig, PicoConfig,
+    SecurityConfig, VoiceConfig,
 };
 pub use error::{PicoError, Result};
 pub use events::PicoEvent;
 pub use session::{Message, Role, SessionId, ToolCall, ToolResult};
 pub use traits::{
-    InferenceProvider, InferenceResponse, MemoryStore, PermissionTier, SpeechRecognizer,
-    SpeechSynthesizer, TokenStream, Tool,
+    CandidateAction, CandidateScore, DecisionModel, MemoryStore, PermissionTier, SpeechRecognizer,
+    SpeechSynthesizer, Tool,
 };
 
 #[cfg(test)]
@@ -40,8 +40,9 @@ mod tests {
     #[test]
     fn test_config_defaults() {
         let config = PicoConfig::default();
-        assert_eq!(config.inference.provider, "ollama");
+        assert_eq!(config.decision.model_version, "pico-decision-v1.0.0");
         assert_eq!(config.audio.sample_rate, 16000);
+        assert!(config.learning.enabled);
         assert!(config.validate().is_ok());
     }
 

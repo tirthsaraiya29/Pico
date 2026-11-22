@@ -35,6 +35,16 @@ impl ToolRegistry {
         self.default_timeout = timeout;
     }
 
+    /// Returns a list of all registered tools.
+    pub fn all_tools(&self) -> Vec<Arc<dyn Tool>> {
+        self.tools.values().cloned().collect()
+    }
+
+    /// Retrieves a specific tool by name.
+    pub fn get_tool(&self, name: &str) -> Option<Arc<dyn Tool>> {
+        self.tools.get(name).cloned()
+    }
+
     /// Returns OpenAI/Ollama tool definitions JSON array.
     pub fn get_tool_definitions(&self) -> Vec<serde_json::Value> {
         self.tools

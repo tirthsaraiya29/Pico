@@ -1,12 +1,18 @@
+pub mod audio_tools;
 pub mod calculator_parser;
 pub mod command_tools;
 pub mod filesystem_tools;
+pub mod network_tools;
+pub mod power_tools;
 pub mod registry;
 pub mod system_tools;
 pub mod utility_tools;
 
+pub use audio_tools::{MuteAudioTool, SetMasterVolumeTool};
 pub use command_tools::ExecuteShellCommandTool;
 pub use filesystem_tools::{ReadFileTool, SearchFilesTool, WriteFileTool};
+pub use network_tools::PingHostTool;
+pub use power_tools::{LockScreenTool, SleepSystemTool};
 pub use registry::ToolRegistry;
 pub use system_tools::{
     GetSystemInfoTool, KillProcessTool, ListProcessesTool, OpenApplicationTool,
@@ -29,6 +35,17 @@ pub fn build_default_registry(
     reg.register(Arc::new(ListProcessesTool));
     reg.register(Arc::new(KillProcessTool));
     reg.register(Arc::new(OpenApplicationTool));
+
+    // Audio tools
+    reg.register(Arc::new(SetMasterVolumeTool));
+    reg.register(Arc::new(MuteAudioTool));
+
+    // Power tools
+    reg.register(Arc::new(LockScreenTool));
+    reg.register(Arc::new(SleepSystemTool));
+
+    // Network tools
+    reg.register(Arc::new(PingHostTool));
 
     // File tools
     reg.register(Arc::new(ReadFileTool::new(sandbox.clone())));

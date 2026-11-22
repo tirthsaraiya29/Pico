@@ -30,6 +30,12 @@ pub enum PicoError {
     #[error("Speech synthesis error: {0}")]
     SpeechSynthesis(String),
 
+    #[error("Database error: {0}")]
+    Database(String),
+
+    #[error("Resource not found: {0}")]
+    NotFound(String),
+
     #[error("Memory storage error: {0}")]
     Memory(String),
 
