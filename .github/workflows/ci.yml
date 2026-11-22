@@ -12,16 +12,16 @@ jobs:
     runs-on: windows-latest
     steps:
       - name: Checkout Code
-        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        uses: actions/checkout@v4
 
       - name: Set up Rust Toolchain
-        uses: dtolnay/rust-toolchain@21e7d88c5387417e04f42786c547666da6ce7880 # stable
+        uses: dtolnay/rust-toolchain@stable
         with:
           toolchain: stable
           components: clippy, rustfmt
 
       - name: Cache Cargo Dependencies
-        uses: actions/cache@1bd1e32a3bdc45362d1e726936510720a7c30a57 # v4.2.0
+        uses: actions/cache@v4
         with:
           path: |
             ~/.cargo/bin/

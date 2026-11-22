@@ -4,11 +4,11 @@
 
 **Autonomous, Real-Time, Locally Capable AI Voice Assistant in Rust**
 
-[![CI](https://github.com/tirthsaraiya/Pico/actions/workflows/ci.yml/badge.svg)](https://github.com/tirthsaraiya/Pico/actions/workflows/ci.yml)
-[![CodeQL](https://github.com/tirthsaraiya/Pico/actions/workflows/codeql.yml/badge.svg)](https://github.com/tirthsaraiya/Pico/actions/workflows/codeql.yml)
+[![CI](https://github.com/tirthsaraiya29/Pico/actions/workflows/ci.yml/badge.svg)](https://github.com/tirthsaraiya29/Pico/actions/workflows/ci.yml)
+[![CodeQL](https://github.com/tirthsaraiya29/Pico/actions/workflows/codeql.yml/badge.svg)](https://github.com/tirthsaraiya29/Pico/actions/workflows/codeql.yml)
 [![License: GPL v3](https://img.shields.io/badge/License-GPLv3-blue.svg)](https://www.gnu.org/licenses/gpl-3.0)
 [![Rust](https://img.shields.io/badge/Rust-1.80%2B-orange.svg)](https://www.rust-lang.org/)
-[![Platform](https://img.shields.io/badge/Platform-Windows%2011%20%7C%20Linux-lightgrey.svg)](https://github.com/tirthsaraiya/Pico)
+[![Platform](https://img.shields.io/badge/Platform-Windows%2011%20%7C%20Linux-lightgrey.svg)](https://github.com/tirthsaraiya29/Pico)
 
 *Extremely low latency. Zero-trust OS execution. Native hardware audio pipeline. Fully local.*
 
@@ -93,7 +93,7 @@ Pico/
 ### 1. Clone & Build
 
 ```bash
-git clone https://github.com/tirthsaraiya/Pico.git
+git clone https://github.com/tirthsaraiya29/Pico.git
 cd Pico
 
 # Run unit and integration tests
