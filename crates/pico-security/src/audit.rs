@@ -130,9 +130,9 @@ impl AuditLogger {
                 }
                 serde_json::Value::Object(sanitized)
             }
-            serde_json::Value::Array(arr) => serde_json::Value::Array(
-                arr.iter().map(Self::mask_sensitive_data).collect(),
-            ),
+            serde_json::Value::Array(arr) => {
+                serde_json::Value::Array(arr.iter().map(Self::mask_sensitive_data).collect())
+            }
             serde_json::Value::String(s) => serde_json::Value::String(Self::redact_string(s)),
             other => other.clone(),
         }

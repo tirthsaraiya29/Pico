@@ -18,9 +18,7 @@ impl AudioDeviceManager {
     /// Lists all available audio input (capture) devices with negotiated default formats.
     pub fn list_input_devices() -> Result<Vec<AudioDeviceInfo>> {
         let host = cpal::default_host();
-        let default_name = host
-            .default_input_device()
-            .and_then(|d| d.name().ok());
+        let default_name = host.default_input_device().and_then(|d| d.name().ok());
         let devices = host
             .input_devices()
             .map_err(|e| PicoError::Audio(format!("Failed to enumerate input devices: {}", e)))?;
@@ -55,9 +53,7 @@ impl AudioDeviceManager {
     /// Lists all available audio output (playback) devices with negotiated default formats.
     pub fn list_output_devices() -> Result<Vec<AudioDeviceInfo>> {
         let host = cpal::default_host();
-        let default_name = host
-            .default_output_device()
-            .and_then(|d| d.name().ok());
+        let default_name = host.default_output_device().and_then(|d| d.name().ok());
         let devices = host
             .output_devices()
             .map_err(|e| PicoError::Audio(format!("Failed to enumerate output devices: {}", e)))?;

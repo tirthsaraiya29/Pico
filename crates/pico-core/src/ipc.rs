@@ -190,15 +190,16 @@ pub fn send_ipc_request_sync(
         for _ in 0..4 {
             match OpenOptions::new().read(true).write(true).open(endpoint) {
                 Ok(mut pipe) => {
-                    pipe.write_all(&payload)
-                        .map_err(|e| PicoError::Platform(format!("Named pipe write failed: {}", e)))?;
+                    pipe.write_all(&payload).map_err(|e| {
+                        PicoError::Platform(format!("Named pipe write failed: {}", e))
+                    })?;
                     pipe.flush().ok();
 
                     let mut reader = BufReader::new(pipe);
                     let mut line = String::new();
-                    let n = reader
-                        .read_line(&mut line)
-                        .map_err(|e| PicoError::Platform(format!("Named pipe read failed: {}", e)))?;
+                    let n = reader.read_line(&mut line).map_err(|e| {
+                        PicoError::Platform(format!("Named pipe read failed: {}", e))
+                    })?;
                     if n == 0 || line.len() > MAX_IPC_FRAME_BYTES {
                         return Err(PicoError::Serialization(
                             "Invalid or empty response frame from assistant daemon".into(),

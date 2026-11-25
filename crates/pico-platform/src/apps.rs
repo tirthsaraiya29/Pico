@@ -66,25 +66,16 @@ impl PlatformApps {
     /// Closes running user processes matching an application name safely (blocks system & self PIDs).
     pub fn close_application(app_name: &str) -> Result<usize> {
         let trimmed = Self::validate_app_target(app_name)?;
-        let normalized = trimmed
-            .trim_end_matches(".exe")
-            .to_lowercase();
+        let normalized = trimmed.trim_end_matches(".exe").to_lowercase();
 
         let protected = [
-            "system",
-            "idle",
-            "csrss",
-            "lsass",
-            "wininit",
-            "services",
-            "smss",
-            "explorer",
-            "svchost",
-            "systemd",
-            "init",
-            "pico",
+            "system", "idle", "csrss", "lsass", "wininit", "services", "smss", "explorer",
+            "svchost", "systemd", "init", "pico",
         ];
-        if protected.iter().any(|p| *p == normalized || normalized.contains("pico")) {
+        if protected
+            .iter()
+            .any(|p| *p == normalized || normalized.contains("pico"))
+        {
             return Err(PicoError::Security(format!(
                 "Refusing to terminate protected system/assistant process '{}'",
                 trimmed
@@ -313,7 +304,9 @@ mod win_apps {
                 "chrome.exe"
             }
             "firefox" => {
-                extras.push(PathBuf::from(r"C:\Program Files\Mozilla Firefox\firefox.exe"));
+                extras.push(PathBuf::from(
+                    r"C:\Program Files\Mozilla Firefox\firefox.exe",
+                ));
                 "firefox.exe"
             }
             "editor" | "code" | "vscode" | "visual studio code" => "code.exe",
@@ -469,9 +462,8 @@ mod win_apps {
             })?;
             let term_res = TerminateProcess(handle, 1);
             let _ = CloseHandle(handle);
-            term_res.map_err(|e| {
-                PicoError::Platform(format!("Failed to terminate PID {}: {}", pid, e))
-            })
+            term_res
+                .map_err(|e| PicoError::Platform(format!("Failed to terminate PID {}: {}", pid, e)))
         }
     }
 }
@@ -532,7 +524,9 @@ mod linux_apps {
                 .stdout(Stdio::null())
                 .stderr(Stdio::null())
                 .spawn()
-                .map_err(|e| PicoError::Platform(format!("Failed to launch '{}': {}", trimmed, e)))?;
+                .map_err(|e| {
+                    PicoError::Platform(format!("Failed to launch '{}': {}", trimmed, e))
+                })?;
             return Ok(());
         }
 

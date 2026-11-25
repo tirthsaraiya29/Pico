@@ -154,7 +154,8 @@ async fn execute_windows_command(
         c
     } else {
         let script = if meta.adapter_cmd.ends_with(".exe") {
-            let mut argv: Vec<String> = resolved_args.split_whitespace().map(String::from).collect();
+            let mut argv: Vec<String> =
+                resolved_args.split_whitespace().map(String::from).collect();
             for part in &mut argv {
                 if let Some(env_name) = part.strip_prefix("$env:") {
                     if let Some((_, val)) = env_pairs.iter().find(|(ek, _)| ek == env_name) {
@@ -247,7 +248,13 @@ async fn execute_windows_command(
 
 #[cfg(target_os = "linux")]
 fn validate_proc_or_sys_token(key: &str, value: &str) -> Result<()> {
-    if value.is_empty() || value == "." || value == ".." || value.contains('/') || value.contains('\\') || value.contains("..") {
+    if value.is_empty()
+        || value == "."
+        || value == ".."
+        || value.contains('/')
+        || value.contains('\\')
+        || value.contains("..")
+    {
         return Err(PicoError::Security(format!(
             "Unsafe path token '{}' in parameter '{}'",
             value, key
@@ -289,12 +296,13 @@ async fn execute_linux_command(
                     .replace(&format!("${}", k), val_str);
             }
         }
-        let canonical = tokio::fs::canonicalize(&path).await.map_err(|e| {
-            PicoError::ToolExecution {
-                tool: meta.canonical_id.clone(),
-                message: format!("Cannot resolve {}: {}", path, e),
-            }
-        })?;
+        let canonical =
+            tokio::fs::canonicalize(&path)
+                .await
+                .map_err(|e| PicoError::ToolExecution {
+                    tool: meta.canonical_id.clone(),
+                    message: format!("Cannot resolve {}: {}", path, e),
+                })?;
         let canonical_str = canonical.to_string_lossy();
         if !canonical_str.starts_with("/proc/") && !canonical_str.starts_with("/sys/") {
             return Err(PicoError::Security(format!(
@@ -302,13 +310,12 @@ async fn execute_linux_command(
                 canonical_str
             )));
         }
-        let content =
-            tokio::fs::read(&canonical)
-                .await
-                .map_err(|e| PicoError::ToolExecution {
-                    tool: meta.canonical_id.clone(),
-                    message: format!("Failed to read {}: {}", canonical.display(), e),
-                })?;
+        let content = tokio::fs::read(&canonical)
+            .await
+            .map_err(|e| PicoError::ToolExecution {
+                tool: meta.canonical_id.clone(),
+                message: format!("Failed to read {}: {}", canonical.display(), e),
+            })?;
         return Ok(serde_json::json!({
             "status": "success",
             "path": canonical.display().to_string(),

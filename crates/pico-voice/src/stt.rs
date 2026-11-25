@@ -58,7 +58,10 @@ impl SpeechNormalizer {
             } else {
                 // Trim only surrounding sentence/quote punctuation, keeping internal dots/slashes.
                 word.trim_matches(|c: char| {
-                    matches!(c, ',' | ';' | ':' | '"' | '\'' | '(' | ')' | '[' | ']' | '?' | '!')
+                    matches!(
+                        c,
+                        ',' | ';' | ':' | '"' | '\'' | '(' | ')' | '[' | ']' | '?' | '!'
+                    )
                 })
                 .trim_end_matches('.')
             };
@@ -111,8 +114,8 @@ struct TempWavGuard(PathBuf);
 
 impl TempWavGuard {
     fn create(wav_bytes: &[u8]) -> Result<Self> {
-        let path = std::env::temp_dir()
-            .join(format!("pico_stt_{}.wav", uuid::Uuid::new_v4().simple()));
+        let path =
+            std::env::temp_dir().join(format!("pico_stt_{}.wav", uuid::Uuid::new_v4().simple()));
         std::fs::write(&path, wav_bytes).map_err(|e| {
             PicoError::SpeechRecognition(format!("Failed to write temporary WAV file: {}", e))
         })?;
@@ -266,7 +269,10 @@ impl AsrDaemon {
             }),
             Ok(Ok(other)) => {
                 let _ = child.kill();
-                Err(format!("ASR daemon failed readiness handshake: {}", other.trim()))
+                Err(format!(
+                    "ASR daemon failed readiness handshake: {}",
+                    other.trim()
+                ))
             }
             Ok(Err(err)) => {
                 let _ = child.kill();
@@ -485,9 +491,15 @@ impl PlatformSpeechRecognizer {
             .map_err(|e| format!("ASR script spawn failed: {}", e))?;
 
         let stdout = String::from_utf8_lossy(&output.stdout).trim().to_string();
-        if !output.status.success() || stdout.starts_with("INIT_ERROR:") || stdout.starts_with("ERROR:") {
+        if !output.status.success()
+            || stdout.starts_with("INIT_ERROR:")
+            || stdout.starts_with("ERROR:")
+        {
             let stderr = String::from_utf8_lossy(&output.stderr).trim().to_string();
-            return Err(format!("ASR service failed ({}): {} {}", output.status, stdout, stderr));
+            return Err(format!(
+                "ASR service failed ({}): {} {}",
+                output.status, stdout, stderr
+            ));
         }
         Ok(stdout)
     }
@@ -527,7 +539,10 @@ impl SpeechRecognizer for PlatformSpeechRecognizer {
         let wav_bytes = Self::samples_to_wav_bytes(pcm_samples)?;
         let whisper_opt = self.whisper_binary.clone();
         let whisper_model = self.whisper_model.clone();
-        let python_target = self.explicit_python.clone().or_else(|| self.python_binary.clone());
+        let python_target = self
+            .explicit_python
+            .clone()
+            .or_else(|| self.python_binary.clone());
         let engine_name = self.stt_engine.clone();
         let daemon_arc = self.daemon.clone();
 
@@ -573,7 +588,11 @@ impl SpeechRecognizer for PlatformSpeechRecognizer {
             }
 
             // 3. Tertiary: One-shot ASR script execution.
-            match Self::transcribe_asr_service(temp_wav.path(), &engine_name, python_target.as_deref()) {
+            match Self::transcribe_asr_service(
+                temp_wav.path(),
+                &engine_name,
+                python_target.as_deref(),
+            ) {
                 Ok(t) => return Ok(t),
                 Err(e) => errors.push(e),
             }

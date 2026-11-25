@@ -211,10 +211,7 @@ mod linux_audio {
             if out.status.success() {
                 let text = String::from_utf8_lossy(&out.stdout);
                 // Example: "Volume: 0.65 [MUTED]" or "Volume: 0.65"
-                if let Some(num) = text
-                    .split_whitespace()
-                    .find_map(|w| w.parse::<f32>().ok())
-                {
+                if let Some(num) = text.split_whitespace().find_map(|w| w.parse::<f32>().ok()) {
                     let muted = text.contains("[MUTED]");
                     return Ok(AudioEndpointState {
                         volume_percent: (num * 100.0).round().clamp(0.0, 100.0) as u32,

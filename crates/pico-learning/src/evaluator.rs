@@ -118,24 +118,87 @@ fn infer_query_category_affinity(query: &str, category: &str) -> f32 {
     let cat = category.to_lowercase();
     let matches_category = match cat.as_str() {
         "filesystem" | "storage" | "backup" => {
-            q.contains("file") || q.contains("disk") || q.contains("directory") || q.contains("folder") || q.contains("write") || q.contains("read") || q.contains("backup") || q.contains("snapshot") || q.contains("storage")
+            q.contains("file")
+                || q.contains("disk")
+                || q.contains("directory")
+                || q.contains("folder")
+                || q.contains("write")
+                || q.contains("read")
+                || q.contains("backup")
+                || q.contains("snapshot")
+                || q.contains("storage")
         }
-        "process" => q.contains("process") || q.contains("kill") || q.contains("cpu") || q.contains("ram") || q.contains("task"),
-        "system" => q.contains("system") || q.contains("os ") || q.contains("hardware") || q.contains("uptime") || q.contains("battery") || q.contains("specs"),
-        "audio" => q.contains("volume") || q.contains("mute") || q.contains("sound") || q.contains("audio") || q.contains("speaker"),
-        "power" => q.contains("sleep") || q.contains("shutdown") || q.contains("restart") || q.contains("lock") || q.contains("power") || q.contains("hibernat"),
-        "network" => q.contains("ping") || q.contains("network") || q.contains("dns") || q.contains("wifi") || q.contains("port") || q.contains("http") || q.contains("ip"),
-        "calculator" => q.contains("calculate") || q.contains("sqrt") || q.contains('*') || q.contains('+'),
+        "process" => {
+            q.contains("process")
+                || q.contains("kill")
+                || q.contains("cpu")
+                || q.contains("ram")
+                || q.contains("task")
+        }
+        "system" => {
+            q.contains("system")
+                || q.contains("os ")
+                || q.contains("hardware")
+                || q.contains("uptime")
+                || q.contains("battery")
+                || q.contains("specs")
+        }
+        "audio" => {
+            q.contains("volume")
+                || q.contains("mute")
+                || q.contains("sound")
+                || q.contains("audio")
+                || q.contains("speaker")
+        }
+        "power" => {
+            q.contains("sleep")
+                || q.contains("shutdown")
+                || q.contains("restart")
+                || q.contains("lock")
+                || q.contains("power")
+                || q.contains("hibernat")
+        }
+        "network" => {
+            q.contains("ping")
+                || q.contains("network")
+                || q.contains("dns")
+                || q.contains("wifi")
+                || q.contains("port")
+                || q.contains("http")
+                || q.contains("ip")
+        }
+        "calculator" => {
+            q.contains("calculate") || q.contains("sqrt") || q.contains('*') || q.contains('+')
+        }
         "timer" => q.contains("timer") || q.contains("alarm") || q.contains("remind"),
         "clipboard" => q.contains("clipboard") || q.contains("copy") || q.contains("paste"),
-        "display" => q.contains("brightness") || q.contains("screen") || q.contains("monitor") || q.contains("display"),
+        "display" => {
+            q.contains("brightness")
+                || q.contains("screen")
+                || q.contains("monitor")
+                || q.contains("display")
+        }
         "services" => q.contains("service") || q.contains("daemon"),
         "packages" => q.contains("package") || q.contains("install") || q.contains("upgrade"),
-        "security" => q.contains("firewall") || q.contains("defender") || q.contains("security") || q.contains("scan"),
-        "environment" => q.contains("env") || q.contains("environment") || q.contains("path variable"),
+        "security" => {
+            q.contains("firewall")
+                || q.contains("defender")
+                || q.contains("security")
+                || q.contains("scan")
+        }
+        "environment" => {
+            q.contains("env") || q.contains("environment") || q.contains("path variable")
+        }
         "logs" => q.contains("log") || q.contains("journal") || q.contains("event"),
-        "device" | "usb" => q.contains("usb") || q.contains("device") || q.contains("driver") || q.contains("printer"),
-        "app" | "application" => q.contains("open ") || q.contains("launch ") || q.contains("close "),
+        "device" | "usb" => {
+            q.contains("usb")
+                || q.contains("device")
+                || q.contains("driver")
+                || q.contains("printer")
+        }
+        "app" | "application" => {
+            q.contains("open ") || q.contains("launch ") || q.contains("close ")
+        }
         "window_mgmt" => q.contains("window") || q.contains("focus") || q.contains("minimize"),
         "bluetooth" => q.contains("bluetooth") || q.contains("paired") || q.contains("headphones"),
         "notifications" => q.contains("notification") || q.contains("toast"),

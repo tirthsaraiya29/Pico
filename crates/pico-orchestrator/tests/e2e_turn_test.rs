@@ -265,7 +265,9 @@ async fn test_e2e_intent_routing_regressions_safe() {
     ));
 
     let runtime = PicoRuntime::new(config).expect("Runtime initialization failed");
-    runtime.set_confirmation_provider(Arc::new(DenyConfirm)).await;
+    runtime
+        .set_confirmation_provider(Arc::new(DenyConfirm))
+        .await;
 
     // 1. "Set a timer for 30 seconds" MUST NOT be hijacked by substring "second" into DirectConversation
     let reply_timer = runtime
@@ -295,7 +297,9 @@ async fn test_e2e_intent_routing_regressions_safe() {
         .await
         .expect("Missing app turn failed");
     assert!(
-        !reply_missing_app.to_lowercase().starts_with("opened nonexistent"),
+        !reply_missing_app
+            .to_lowercase()
+            .starts_with("opened nonexistent"),
         "Unknown app must fail rather than claiming success: {}",
         reply_missing_app
     );
@@ -310,7 +314,10 @@ async fn test_e2e_intent_routing_regressions_safe() {
         pico_decision::DecisionResult::ActionSelected { action_name, .. } => {
             assert_eq!(action_name, "display.set_brightness");
         }
-        other => panic!("Expected ActionSelected display.set_brightness, got {:?}", other),
+        other => panic!(
+            "Expected ActionSelected display.set_brightness, got {:?}",
+            other
+        ),
     }
 
     // 5. "Mute sounds" should select audio.mute deterministically
@@ -329,7 +336,9 @@ async fn test_e2e_intent_routing_regressions_safe() {
 
 #[tokio::test]
 async fn test_e2e_session_scoped_clarification_all_paths() {
-    use pico_core::session::{ClarificationKind, ClarificationOption, ClarificationState, SessionId};
+    use pico_core::session::{
+        ClarificationKind, ClarificationOption, ClarificationState, SessionId,
+    };
     use serde_json::json;
 
     let mut config = PicoConfig::default();
@@ -346,7 +355,10 @@ async fn test_e2e_session_scoped_clarification_all_paths() {
     let runtime = PicoRuntime::new(config).expect("Runtime initialization failed");
 
     // 1. Standalone "first" with NO pending clarification stays safe
-    let reply_alone = runtime.process_turn("first", false).await.expect("Turn failed");
+    let reply_alone = runtime
+        .process_turn("first", false)
+        .await
+        .expect("Turn failed");
     assert!(!reply_alone.contains("read_text_head"));
 
     // 2. Inject realistic two-candidate clarification across two isolated sessions (calc vs sysinfo)

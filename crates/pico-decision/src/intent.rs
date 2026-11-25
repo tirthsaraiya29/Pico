@@ -363,8 +363,19 @@ fn is_direct_conversation(t: &str) -> bool {
     ];
     if words.iter().any(|w| greetings.contains(w)) && words.len() <= 6 {
         let task_keywords = [
-            "process", "calc", "calculate", "file", "volume", "mute", "kill", "system", "ram",
-            "timer", "brightness", "open", "close",
+            "process",
+            "calc",
+            "calculate",
+            "file",
+            "volume",
+            "mute",
+            "kill",
+            "system",
+            "ram",
+            "timer",
+            "brightness",
+            "open",
+            "close",
         ];
         if !words.iter().any(|w| task_keywords.contains(w)) {
             return true;

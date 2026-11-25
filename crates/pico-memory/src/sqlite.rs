@@ -306,7 +306,9 @@ impl SqliteStore {
             .map_err(|e| PicoError::Memory(format!("Prepare search failed: {}", e)))?;
 
         let rows = stmt
-            .query_map(params![pattern, limit as i64], |row| row.get::<_, String>(0))
+            .query_map(params![pattern, limit as i64], |row| {
+                row.get::<_, String>(0)
+            })
             .map_err(|e| PicoError::Memory(format!("Memory search failed: {}", e)))?;
 
         rows.collect::<rusqlite::Result<Vec<String>>>()

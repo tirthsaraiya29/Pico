@@ -37,7 +37,11 @@ impl VadProcessor {
     }
 
     /// Creates a VAD calibrated for an explicit mono sample rate (Hz).
-    pub fn new_with_rate(sample_rate: u32, energy_threshold: f32, silence_duration_ms: u64) -> Self {
+    pub fn new_with_rate(
+        sample_rate: u32,
+        energy_threshold: f32,
+        silence_duration_ms: u64,
+    ) -> Self {
         let rate = sample_rate.max(8_000);
         let min_silence_ms = silence_duration_ms.max(400);
         let max_silence_ms = min_silence_ms + 400;
@@ -185,8 +189,8 @@ impl VadProcessor {
             "Conclusive end-of-speech detected"
         );
 
-        let valid = self.speech_buffer.len() >= self.min_utterance_samples
-            && self.total_voiced_frames >= 4;
+        let valid =
+            self.speech_buffer.len() >= self.min_utterance_samples && self.total_voiced_frames >= 4;
         let output = if valid {
             Some(std::mem::take(&mut self.speech_buffer))
         } else {
@@ -266,7 +270,10 @@ mod tests {
         }
 
         let audio = finalized.expect("VAD must finalize utterance via sample count clock");
-        assert!(audio.contains(&400), "Pre-roll onset audio should be retained");
+        assert!(
+            audio.contains(&400),
+            "Pre-roll onset audio should be retained"
+        );
         assert_eq!(vad.current_state(), VadState::Silence);
     }
 
@@ -287,7 +294,9 @@ mod tests {
         for _ in 0..4 {
             assert!(vad.process_chunk(&speech).is_none());
         }
-        let flushed = vad.flush_utterance().expect("Flush should emit >= 350ms speech");
+        let flushed = vad
+            .flush_utterance()
+            .expect("Flush should emit >= 350ms speech");
         assert!(flushed.len() >= 6400);
         assert_eq!(vad.current_state(), VadState::Silence);
     }

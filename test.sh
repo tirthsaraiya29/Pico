@@ -1,37 +1,21 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-echo "====================================================================="
-echo "          PICO: AUTOMATED TEST, BUILD & NATIVE LAUNCH (LINUX)"
-echo "====================================================================="
-echo ""
+cd "$(dirname "${BASH_SOURCE[0]}")"
 
-# 1. Check Cargo
-if ! command -v cargo &> /dev/null; then
-    echo "[ERROR] Cargo was not found in PATH. Please install Rust from https://rustup.rs/"
-    exit 1
-fi
+echo "[1/5] Checking Rust formatting..."
+cargo fmt --all -- --check
 
-echo "[1/3] Running full workspace unit, integration, and security tests..."
-cargo test --workspace
-echo "[OK] All workspace tests passed cleanly!"
-echo ""
+echo "[2/5] Running strict workspace Clippy checks..."
+cargo clippy --workspace --all-targets --all-features -- -D warnings
 
-echo "[2/3] Building native desktop assistant and CLI..."
-cargo build --workspace
-echo "[OK] Binaries built successfully."
-echo ""
+echo "[3/5] Running full workspace test suite..."
+cargo test --workspace --all-features
 
-echo "[3/3] Launching Pico Native Desktop Application..."
-echo "Target: target/debug/pico-desktop"
-echo ""
+echo "[4/5] Checking site/index.html and docs/index.html sync..."
+cmp -s site/index.html docs/index.html
 
-if [ -n "${DISPLAY:-}" ] || [ -n "${WAYLAND_DISPLAY:-}" ]; then
-    ./target/debug/pico-desktop &
-    echo "Pico Desktop launched in background."
-else
-    echo "No graphical display detected (headless server). Launching CLI voice mode instead:"
-    ./target/debug/pico-cli doctor
-fi
+echo "[5/5] Validating Python ASR helper scripts..."
+python3 -m py_compile scripts/asr_service.py scripts/whisper_daemon.py scripts/whisper_transcribe.py
 
-echo "To test CLI voice mode anytime, run: ./target/debug/pico-cli"
+echo "All checks passed cleanly."

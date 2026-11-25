@@ -362,7 +362,10 @@ while ($null -ne ($line = [Console]::In.ReadLine())) {
         let trimmed = banner.trim();
         if trimmed != "READY" {
             let _ = child.kill();
-            return Err(format!("Windows TTS worker failed to initialize: {}", trimmed));
+            return Err(format!(
+                "Windows TTS worker failed to initialize: {}",
+                trimmed
+            ));
         }
 
         Ok(Self {
@@ -406,10 +409,7 @@ while ($null -ne ($line = [Console]::In.ReadLine())) {
             let decoded = base64_decode(b64).map_err(|e| e.to_string())?;
             return Ok((voice_used.to_string(), decoded));
         }
-        Err(trimmed
-            .strip_prefix("ERR:")
-            .unwrap_or(trimmed)
-            .to_string())
+        Err(trimmed.strip_prefix("ERR:").unwrap_or(trimmed).to_string())
     }
 }
 
@@ -482,7 +482,13 @@ try {
 $voices -join "`n"
 "#;
             if let Ok(out) = Command::new("powershell")
-                .args(["-NoLogo", "-NoProfile", "-NonInteractive", "-Command", LIST_SCRIPT])
+                .args([
+                    "-NoLogo",
+                    "-NoProfile",
+                    "-NonInteractive",
+                    "-Command",
+                    LIST_SCRIPT,
+                ])
                 .output()
             {
                 if out.status.success() {
@@ -540,8 +546,8 @@ $voices -join "`n"
                 Err(first_err) => {
                     warn!(error = %first_err, "Windows TTS worker failed; restarting worker once");
                     *guard = None;
-                    let mut restarted = WindowsTtsWorker::spawn()
-                        .map_err(PicoError::SpeechSynthesis)?;
+                    let mut restarted =
+                        WindowsTtsWorker::spawn().map_err(PicoError::SpeechSynthesis)?;
                     let retry = restarted
                         .synthesize_wav(&cleaned, voice, self.speech_rate, self.prefer_winrt)
                         .map_err(PicoError::SpeechSynthesis)?;
@@ -640,7 +646,12 @@ impl NativeLinuxSynthesizer {
             let mut last_err = None;
             for bin in ["espeak-ng", "espeak"] {
                 let mut cmd = Command::new(bin);
-                cmd.args(["--stdout", "--stdin", "-s", &self.words_per_minute.to_string()]);
+                cmd.args([
+                    "--stdout",
+                    "--stdin",
+                    "-s",
+                    &self.words_per_minute.to_string(),
+                ]);
                 if let Some(ref voice) = self.voice_name {
                     if !voice.trim().is_empty() {
                         cmd.args(["-v", voice]);
@@ -665,7 +676,8 @@ impl NativeLinuxSynthesizer {
                             }
                             Ok(out) => {
                                 let err = String::from_utf8_lossy(&out.stderr).trim().to_string();
-                                last_err = Some(format!("{} exited with {}: {}", bin, out.status, err));
+                                last_err =
+                                    Some(format!("{} exited with {}: {}", bin, out.status, err));
                             }
                             Err(e) => {
                                 last_err = Some(format!("{} wait failed: {}", bin, e));
@@ -793,11 +805,7 @@ impl PiperSynthesizer {
                 return Some(p);
             }
         }
-        let voice_hint = config
-            .voice_name
-            .as_deref()
-            .unwrap_or("")
-            .to_lowercase();
+        let voice_hint = config.voice_name.as_deref().unwrap_or("").to_lowercase();
         let mut fallback = None;
         for rel_dir in ["models/piper", "../models/piper", "../../models/piper"] {
             if let Ok(entries) = std::fs::read_dir(rel_dir) {
@@ -1313,7 +1321,9 @@ mod tests {
             ..VoiceConfig::default()
         };
         let synth = PlatformSpeechSynthesizer::from_config(&cfg);
-        let res = synth.synthesize_audio("Testing missing backend error").await;
+        let res = synth
+            .synthesize_audio("Testing missing backend error")
+            .await;
         assert!(
             res.is_err(),
             "Missing configured TTS engine must fail loudly instead of returning fake Ok audio"

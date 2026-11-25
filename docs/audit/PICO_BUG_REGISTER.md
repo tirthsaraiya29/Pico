@@ -1,8 +1,9 @@
 # Pico Forensic Bug Register
 
-**Repository**: `https://github.com/tirthsaraiya29/Pico.git` (`main` @ `faf1a5a8da856a2b88eceb188e92aa1d32e401d9`)
+**Repository**: `https://github.com/tirthsaraiya29/Pico.git` (Audited at `faf1a5a8da856a2b88eceb188e92aa1d32e401d9`, remediated through `main`)
 **Classification**: `P0` Critical functionality or security failure | `P1` Major functionality, architecture or reliability failure | `P2` Significant quality, usability or maintainability problem | `P3` Minor bug, edge case or refinement | `P4` Optional improvement / optimization.
 **Evidence Labels**: `Confirmed` (observed directly in source code, command output, SQLite DB, or audit logs) | `Suspected` (likely under edge or Linux runtime conditions inferred from code).
+**Remediation Summary**: All `P0`, `P1`, and `P2` defects across audio DSP/playback, voice pipeline, decision/clarification calibration, tool catalog integrity, security sandbox/SSRF/confirmations/audit logging, SQLite queries, and lightweight split-process desktop companion (`< 42 MB` RSS, `< 0.5%` idle CPU) have been remediated and verified in automated regression tests on `main`. See [PROJECT_STATUS.md](../../PROJECT_STATUS.md) for current subsystem verification status.
 
 ---
 

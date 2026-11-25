@@ -242,14 +242,18 @@ impl SecurityPolicy {
     ) -> Result<()> {
         match tier {
             // Restricted operations can NEVER bypass explicit confirmation even in permissive mode.
-            PermissionTier::Restricted => self.verify_with_confirmation(tool_name, arguments, true).await,
+            PermissionTier::Restricted => {
+                self.verify_with_confirmation(tool_name, arguments, true)
+                    .await
+            }
             PermissionTier::ConfirmationRequired => {
                 if self.confirmation_provider.is_some()
                     || self.confirmation_handler.is_some()
                     || self.strict_mode
                     || (tool_name == "execute_shell_command" && self.require_confirmation_for_shell)
                 {
-                    self.verify_with_confirmation(tool_name, arguments, false).await
+                    self.verify_with_confirmation(tool_name, arguments, false)
+                        .await
                 } else {
                     Ok(())
                 }
@@ -298,7 +302,8 @@ impl SecurityPolicy {
                 reason: if is_restricted {
                     "Tool is restricted and requires explicit confirmation, but no confirmation provider is attached".to_string()
                 } else {
-                    "Tool requires explicit confirmation, but no confirmation handler is attached".to_string()
+                    "Tool requires explicit confirmation, but no confirmation handler is attached"
+                        .to_string()
                 },
             })
         }
@@ -392,7 +397,11 @@ mod tests {
     async fn test_restricted_tier_cannot_bypass_even_in_permissive_mode() {
         let policy = SecurityPolicy::new(false, false);
         let res = policy
-            .verify_permission("format_disk", PermissionTier::Restricted, &serde_json::json!({}))
+            .verify_permission(
+                "format_disk",
+                PermissionTier::Restricted,
+                &serde_json::json!({}),
+            )
             .await;
         assert!(res.is_err());
     }

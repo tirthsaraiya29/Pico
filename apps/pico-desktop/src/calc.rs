@@ -23,7 +23,12 @@ pub fn try_eval_quick_math(input: &str) -> Option<String> {
         Some(format!("{}", val.round() as i64))
     } else {
         let formatted = format!("{:.6}", val);
-        Some(formatted.trim_end_matches('0').trim_end_matches('.').to_string())
+        Some(
+            formatted
+                .trim_end_matches('0')
+                .trim_end_matches('.')
+                .to_string(),
+        )
     }
 }
 
@@ -189,7 +194,10 @@ impl<'a> Parser<'a> {
 
 fn eval_expr(expr: &str) -> Option<f64> {
     let toks = tokenize(expr)?;
-    let mut p = Parser { toks: &toks, pos: 0 };
+    let mut p = Parser {
+        toks: &toks,
+        pos: 0,
+    };
     let val = p.parse_add_sub(0)?;
     if p.pos == toks.len() {
         Some(val)

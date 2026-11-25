@@ -273,7 +273,8 @@ mod tests {
             },
         ];
 
-        let ranked = ranker.rank_candidates("mute speaker sound", &cands, &[1.0, 1.0], &[0.8, 0.8], 1.0);
+        let ranked =
+            ranker.rank_candidates("mute speaker sound", &cands, &[1.0, 1.0], &[0.8, 0.8], 1.0);
         let sum_sel: f32 = ranked.iter().map(|c| c.selection_probability).sum();
         assert!((sum_sel - 1.0).abs() < 1e-4);
         assert!(ranked[0].probability + ranked[1].probability <= 1.0 + 1e-4);

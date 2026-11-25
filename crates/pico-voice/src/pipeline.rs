@@ -42,7 +42,10 @@ impl VoicePipeline {
     }
 
     /// Initializes the voice pipeline with headless audio playback (for CI and unit tests).
-    pub fn new_headless(config: VoiceConfig, event_tx: broadcast::Sender<PicoEvent>) -> Result<Self> {
+    pub fn new_headless(
+        config: VoiceConfig,
+        event_tx: broadcast::Sender<PicoEvent>,
+    ) -> Result<Self> {
         config.validate()?;
         Ok(Self::from_playback(
             config,
@@ -138,13 +141,17 @@ impl VoicePipeline {
             while let Some(chunk) = raw_rx.recv().await {
                 let rms = VadProcessor::compute_rms(&chunk);
                 let playing = playback_handle.is_playing();
-                let in_echo_tail = !playing && Self::now_epoch_ms() < echo_guard_until_ms.load(Ordering::Relaxed);
+                let in_echo_tail =
+                    !playing && Self::now_epoch_ms() < echo_guard_until_ms.load(Ordering::Relaxed);
 
                 if playing || in_echo_tail {
                     if enable_barge_in && rms > barge_in_threshold {
                         barge_in_frames += 1;
                         if barge_in_frames >= 2 {
-                            info!(rms, "Sustained barge-in detected; interrupting assistant speech");
+                            info!(
+                                rms,
+                                "Sustained barge-in detected; interrupting assistant speech"
+                            );
                             speak_cancelled.store(true, Ordering::SeqCst);
                             playback_handle.interrupt();
                             let _ = event_tx.send(PicoEvent::PlaybackInterrupted {
@@ -210,7 +217,10 @@ impl VoicePipeline {
 
         for (idx, sentence) in sentences.iter().enumerate() {
             if self.speak_cancelled.load(Ordering::SeqCst) {
-                debug!("TTS halted before sentence {} due to cancellation/barge-in", idx);
+                debug!(
+                    "TTS halted before sentence {} due to cancellation/barge-in",
+                    idx
+                );
                 break;
             }
 
@@ -244,7 +254,8 @@ impl VoicePipeline {
 
             // Insert a gentle 110ms pause between multi-sentence segments at the same source rate.
             if idx + 1 < sentences.len() && audio.sample_rate > 0 {
-                let pause_samples = (audio.sample_rate as usize / 9) * audio.channels.max(1) as usize;
+                let pause_samples =
+                    (audio.sample_rate as usize / 9) * audio.channels.max(1) as usize;
                 let silence = vec![0.0f32; pause_samples];
                 self.playback_handle
                     .play_audio(&silence, audio.sample_rate, audio.channels);

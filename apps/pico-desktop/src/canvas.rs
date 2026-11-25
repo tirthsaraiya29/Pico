@@ -69,7 +69,8 @@ impl FontEngine {
             None
         };
 
-        let regular = load_first(regular_candidates).or_else(|| Self::fc_match_fallback().map(Arc::new));
+        let regular =
+            load_first(regular_candidates).or_else(|| Self::fc_match_fallback().map(Arc::new));
         let bold = load_first(bold_candidates).or_else(|| regular.clone());
         Self { regular, bold }
     }
@@ -207,11 +208,7 @@ impl<'a> Canvas<'a> {
                 if sd >= 0.75 {
                     continue;
                 }
-                let aa = if sd <= -0.75 {
-                    1.0
-                } else {
-                    (0.75 - sd) / 1.5
-                };
+                let aa = if sd <= -0.75 { 1.0 } else { (0.75 - sd) / 1.5 };
                 let c = if same_color {
                     left_color
                 } else {
@@ -284,21 +281,15 @@ impl<'a> Canvas<'a> {
 
         for py in y0..y1 {
             let fy = py as f32 + 0.5;
-            let sy = (((fy - fy0) / fh) * (src_h as f32))
-                .clamp(0.0, (src_h - 1) as f32) as u32;
+            let sy = (((fy - fy0) / fh) * (src_h as f32)).clamp(0.0, (src_h - 1) as f32) as u32;
             for px in x0..x1 {
                 let fx = px as f32 + 0.5;
                 let sd = Self::sd_rounded_box(fx, fy, cx, cy, fw * 0.5, fh * 0.5, r);
                 if sd >= 0.75 {
                     continue;
                 }
-                let aa = if sd <= -0.75 {
-                    1.0
-                } else {
-                    (0.75 - sd) / 1.5
-                };
-                let sx = (((fx - fx0) / fw) * (src_w as f32))
-                    .clamp(0.0, (src_w - 1) as f32) as u32;
+                let aa = if sd <= -0.75 { 1.0 } else { (0.75 - sd) / 1.5 };
+                let sx = (((fx - fx0) / fw) * (src_w as f32)).clamp(0.0, (src_w - 1) as f32) as u32;
                 let si = ((sy * src_w + sx) * 4) as usize;
                 let c = Rgb::new(rgba[si], rgba[si + 1], rgba[si + 2]);
                 let a = (rgba[si + 3] as f32 / 255.0) * aa;

@@ -1,84 +1,33 @@
-# Pico Extensible Tool Framework Guide
+# Tools & Verification Guide
 
-Every tool in Pico is registered within `pico-tools::ToolRegistry`, exposing a strict JSON Schema, execution timeout, cancellation handle, and permission requirement.
+Pico exposes a host-filtered tool ecosystem where every registered action maps to a concrete implementation, JSON parameter schema, permission tier, and verification test.
 
----
+## Core Built-In Tools (`pico-tools`)
 
-## Registered Tool Catalog
+| Tool Name | Permission Tier | Implementation |
+|---|---|---|
+| `read_file` | `ReadOnly` | Streaming `BufReader` (`256 KB` / `2000` lines max), symlink check, `PathSandbox` enforcement |
+| `write_file` | `ConfirmationRequired` | `2 MB` size cap, parent creation + post-create `PathSandbox` re-validation, symlink protection |
+| `search_files` | `ReadOnly` | `DirEntry::file_type().is_symlink()` skip guard, depth `<= 5`, `5000` entries cap |
+| `calculator` | `ReadOnly` | Recursive-descent AST math evaluator (arithmetic, powers, `sqrt`, `sin/cos/tan`, constants) |
+| `clipboard` | `LowRisk` | Native Win32 `OpenClipboard` / Linux Wayland+X11 clipboard (`wl-copy`/`xclip`/`xsel`) |
+| `fetch_web_content` | `ReadOnly` | SSRF validator + DNS `SocketAddr` pinning (`resolve_to_addrs`) + `256 KB` bounded body |
+| `execute_shell_command` | `ConfirmationRequired` | Direct process spawn without shell interpreter wrappers, arg sanitizer, 30s tree kill, `256 KB` cap |
+| `get_system_info` | `ReadOnly` | OS version (`RtlGetVersion` / `/etc/os-release`), memory, CPU cores, host name |
+| `list_running_processes` | `ReadOnly` | Native `CreateToolhelp32Snapshot` on Windows / `/proc` scan on Linux |
+| `kill_process` | `Restricted` | Self/critical-PID guard + `TerminateProcess` / `kill -TERM` |
+| `manage_timer` | `LowRisk` | Persistent wall-clock UTC timers (`start`, `pause`, `resume`, `list`, `cancel`) |
+| `open_application` | `LowRisk` | Direct `App Paths` / `PATH` resolution (`Stdio::null()`); `ShellExecuteW` strictly for `http/https` URIs |
+| `close_application` | `ConfirmationRequired` | Process matching & safe termination excluding Pico and critical system PIDs |
+| `set_master_volume` / `get_master_volume` / `mute_audio` | `LowRisk` | Native WASAPI COM (`IAudioEndpointVolume`) on Windows; `wpctl`/`pactl`/`amixer` on Linux |
+| `set_brightness` / `get_brightness` | `LowRisk` | Native DXVA2 (`GetMonitorBrightness`/`SetMonitorBrightness`) + WMI fallback on Windows; `/sys/class/backlight` or `brightnessctl` on Linux |
+| `network.ping` | `ReadOnly` | Input-validated `ping` invocation reporting latency and packet loss |
+| `lock_screen` / `sleep_system` | `ConfirmationRequired` / `Restricted` | `LockWorkStation` / `SetSuspendState` on Windows; `loginctl` / `systemctl` on Linux |
 
-### 1. `get_system_info`
-- **Permission Tier**: `ReadOnly`
-- **Description**: Gathers operating system name, CPU core count, total and available memory, battery percentage, and charging state.
-- **Parameters**: None.
+## Curated Platform Catalog (`pico-tools/src/catalog/`)
 
-### 2. `list_processes`
-- **Permission Tier**: `ReadOnly`
-- **Description**: Enumerates system processes sorted by working memory usage.
-- **Parameters**:
-  - `limit` (*integer, optional*): Maximum number of entries (1-50, default 10).
+Previously duplicated synthetic templates were removed. Instead, Pico registers verified, uniquely keyed platform catalog tools (`windows.*` on Windows, `linux.*` on Linux) filtered at runtime to the active host OS (`crates/pico-tools/src/registry.rs`):
 
-### 3. `kill_process`
-- **Permission Tier**: `ConfirmationRequired`
-- **Description**: Terminates a process by its PID. Requires explicit confirmation.
-- **Parameters**:
-  - `pid` (*integer, required*): The process ID to terminate.
-
-### 4. `open_application`
-- **Permission Tier**: `LowRisk`
-- **Description**: Launches an application executable or system file (e.g. `notepad`, `calc`, `msedge`).
-- **Parameters**:
-  - `application` (*string, required*): Name or path of application.
-
-### 5. `read_file`
-- **Permission Tier**: `ReadOnly`
-- **Description**: Reads file contents within permitted sandbox boundaries.
-- **Parameters**:
-  - `path` (*string, required*): Relative or absolute path.
-  - `max_lines` (*integer, optional*): Maximum lines to read (default 500).
-
-### 6. `write_file`
-- **Permission Tier**: `ConfirmationRequired`
-- **Description**: Writes text content to disk within sandbox boundaries.
-- **Parameters**:
-  - `path` (*string, required*): Target file path.
-  - `content` (*string, required*): Content to write.
-
-### 7. `search_files`
-- **Permission Tier**: `ReadOnly`
-- **Description**: Finds files matching pattern or extension.
-- **Parameters**:
-  - `pattern` (*string, required*): Substring to match.
-  - `directory` (*string, optional*): Starting directory.
-
-### 8. `calculator`
-- **Permission Tier**: `ReadOnly`
-- **Description**: Evaluates mathematical arithmetic expressions.
-- **Parameters**:
-  - `expression` (*string, required*): Arithmetic string (e.g. `(45 * 2) + 10`).
-
-### 9. `manage_timer`
-- **Permission Tier**: `LowRisk`
-- **Description**: Sets an asynchronous countdown timer or voice reminder.
-- **Parameters**:
-  - `seconds` (*integer, required*): Countdown duration in seconds.
-  - `label` (*string, optional*): Label for timer.
-
-### 10. `clipboard`
-- **Permission Tier**: `LowRisk`
-- **Description**: Reads or updates the operating system clipboard text.
-- **Parameters**:
-  - `action` (*string, enum: "get" | "set", required*): Action to perform.
-  - `text` (*string, required if action is "set"*): Text to place on clipboard.
-
-### 11. `fetch_web_content`
-- **Permission Tier**: `ReadOnly`
-- **Description**: Fetches textual content from HTTP/HTTPS URL with SSRF protection.
-- **Parameters**:
-  - `url` (*string, required*): HTTP/HTTPS URL.
-
-### 12. `execute_shell_command`
-- **Permission Tier**: `ConfirmationRequired`
-- **Description**: Executes validated shell command. Disallows command chaining and unvalidated metacharacters.
-- **Parameters**:
-  - `command` (*string, required*): Executable command name.
-  - `arguments` (*array of strings, optional*): Command arguments.
+- Every Windows catalog PowerShell command passes user arguments through `$env:PICO_ARG_*` environment variables (never interpolated into `-Command` strings).
+- Every Linux catalog action validates numeric PIDs, service names, sysfs interface tokens, and sandboxed file paths cleanly before execution.
+- `crates/pico-tools/tests/catalog_verification_test.rs` validates schema uniqueness, parameter adapter contracts, sandbox/injection rejection across every Windows & Linux catalog entry, live host execution, and cross-OS fail-closed behavior.

@@ -387,7 +387,10 @@ async fn run_voice_loop(
         match runtime.voice().start_listening(speech_tx) {
             Ok(cap) => Some(cap),
             Err(e) => {
-                eprintln!("[WARN] Microphone unavailable ({}); continuing in IPC/text mode", e);
+                eprintln!(
+                    "[WARN] Microphone unavailable ({}); continuing in IPC/text mode",
+                    e
+                );
                 None
             }
         }
@@ -402,7 +405,10 @@ async fn run_voice_loop(
         while let Ok(event) = event_rx.recv().await {
             match event {
                 PicoEvent::VoiceActivityStarted { .. } => {
-                    print!("\r{} Listening...                 ", "[VOICE]".green().bold());
+                    print!(
+                        "\r{} Listening...                 ",
+                        "[VOICE]".green().bold()
+                    );
                     let _ = io::stdout().flush();
                 }
                 PicoEvent::PlaybackInterrupted { reason } => {
@@ -486,10 +492,7 @@ async fn run_voice_loop(
     tokio::spawn(async move {
         while let Some(user_speech) = speech_rx.recv().await {
             if let Some(ref st) = ipc_paused_ref {
-                if st
-                    .voice_paused
-                    .load(std::sync::atomic::Ordering::Relaxed)
-                {
+                if st.voice_paused.load(std::sync::atomic::Ordering::Relaxed) {
                     continue;
                 }
             }

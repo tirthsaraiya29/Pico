@@ -27,7 +27,9 @@ impl PlatformMedia {
 
     /// Reads current OS media metadata; only fetches album thumbnail bytes when `(title, album)` differs
     /// from `cached_title_album` so periodic refreshes avoid repeated image stream transfers.
-    pub fn current_track_cached(cached_title_album: Option<(&str, &str)>) -> Option<MediaTrackInfo> {
+    pub fn current_track_cached(
+        cached_title_album: Option<(&str, &str)>,
+    ) -> Option<MediaTrackInfo> {
         #[cfg(target_os = "windows")]
         {
             winrt_media::current_track(cached_title_album)
@@ -54,7 +56,9 @@ impl PlatformMedia {
         }
         #[cfg(not(any(target_os = "windows", target_os = "linux")))]
         {
-            Err(pico_core::error::PicoError::Platform("Unsupported OS for media control".into()))
+            Err(pico_core::error::PicoError::Platform(
+                "Unsupported OS for media control".into(),
+            ))
         }
     }
 
@@ -69,7 +73,9 @@ impl PlatformMedia {
         }
         #[cfg(not(any(target_os = "windows", target_os = "linux")))]
         {
-            Err(pico_core::error::PicoError::Platform("Unsupported OS for media control".into()))
+            Err(pico_core::error::PicoError::Platform(
+                "Unsupported OS for media control".into(),
+            ))
         }
     }
 
@@ -84,7 +90,9 @@ impl PlatformMedia {
         }
         #[cfg(not(any(target_os = "windows", target_os = "linux")))]
         {
-            Err(pico_core::error::PicoError::Platform("Unsupported OS for media control".into()))
+            Err(pico_core::error::PicoError::Platform(
+                "Unsupported OS for media control".into(),
+            ))
         }
     }
 }
@@ -145,8 +153,14 @@ mod winrt_media {
         let (position_secs, duration_secs) = session
             .GetTimelineProperties()
             .map(|tl| {
-                let pos = tl.Position().map(|t| (t.Duration / 10_000_000).max(0) as u64).unwrap_or(0);
-                let end = tl.EndTime().map(|t| (t.Duration / 10_000_000).max(0) as u64).unwrap_or(0);
+                let pos = tl
+                    .Position()
+                    .map(|t| (t.Duration / 10_000_000).max(0) as u64)
+                    .unwrap_or(0);
+                let end = tl
+                    .EndTime()
+                    .map(|t| (t.Duration / 10_000_000).max(0) as u64)
+                    .unwrap_or(0);
                 (pos, end)
             })
             .unwrap_or((0, 0));
@@ -175,12 +189,14 @@ mod winrt_media {
             return None;
         }
 
-        let same_track = cached_title_album
-            .is_some_and(|(ct, ca)| ct == title && ca == album);
+        let same_track = cached_title_album.is_some_and(|(ct, ca)| ct == title && ca == album);
         let thumbnail_bytes = if same_track {
             None
         } else {
-            props.Thumbnail().ok().and_then(|t| read_thumbnail_bytes(&t))
+            props
+                .Thumbnail()
+                .ok()
+                .and_then(|t| read_thumbnail_bytes(&t))
         };
 
         Some(MediaTrackInfo {
@@ -268,8 +284,7 @@ mod linux_mpris {
         if title.is_empty() && artist.is_empty() {
             return None;
         }
-        let same_track = cached_title_album
-            .is_some_and(|(ct, ca)| ct == title && ca == album);
+        let same_track = cached_title_album.is_some_and(|(ct, ca)| ct == title && ca == album);
         let art_url = cols.get(5).copied().unwrap_or("");
         let thumbnail_bytes = if same_track {
             None

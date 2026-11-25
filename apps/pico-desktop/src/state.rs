@@ -190,7 +190,11 @@ impl CompanionState {
     }
 
     pub fn has_running_clocks(&self) -> bool {
-        self.pomodoro.running || self.timers.iter().any(|t| !t.paused && t.remaining_secs > 0)
+        self.pomodoro.running
+            || self
+                .timers
+                .iter()
+                .any(|t| !t.paused && t.remaining_secs > 0)
     }
 
     /// Reconciles active wall-clock deadlines and returns notifications for any completed clocks.
@@ -384,8 +388,11 @@ impl CompanionState {
     }
 
     fn sort_notes(&mut self) {
-        self.notes
-            .sort_by(|a, b| b.pinned.cmp(&a.pinned).then_with(|| b.updated_at.cmp(&a.updated_at)));
+        self.notes.sort_by(|a, b| {
+            b.pinned
+                .cmp(&a.pinned)
+                .then_with(|| b.updated_at.cmp(&a.updated_at))
+        });
     }
 
     pub fn add_stash_path(&mut self, path: &Path) -> String {
@@ -448,7 +455,7 @@ impl CompanionState {
         Some(id)
     }
 
-    /// Unlinks an entry from the Stash view ONLY — never modifies or deletes underlying disk files.
+    /// Unlinks an entry from the Stash view ONLY (never modifies or deletes underlying disk files).
     pub fn remove_stash(&mut self, id: &str) {
         self.stash.retain(|s| s.id != id);
     }
@@ -513,11 +520,20 @@ mod tests {
         let sid = st.add_stash_path(&file);
         assert!(!st.stash[0].missing_on_disk);
         st.remove_stash(&sid);
-        assert!(file.exists(), "Removing stash entry must never delete file on disk");
+        assert!(
+            file.exists(),
+            "Removing stash entry must never delete file on disk"
+        );
 
         let _ = std::fs::remove_file(&file);
         let sid2 = st.add_stash_path(&file);
-        assert!(st.stash.iter().find(|s| s.id == sid2).unwrap().missing_on_disk);
+        assert!(
+            st.stash
+                .iter()
+                .find(|s| s.id == sid2)
+                .unwrap()
+                .missing_on_disk
+        );
 
         let _ = std::fs::remove_dir_all(&dir);
     }

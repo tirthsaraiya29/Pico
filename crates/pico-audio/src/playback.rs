@@ -371,7 +371,8 @@ impl AudioPlayback {
     }
 
     pub fn play_audio(&self, samples: &[f32], source_rate: u32, source_channels: u16) {
-        self.handle.play_audio(samples, source_rate, source_channels);
+        self.handle
+            .play_audio(samples, source_rate, source_channels);
     }
 
     pub fn play_pcm_samples(&self, samples: &[i16]) {

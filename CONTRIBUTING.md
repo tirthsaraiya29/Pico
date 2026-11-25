@@ -1,69 +1,29 @@
 # Contributing to Pico
 
-Thank you for your interest in contributing to **Pico** — the high-performance, real-time, locally capable AI voice assistant.
+Contributions focused on reliability, cross-platform Windows/Linux parity, audio/DSP quality, security hardening, and clean minimalist UI are welcome.
 
-## Code of Conduct
+## Development Workflow
 
-We are committed to providing a welcoming and harassment-free environment for everyone. Please be respectful and constructive in all interactions.
-
----
-
-## Development Setup
-
-### Prerequisites
-
-1. **Rust Toolchain**: Rust 1.80+ (MSVC on Windows or GCC/Clang on Linux).
-2. **C++ Build Tools**: Visual Studio 2022+ C++ Build Tools (Windows) or build-essential (Linux).
-3. **Local Inference (Optional for offline testing)**:
-   - [Ollama](https://ollama.com) running locally (`ollama run granite4.2` or any supported model).
-   - Or [llama.cpp](https://github.com/ggerganov/llama.cpp) binary suite (`llama-server`).
-
-### Building from Source
+1. Fork or branch cleanly from `main`.
+2. Ensure all code adheres to strict workspace quality gates before opening a PR:
 
 ```bash
-# Clone the repository
-git clone https://github.com/tirthsaraiya/Pico.git
-cd Pico
-
-# Check workspace compilation
-cargo check --workspace --all-targets
-
-# Run the test suite
+cargo fmt --all -- --check
+cargo clippy --workspace --all-targets --all-features -- -D warnings
 cargo test --workspace --all-features
-
-# Build release binaries
-cargo build --workspace --release
 ```
 
----
+3. Validate companion scripts:
 
-## Coding Standards
+```bash
+python3 -m py_compile scripts/asr_service.py scripts/whisper_daemon.py scripts/whisper_transcribe.py
+node --check api/submit.js
+cmp -s site/index.html docs/index.html
+```
 
-1. **Idiomatic Rust**:
-   - Write clear, idiomatic Rust code with zero compiler warnings.
-   - Run `cargo fmt --all -- --check` prior to committing.
-   - Run `cargo clippy --workspace --all-targets --all-features -- -D warnings`.
+## Guidelines
 
-2. **Error Handling**:
-   - Never use `unwrap()` or `expect()` in production runtime paths.
-   - Use structured error enums powered by `thiserror`.
-   - Propagate errors with rich context.
-
-3. **Asynchronous Runtime**:
-   - Never block Tokio worker threads. Use `tokio::task::spawn_blocking` for CPU-intensive tasks or synchronous OS operations.
-
-4. **Security & Validation**:
-   - Every tool input must be validated before execution.
-   - Respect user permission tiers and sandbox configurations.
-
----
-
-## Pull Request Guidelines
-
-1. Create a feature branch from `main`:
-   ```bash
-   git checkout -b feature/my-enhancement
-   ```
-2. Commit your changes with clear, descriptive commit messages.
-3. Ensure all tests pass and formatting is clean.
-4. Submit a Pull Request targeting `main`.
+- **Real Implementations Only**: Never commit placeholder tools, fake success statuses, or synthetic catalog duplicates. Every registered tool must map to a genuine execution path and handle failure cleanly.
+- **Keep `pico-desktop` Lightweight**: Never add `pico-orchestrator`, `cpal`, `rusqlite`, OpenGL/GPU ICD drivers, or heavy async runtimes directly into `apps/pico-desktop`. Route assistant turns and status updates over `pico-core::ipc`.
+- **Cross-Platform Parity**: Any OS-specific behavior must isolate cleanly behind `#[cfg(target_os = "windows")]` and `#[cfg(target_os = "linux")]` in `pico-platform`, with fail-closed behavior elsewhere.
+- **Website Sync**: `site/index.html` and `docs/index.html` must remain byte-identical.

@@ -88,11 +88,12 @@ impl PathSandbox {
                 }
             }
             // Check colons outside the single "X:" drive prefix.
-            let after_drive = if bytes.len() >= 2 && bytes[0].is_ascii_alphabetic() && bytes[1] == b':' {
-                &path_str[2..]
-            } else {
-                &path_str
-            };
+            let after_drive =
+                if bytes.len() >= 2 && bytes[0].is_ascii_alphabetic() && bytes[1] == b':' {
+                    &path_str[2..]
+                } else {
+                    &path_str
+                };
             if after_drive.contains(':') {
                 return Err(PicoError::Security(format!(
                     "NTFS Alternate Data Stream / colon syntax is forbidden in path: '{}'",
@@ -424,7 +425,9 @@ mod tests {
         assert!(sandbox.validate_path("..").is_err());
         assert!(sandbox.validate_path(".kube/config").is_err());
         assert!(sandbox.validate_path(".docker/config.json").is_err());
-        assert!(sandbox.validate_path("AppData/Local/Google/Login Data").is_err());
+        assert!(sandbox
+            .validate_path("AppData/Local/Google/Login Data")
+            .is_err());
         assert!(sandbox.validate_path("configs/.env").is_err());
         assert!(sandbox.validate_path(".git-credentials").is_err());
     }

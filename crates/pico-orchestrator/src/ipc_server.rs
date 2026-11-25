@@ -272,10 +272,7 @@ async fn dispatch_request(
         } => match runtime.respond_confirmation(&request_id, approved).await {
             Ok(()) => {
                 let mut lock = shared.pending_confirmation.lock().await;
-                if lock
-                    .as_ref()
-                    .is_some_and(|c| c.request_id == request_id)
-                {
+                if lock.as_ref().is_some_and(|c| c.request_id == request_id) {
                     *lock = None;
                 }
                 IpcResponse::Ack { ok: true }
@@ -338,7 +335,10 @@ fn create_owner_only_pipe_instance(
             bInheritHandle: false.into(),
         };
         let res = unsafe {
-            opts.create_with_security_attributes_raw(endpoint, (&mut sa as *mut SECURITY_ATTRIBUTES).cast::<c_void>())
+            opts.create_with_security_attributes_raw(
+                endpoint,
+                (&mut sa as *mut SECURITY_ATTRIBUTES).cast::<c_void>(),
+            )
         };
         unsafe {
             let _ = LocalFree(HLOCAL(sd.0));
@@ -441,7 +441,10 @@ fn spawn_unix_socket_loop(
             };
             if let (Some(expected_uid), Ok(cred)) = (host_uid, stream.peer_cred()) {
                 if cred.uid() != expected_uid {
-                    warn!(peer_uid = cred.uid(), expected_uid, "Rejected unauthorized IPC peer UID");
+                    warn!(
+                        peer_uid = cred.uid(),
+                        expected_uid, "Rejected unauthorized IPC peer UID"
+                    );
                     continue;
                 }
             }
@@ -542,7 +545,9 @@ mod tests {
         .unwrap()
         .unwrap();
         match turn_resp {
-            IpcResponse::TurnResult { reply, .. } => assert!(reply.contains("57"), "reply: {}", reply),
+            IpcResponse::TurnResult { reply, .. } => {
+                assert!(reply.contains("57"), "reply: {}", reply)
+            }
             other => panic!("Expected TurnResult, got {:?}", other),
         }
 

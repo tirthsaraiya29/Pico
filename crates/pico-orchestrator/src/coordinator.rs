@@ -450,13 +450,8 @@ impl PicoRuntime {
                     let _ = self.learning.record_observation(obs);
                     *self.last_observation_id.lock().await = Some(obs_id);
 
-                    let cstate = ClarificationState::new(
-                        sid,
-                        query.to_string(),
-                        kind,
-                        options,
-                        clarify_ttl,
-                    );
+                    let cstate =
+                        ClarificationState::new(sid, query.to_string(), kind, options, clarify_ttl);
                     self.clarifications.lock().await.insert(sid, cstate);
 
                     step_responses.push(prompt);
@@ -528,7 +523,10 @@ impl PicoRuntime {
         let tool_opt = self.registry.get_tool(action_name);
         if tool_opt.is_none() {
             return Ok((
-                ResponseSynthesizer::format_failure(action_name, "Tool is not registered in this runtime."),
+                ResponseSynthesizer::format_failure(
+                    action_name,
+                    "Tool is not registered in this runtime.",
+                ),
                 false,
             ));
         }
@@ -633,7 +631,10 @@ impl PicoRuntime {
             timestamp: Utc::now(),
             request_text: request_text.to_string(),
             primary_intent: action_name.to_string(),
-            candidate_names: ranked_scores.iter().map(|c| c.action_name.clone()).collect(),
+            candidate_names: ranked_scores
+                .iter()
+                .map(|c| c.action_name.clone())
+                .collect(),
             candidate_scores: ranked_scores.iter().map(|c| c.probability).collect(),
             selected_action: action_name.to_string(),
             confidence,

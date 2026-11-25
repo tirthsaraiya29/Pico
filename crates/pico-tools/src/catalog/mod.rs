@@ -131,7 +131,10 @@ mod tests {
         #[cfg(target_os = "windows")]
         assert!(res.is_ok(), "Execution failed on Windows: {:?}", res.err());
         #[cfg(not(target_os = "windows"))]
-        assert!(res.is_err(), "Cross-OS Windows tool must fail on non-Windows hosts");
+        assert!(
+            res.is_err(),
+            "Cross-OS Windows tool must fail on non-Windows hosts"
+        );
     }
 
     #[tokio::test]

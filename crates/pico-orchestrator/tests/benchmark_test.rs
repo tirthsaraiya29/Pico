@@ -254,7 +254,8 @@ async fn test_benchmark_e2e_decision_and_tool_latency() {
     assert!(
         avg_dec_ms < budget_ms,
         "Decision engine latency exceeded budget: {:.3} ms (limit {:.1} ms)",
-        avg_dec_ms, budget_ms
+        avg_dec_ms,
+        budget_ms
     );
 
     // 2. Tool Execution Latency: Calculator (AST parser)
@@ -599,7 +600,11 @@ fn test_benchmark_calibration_profile() {
         p_high
     );
     assert!(p_low < 0.25, "Low raw score predicted too high: {}", p_low);
-    assert!(p_high > 0.75, "High raw score predicted too low: {}", p_high);
+    assert!(
+        p_high > 0.75,
+        "High raw score predicted too low: {}",
+        p_high
+    );
 
     let validation_samples: Vec<(f32, bool)> = raw_observations
         .iter()

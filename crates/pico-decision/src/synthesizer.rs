@@ -117,8 +117,14 @@ impl ResponseSynthesizer {
                 format!("Master audio volume set to {}%.", level)
             }
             "audio.get_volume" => {
-                let level = result.get("level").map(|v| v.to_string()).unwrap_or_default();
-                let muted = result.get("muted").and_then(|v| v.as_bool()).unwrap_or(false);
+                let level = result
+                    .get("level")
+                    .map(|v| v.to_string())
+                    .unwrap_or_default();
+                let muted = result
+                    .get("muted")
+                    .and_then(|v| v.as_bool())
+                    .unwrap_or(false);
                 format!(
                     "Master volume is {}% ({}).",
                     level,
@@ -254,7 +260,8 @@ impl ResponseSynthesizer {
             return "Operation cancelled.".to_string();
         }
         if lower == "first" || lower == "second" || lower == "neither" || lower == "none" {
-            return "Understood. Please let me know what command you would like me to execute.".to_string();
+            return "Understood. Please let me know what command you would like me to execute."
+                .to_string();
         }
 
         match intent {

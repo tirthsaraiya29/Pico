@@ -62,7 +62,11 @@ fn test_all_curated_catalogue_entries_structure_and_uniqueness() {
             "Unexpected canonical ID '{}'",
             name
         );
-        assert!(canonical_ids.insert(name.to_string()), "Duplicate ID {}", name);
+        assert!(
+            canonical_ids.insert(name.to_string()),
+            "Duplicate ID {}",
+            name
+        );
 
         let desc = tool.description();
         assert!(desc.len() >= 10, "Short description on {}", name);
@@ -70,7 +74,10 @@ fn test_all_curated_catalogue_entries_structure_and_uniqueness() {
         let schema = tool.parameters_schema();
         assert_eq!(schema.get("type").and_then(|t| t.as_str()), Some("object"));
         if let Some(req_arr) = schema.get("required").and_then(|r| r.as_array()) {
-            let prop_map = schema.get("properties").and_then(|p| p.as_object()).unwrap();
+            let prop_map = schema
+                .get("properties")
+                .and_then(|p| p.as_object())
+                .unwrap();
             for req in req_arr {
                 let req_key = req.as_str().unwrap();
                 assert!(
@@ -212,7 +219,11 @@ async fn test_live_host_os_catalog_execution_and_cross_os_fail_closed() {
             .find(|t| t.name() == "windows.filesystem.list_directory")
             .unwrap();
         let res = list_dir.execute(serde_json::json!({ "path": "." })).await;
-        assert!(res.is_ok(), "Live Windows execution failed: {:?}", res.err());
+        assert!(
+            res.is_ok(),
+            "Live Windows execution failed: {:?}",
+            res.err()
+        );
 
         let linux_tools = pico_tools::catalog::get_linux_catalog_with_sandbox(sandbox);
         let linux_list = linux_tools
@@ -220,7 +231,10 @@ async fn test_live_host_os_catalog_execution_and_cross_os_fail_closed() {
             .find(|t| t.name() == "linux.filesystem.list_directory")
             .unwrap();
         let cross = linux_list.execute(serde_json::json!({ "path": "." })).await;
-        assert!(cross.is_err(), "Linux tool must fail cleanly when invoked on Windows");
+        assert!(
+            cross.is_err(),
+            "Linux tool must fail cleanly when invoked on Windows"
+        );
     }
 
     #[cfg(target_os = "linux")]
@@ -239,7 +253,10 @@ async fn test_live_host_os_catalog_execution_and_cross_os_fail_closed() {
             .find(|t| t.name() == "windows.filesystem.list_directory")
             .unwrap();
         let cross = win_list.execute(serde_json::json!({ "path": "." })).await;
-        assert!(cross.is_err(), "Windows tool must fail cleanly when invoked on Linux");
+        assert!(
+            cross.is_err(),
+            "Windows tool must fail cleanly when invoked on Linux"
+        );
     }
 }
 
@@ -281,5 +298,8 @@ async fn test_sandbox_and_injection_enforcement_across_catalogue() {
     let inj = win_find
         .execute(serde_json::json!({ "name": "explorer; Start-Process calc" }))
         .await;
-    assert!(inj.is_err(), "Catalog adapter must block shell metacharacters");
+    assert!(
+        inj.is_err(),
+        "Catalog adapter must block shell metacharacters"
+    );
 }

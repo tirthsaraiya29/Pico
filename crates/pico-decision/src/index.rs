@@ -218,7 +218,10 @@ impl ToolIndex {
                     *scores.entry(doc_idx).or_insert(0.0) += 6.0;
                 }
             }
-        } else if query_tokens.iter().any(|t| t == "volume" || t == "sound" || t == "loud") {
+        } else if query_tokens
+            .iter()
+            .any(|t| t == "volume" || t == "sound" || t == "loud")
+        {
             for (doc_idx, tool) in self.tools.iter().enumerate() {
                 if tool.name == "audio.set_volume" || tool.name == "set_master_volume" {
                     *scores.entry(doc_idx).or_insert(0.0) += 6.0;

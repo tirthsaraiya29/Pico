@@ -43,6 +43,19 @@ jobs:
           restore-keys: |
             ${{ runner.os }}-cargo-
 
+      - name: Verify Website Sync and Scripts
+        shell: bash
+        run: |
+          cmp -s site/index.html docs/index.html
+          if command -v python3 >/dev/null 2>&1; then
+            python3 -m py_compile scripts/asr_service.py scripts/whisper_daemon.py scripts/whisper_transcribe.py
+          else
+            python -m py_compile scripts/asr_service.py scripts/whisper_daemon.py scripts/whisper_transcribe.py
+          fi
+          if command -v node >/dev/null 2>&1; then
+            node --check api/submit.js
+          fi
+
       - name: Check Formatting
         run: cargo fmt --all -- --check
 

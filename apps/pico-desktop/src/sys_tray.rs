@@ -13,9 +13,7 @@ pub mod platform_tray {
     use std::sync::mpsc::Sender;
     use windows::core::PCWSTR;
     use windows::Win32::Foundation::{HWND, LPARAM, LRESULT, POINT, WPARAM};
-    use windows::Win32::Graphics::Gdi::{
-        CreateBitmap, CreateCompatibleDC, DeleteDC, DeleteObject,
-    };
+    use windows::Win32::Graphics::Gdi::{CreateBitmap, CreateCompatibleDC, DeleteDC, DeleteObject};
     use windows::Win32::System::LibraryLoader::GetModuleHandleW;
     use windows::Win32::UI::Input::KeyboardAndMouse::{
         RegisterHotKey, UnregisterHotKey, MOD_ALT, MOD_CONTROL, MOD_SHIFT,
@@ -48,7 +46,12 @@ pub mod platform_tray {
         pub fn notify(&self, n: CompanionNotification) {
             let boxed = Box::into_raw(Box::new(n));
             unsafe {
-                let _ = PostMessageW(HWND(self.hwnd_raw), WM_SHOW_BALLOON, WPARAM(0), LPARAM(boxed as isize));
+                let _ = PostMessageW(
+                    HWND(self.hwnd_raw),
+                    WM_SHOW_BALLOON,
+                    WPARAM(0),
+                    LPARAM(boxed as isize),
+                );
             }
         }
     }
@@ -69,7 +72,11 @@ pub mod platform_tray {
 
     fn copy_wide_fixed<const N: usize>(dst: &mut [u16; N], s: &str) {
         dst.fill(0);
-        for (slot, ch) in dst.iter_mut().take(N.saturating_sub(1)).zip(s.encode_utf16()) {
+        for (slot, ch) in dst
+            .iter_mut()
+            .take(N.saturating_sub(1))
+            .zip(s.encode_utf16())
+        {
             *slot = ch;
         }
     }
@@ -172,7 +179,15 @@ pub mod platform_tray {
                     let mut pt = POINT::default();
                     let _ = GetCursorPos(&mut pt);
                     let _ = SetForegroundWindow(hwnd);
-                    let _ = TrackPopupMenu(menu, TPM_LEFTALIGN | TPM_BOTTOMALIGN, pt.x, pt.y, 0, hwnd, None);
+                    let _ = TrackPopupMenu(
+                        menu,
+                        TPM_LEFTALIGN | TPM_BOTTOMALIGN,
+                        pt.x,
+                        pt.y,
+                        0,
+                        hwnd,
+                        None,
+                    );
                     let _ = DestroyMenu(menu);
                 }
                 LRESULT(0)
@@ -315,7 +330,9 @@ pub mod platform_tray {
             })
             .ok()?;
 
-        let hwnd_raw = hwnd_rx.recv_timeout(std::time::Duration::from_secs(2)).ok()?;
+        let hwnd_raw = hwnd_rx
+            .recv_timeout(std::time::Duration::from_secs(2))
+            .ok()?;
         if hwnd_raw == 0 {
             None
         } else {

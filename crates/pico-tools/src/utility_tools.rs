@@ -218,7 +218,9 @@ impl Tool for ManageTimerTool {
                         "message": format!("Paused timer '{}' with {} seconds remaining.", t_label, rem)
                     }))
                 } else {
-                    Err(PicoError::NotFound("No active matching timer to pause".into()))
+                    Err(PicoError::NotFound(
+                        "No active matching timer to pause".into(),
+                    ))
                 }
             }
             "resume" => {
@@ -243,7 +245,9 @@ impl Tool for ManageTimerTool {
                         "message": format!("Resumed timer '{}' ({} seconds remaining).", t_label, rem)
                     }))
                 } else {
-                    Err(PicoError::NotFound("No paused matching timer to resume".into()))
+                    Err(PicoError::NotFound(
+                        "No paused matching timer to resume".into(),
+                    ))
                 }
             }
             "cancel" => {
@@ -258,7 +262,9 @@ impl Tool for ManageTimerTool {
                 let removed = before.saturating_sub(guard.len());
                 self.save_locked(&guard);
                 if removed == 0 {
-                    return Err(PicoError::NotFound("No matching timer found to cancel".into()));
+                    return Err(PicoError::NotFound(
+                        "No matching timer found to cancel".into(),
+                    ));
                 }
                 Ok(json!({
                     "action": "cancel",
@@ -522,7 +528,9 @@ fn is_safe_public_ipv6(ip: Ipv6Addr) -> bool {
         && (segs[1] == 0 || segs[1] == 0x0002 || (segs[1] & 0xfff0) == 0x0010 || segs[1] == 0x0db8))
 }
 
-async fn validate_and_resolve_ssrf(url_str: &str) -> Result<(reqwest::Url, Vec<std::net::SocketAddr>)> {
+async fn validate_and_resolve_ssrf(
+    url_str: &str,
+) -> Result<(reqwest::Url, Vec<std::net::SocketAddr>)> {
     let parsed = reqwest::Url::parse(url_str)
         .map_err(|e| PicoError::Security(format!("Invalid URL '{}': {}", url_str, e)))?;
 
@@ -790,20 +798,32 @@ mod tests {
         // Genuine public IPs remain permitted
         assert!(is_safe_public_ip(IpAddr::from_str("8.8.8.8").unwrap()));
         assert!(is_safe_public_ip(IpAddr::from_str("1.1.1.1").unwrap()));
-        assert!(is_safe_public_ip(IpAddr::from_str("2001:4860:4860::8888").unwrap()));
+        assert!(is_safe_public_ip(
+            IpAddr::from_str("2001:4860:4860::8888").unwrap()
+        ));
     }
 
     #[tokio::test]
     async fn test_ssrf_url_validation() {
-        assert!(validate_and_resolve_ssrf("http://localhost:8080").await.is_err());
-        assert!(validate_and_resolve_ssrf("http://127.0.0.1:8765").await.is_err());
-        assert!(validate_and_resolve_ssrf("http://169.254.169.254/latest/meta-data")
+        assert!(validate_and_resolve_ssrf("http://localhost:8080")
             .await
             .is_err());
+        assert!(validate_and_resolve_ssrf("http://127.0.0.1:8765")
+            .await
+            .is_err());
+        assert!(
+            validate_and_resolve_ssrf("http://169.254.169.254/latest/meta-data")
+                .await
+                .is_err()
+        );
         assert!(validate_and_resolve_ssrf("https://user:pass@8.8.8.8/")
             .await
             .is_err());
-        assert!(validate_and_resolve_ssrf("ftp://example.com").await.is_err());
-        assert!(validate_and_resolve_ssrf("file:///etc/passwd").await.is_err());
+        assert!(validate_and_resolve_ssrf("ftp://example.com")
+            .await
+            .is_err());
+        assert!(validate_and_resolve_ssrf("file:///etc/passwd")
+            .await
+            .is_err());
     }
 }

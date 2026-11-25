@@ -197,14 +197,19 @@ pub fn resolve_arguments(query: &str, tool_name: &str, schema: &Value) -> Argume
         }
     } else if tool_name == "open_application" || tool_name == "app_launch" {
         let lower = query_clean.to_lowercase();
-        if !lower.starts_with("close ") && !lower.starts_with("quit ") && !lower.starts_with("exit ")
+        if !lower.starts_with("close ")
+            && !lower.starts_with("quit ")
+            && !lower.starts_with("exit ")
         {
             let app = extract_app_target(query_clean);
             let clean_app = app
                 .trim_matches(|c: char| c.is_ascii_punctuation() || c.is_whitespace())
                 .to_string();
             if !clean_app.is_empty()
-                && !matches!(clean_app.as_str(), "application" | "app" | "browser" | "program")
+                && !matches!(
+                    clean_app.as_str(),
+                    "application" | "app" | "browser" | "program"
+                )
             {
                 args.insert("application".to_string(), json!(clean_app));
             }

@@ -319,9 +319,15 @@ impl ObjectiveVerifier {
                 verified,
                 confidence: 0.95,
                 evidence: if verified {
-                    format!("Verified {} process(es) for '{}' closed", reported_count, name)
+                    format!(
+                        "Verified {} process(es) for '{}' closed",
+                        reported_count, name
+                    )
                 } else {
-                    format!("{} matching process(es) for '{}' still active", remaining, name)
+                    format!(
+                        "{} matching process(es) for '{}' still active",
+                        remaining, name
+                    )
                 },
                 details: serde_json::json!({
                     "target": name,
@@ -432,7 +438,11 @@ impl ObjectiveVerifier {
                 .and_then(|v| v.as_bool())
                 .unwrap_or(false);
         let level_opt = pico_platform::PlatformDisplay::get_brightness().ok();
-        let verified = match (reported_ok, level_opt, arguments.get("level").and_then(|v| v.as_u64())) {
+        let verified = match (
+            reported_ok,
+            level_opt,
+            arguments.get("level").and_then(|v| v.as_u64()),
+        ) {
             (true, Some(actual), Some(target)) => (actual as i64 - target as i64).abs() <= 3,
             (ok, _, _) => ok,
         };

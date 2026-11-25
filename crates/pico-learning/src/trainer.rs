@@ -51,8 +51,23 @@ impl RankingTrainer {
                     0.5,
                 );
 
-                let int_match_target = if target.to_lowercase().contains(&obs.primary_intent.to_lowercase()) { 1.0 } else { 0.5 };
-                let int_match_chosen = if obs.selected_action.to_lowercase().contains(&obs.primary_intent.to_lowercase()) { 1.0 } else { 0.5 };
+                let int_match_target = if target
+                    .to_lowercase()
+                    .contains(&obs.primary_intent.to_lowercase())
+                {
+                    1.0
+                } else {
+                    0.5
+                };
+                let int_match_chosen = if obs
+                    .selected_action
+                    .to_lowercase()
+                    .contains(&obs.primary_intent.to_lowercase())
+                {
+                    1.0
+                } else {
+                    0.5
+                };
 
                 grad_semantic += weight * (sem_target - sem_chosen);
                 grad_lexical += weight * (lex_target - lex_chosen);

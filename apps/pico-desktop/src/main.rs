@@ -605,12 +605,18 @@ impl CompanionApp {
         // Step smooth palette transition if artwork changed.
         if self.active_palette != self.target_palette {
             self.active_palette = ArtPalette {
-                bg_left: self.active_palette.bg_left.lerp(self.target_palette.bg_left, 0.35),
+                bg_left: self
+                    .active_palette
+                    .bg_left
+                    .lerp(self.target_palette.bg_left, 0.35),
                 bg_right: self
                     .active_palette
                     .bg_right
                     .lerp(self.target_palette.bg_right, 0.35),
-                accent: self.active_palette.accent.lerp(self.target_palette.accent, 0.35),
+                accent: self
+                    .active_palette
+                    .accent
+                    .lerp(self.target_palette.accent, 0.35),
                 text_primary: self.target_palette.text_primary,
                 text_secondary: self.target_palette.text_secondary,
             };
@@ -719,7 +725,16 @@ impl CompanionApp {
             } else {
                 ">"
             };
-            cv.draw_text_clipped(fonts, lbl, play_btn.x + 12, play_btn.y + 7, 16, 12.0, true, C_ACCENT);
+            cv.draw_text_clipped(
+                fonts,
+                lbl,
+                play_btn.x + 12,
+                play_btn.y + 7,
+                16,
+                12.0,
+                true,
+                C_ACCENT,
+            );
             self.hit_boxes.push(HitBox {
                 rect: play_btn,
                 action: UiAction::MediaPlayPause,
@@ -802,7 +817,11 @@ impl CompanionApp {
                     );
                     cv.draw_text_clipped(
                         fonts,
-                        if m.artist.is_empty() { "Unknown artist" } else { &m.artist },
+                        if m.artist.is_empty() {
+                            "Unknown artist"
+                        } else {
+                            &m.artist
+                        },
                         98,
                         116,
                         log_w - 120,
@@ -825,7 +844,8 @@ impl CompanionApp {
                     let prog_r = Rect::new(22, 166, log_w - 44, 4);
                     cv.fill_rounded_rect(prog_r, 2.0, C_CARD_ALT, 0.9);
                     if m.duration_secs > 0 {
-                        let frac = (m.position_secs as f32 / m.duration_secs as f32).clamp(0.0, 1.0);
+                        let frac =
+                            (m.position_secs as f32 / m.duration_secs as f32).clamp(0.0, 1.0);
                         let fill_w = ((prog_r.w as f32) * frac).round() as i32;
                         if fill_w > 2 {
                             cv.fill_rounded_rect(
@@ -885,7 +905,16 @@ impl CompanionApp {
                 cv.stroke_rounded_rect(vol_card, 12.0, C_BORDER, 1.0);
                 let vol_pct = self.telemetry.volume.unwrap_or(0);
                 let muted = self.telemetry.muted.unwrap_or(false);
-                cv.draw_text_clipped(fonts, "Master Output Volume", 22, 222, 180, 13.0, true, C_FG);
+                cv.draw_text_clipped(
+                    fonts,
+                    "Master Output Volume",
+                    22,
+                    222,
+                    180,
+                    13.0,
+                    true,
+                    C_FG,
+                );
                 let vol_txt = if muted {
                     format!("Muted ({}%)", vol_pct)
                 } else {
@@ -917,7 +946,12 @@ impl CompanionApp {
                 });
 
                 let slider_r = Rect::new(88, 255, log_w - 110, 16);
-                cv.fill_rounded_rect(Rect::new(slider_r.x, slider_r.y + 5, slider_r.w, 6), 3.0, C_CARD_ALT, 1.0);
+                cv.fill_rounded_rect(
+                    Rect::new(slider_r.x, slider_r.y + 5, slider_r.w, 6),
+                    3.0,
+                    C_CARD_ALT,
+                    1.0,
+                );
                 let fill_w = ((slider_r.w as f32) * (vol_pct as f32 / 100.0)).round() as i32;
                 if fill_w > 2 {
                     cv.fill_rounded_rect(
@@ -939,7 +973,16 @@ impl CompanionApp {
                 let sys_card = Rect::new(10, 304, log_w - 20, 118);
                 cv.fill_rounded_rect(sys_card, 12.0, C_CARD, 1.0);
                 cv.stroke_rounded_rect(sys_card, 12.0, C_BORDER, 1.0);
-                cv.draw_text_clipped(fonts, "Host System Snapshot", 22, 316, 200, 13.0, true, C_FG);
+                cv.draw_text_clipped(
+                    fonts,
+                    "Host System Snapshot",
+                    22,
+                    316,
+                    200,
+                    13.0,
+                    true,
+                    C_FG,
+                );
                 if let Some(ref st) = self.telemetry.stats {
                     let used_mb = st.total_memory_mb.saturating_sub(st.available_memory_mb);
                     cv.draw_text_clipped(
@@ -968,7 +1011,16 @@ impl CompanionApp {
                         C_FG,
                     );
                 } else {
-                    cv.draw_text_clipped(fonts, "Reading system telemetry...", 22, 344, 240, 12.0, false, C_MUTED);
+                    cv.draw_text_clipped(
+                        fonts,
+                        "Reading system telemetry...",
+                        22,
+                        344,
+                        240,
+                        12.0,
+                        false,
+                        C_MUTED,
+                    );
                 }
                 let bat_line = match self.telemetry.battery {
                     Some(b) => format!(
@@ -1085,14 +1137,26 @@ impl CompanionApp {
                 }
 
                 // Controls row
-                let start_lbl = if self.state.pomodoro.running { "Pause" } else { "Start" };
+                let start_lbl = if self.state.pomodoro.running {
+                    "Pause"
+                } else {
+                    "Start"
+                };
                 for (i, (lbl, col, act)) in [
                     (start_lbl, C_ACCENT, UiAction::TogglePomodoro),
                     ("Reset", C_CARD_ALT, UiAction::ResetPomodoro),
                     ("Skip", C_CARD_ALT, UiAction::SkipPomodoro),
                     (
-                        if self.state.pomodoro.auto_advance { "Auto: On" } else { "Auto: Off" },
-                        if self.state.pomodoro.auto_advance { C_GREEN } else { C_CARD_ALT },
+                        if self.state.pomodoro.auto_advance {
+                            "Auto: On"
+                        } else {
+                            "Auto: Off"
+                        },
+                        if self.state.pomodoro.auto_advance {
+                            C_GREEN
+                        } else {
+                            C_CARD_ALT
+                        },
                         UiAction::TogglePomodoroAuto,
                     ),
                 ]
@@ -1142,7 +1206,11 @@ impl CompanionApp {
                 cv.stroke_rounded_rect(
                     lbl_box,
                     7.0,
-                    if self.focus == FocusField::TimerLabel { C_ACCENT } else { C_BORDER },
+                    if self.focus == FocusField::TimerLabel {
+                        C_ACCENT
+                    } else {
+                        C_BORDER
+                    },
                     1.0,
                 );
                 let ltxt = if self.timer_label_input.is_empty() {
@@ -1158,7 +1226,11 @@ impl CompanionApp {
                     158,
                     12.0,
                     false,
-                    if self.timer_label_input.is_empty() { C_MUTED } else { C_FG },
+                    if self.timer_label_input.is_empty() {
+                        C_MUTED
+                    } else {
+                        C_FG
+                    },
                 );
                 self.hit_boxes.push(HitBox {
                     rect: lbl_box,
@@ -1171,7 +1243,11 @@ impl CompanionApp {
                 cv.stroke_rounded_rect(
                     min_box,
                     7.0,
-                    if self.focus == FocusField::TimerMins { C_ACCENT } else { C_BORDER },
+                    if self.focus == FocusField::TimerMins {
+                        C_ACCENT
+                    } else {
+                        C_BORDER
+                    },
                     1.0,
                 );
                 cv.draw_text_clipped(
@@ -1231,7 +1307,10 @@ impl CompanionApp {
                         );
 
                         for (bi, (lbl, act)) in [
-                            (if t.paused { "Go" } else { "Hold" }, UiAction::ToggleTimerPause(t.id.clone())),
+                            (
+                                if t.paused { "Go" } else { "Hold" },
+                                UiAction::ToggleTimerPause(t.id.clone()),
+                            ),
                             ("Rst", UiAction::ResetTimer(t.id.clone())),
                             ("Del", UiAction::DeleteTimer(t.id.clone())),
                         ]
@@ -1286,7 +1365,11 @@ impl CompanionApp {
                     log_w - 108,
                     12.0,
                     false,
-                    if self.note_input.is_empty() { C_MUTED } else { C_FG },
+                    if self.note_input.is_empty() {
+                        C_MUTED
+                    } else {
+                        C_FG
+                    },
                 );
                 self.hit_boxes.push(HitBox {
                     rect: in_box,
@@ -1308,7 +1391,11 @@ impl CompanionApp {
                 cv.stroke_rounded_rect(
                     s_box,
                     7.0,
-                    if self.focus == FocusField::NoteSearch { C_ACCENT } else { C_BORDER },
+                    if self.focus == FocusField::NoteSearch {
+                        C_ACCENT
+                    } else {
+                        C_BORDER
+                    },
                     1.0,
                 );
                 let stxt = if self.note_search.is_empty() {
@@ -1324,7 +1411,11 @@ impl CompanionApp {
                     log_w - 36,
                     11.5,
                     false,
-                    if self.note_search.is_empty() { C_MUTED } else { C_FG },
+                    if self.note_search.is_empty() {
+                        C_MUTED
+                    } else {
+                        C_FG
+                    },
                 );
                 self.hit_boxes.push(HitBox {
                     rect: s_box,
@@ -1353,7 +1444,16 @@ impl CompanionApp {
                     cv.fill_rounded_rect(save_e, 7.0, C_GREEN, 1.0);
                     cv.draw_text_clipped(fonts, "OK", save_e.x + 11, 155, 24, 11.0, true, C_BG);
                     cv.fill_rounded_rect(canc_e, 7.0, C_CARD_ALT, 1.0);
-                    cv.draw_text_clipped(fonts, "Esc", canc_e.x + 10, 155, 24, 11.0, false, C_MUTED);
+                    cv.draw_text_clipped(
+                        fonts,
+                        "Esc",
+                        canc_e.x + 10,
+                        155,
+                        24,
+                        11.0,
+                        false,
+                        C_MUTED,
+                    );
                     self.hit_boxes.push(HitBox {
                         rect: save_e,
                         action: UiAction::SaveEditNote,
@@ -1424,7 +1524,10 @@ impl CompanionApp {
                         );
 
                         for (bi, (lbl, act)) in [
-                            (if n.pinned { "Unp" } else { "Pin" }, UiAction::ToggleNotePin(n.id.clone())),
+                            (
+                                if n.pinned { "Unp" } else { "Pin" },
+                                UiAction::ToggleNotePin(n.id.clone()),
+                            ),
                             ("Edt", UiAction::StartEditNote(n.id.clone())),
                             ("Cpy", UiAction::CopyText(n.text.clone())),
                             ("Del", UiAction::DeleteNote(n.id.clone())),
@@ -1468,7 +1571,16 @@ impl CompanionApp {
                 );
                 let paste_btn = Rect::new(log_w - 118, 82, 100, 26);
                 cv.fill_rounded_rect(paste_btn, 7.0, C_ACCENT, 1.0);
-                cv.draw_text_clipped(fonts, "+ Clipboard", paste_btn.x + 12, 89, 82, 11.5, true, C_BG);
+                cv.draw_text_clipped(
+                    fonts,
+                    "+ Clipboard",
+                    paste_btn.x + 12,
+                    89,
+                    82,
+                    11.5,
+                    true,
+                    C_BG,
+                );
                 self.hit_boxes.push(HitBox {
                     rect: paste_btn,
                     action: UiAction::PasteClipboardToStash,
@@ -1495,7 +1607,11 @@ impl CompanionApp {
                         cv.fill_rounded_rect(r, 9.0, C_CARD, 1.0);
                         let badge = match item.kind {
                             state::StashKind::File => {
-                                if item.missing_on_disk { "MISS" } else { "FILE" }
+                                if item.missing_on_disk {
+                                    "MISS"
+                                } else {
+                                    "FILE"
+                                }
                             }
                             state::StashKind::Url => "URL",
                             state::StashKind::Text => "TEXT",
@@ -1508,9 +1624,22 @@ impl CompanionApp {
                             36,
                             10.0,
                             true,
-                            if item.missing_on_disk { C_DANGER } else { C_ACCENT },
+                            if item.missing_on_disk {
+                                C_DANGER
+                            } else {
+                                C_ACCENT
+                            },
                         );
-                        cv.draw_text_clipped(fonts, &item.label, 58, y + 15, 160, 12.0, false, C_FG);
+                        cv.draw_text_clipped(
+                            fonts,
+                            &item.label,
+                            58,
+                            y + 15,
+                            160,
+                            12.0,
+                            false,
+                            C_FG,
+                        );
 
                         for (bi, (lbl, act)) in [
                             ("Open", UiAction::OpenStashPayload(item.payload.clone())),
@@ -1561,12 +1690,7 @@ impl CompanionApp {
 
                 let mute_b = Rect::new(log_w - 134, 82, 54, 24);
                 let stop_b = Rect::new(log_w - 76, 82, 58, 24);
-                cv.fill_rounded_rect(
-                    mute_b,
-                    6.0,
-                    if paused { C_WARN } else { C_CARD_ALT },
-                    1.0,
-                );
+                cv.fill_rounded_rect(mute_b, 6.0, if paused { C_WARN } else { C_CARD_ALT }, 1.0);
                 cv.draw_text_clipped(
                     fonts,
                     if paused { "Muted" } else { "Mic On" },
@@ -1610,9 +1734,27 @@ impl CompanionApp {
                         let ok_b = Rect::new(18, chat_top + 32, 92, 22);
                         let no_b = Rect::new(118, chat_top + 32, 92, 22);
                         cv.fill_rounded_rect(ok_b, 6.0, C_GREEN, 1.0);
-                        cv.draw_text_clipped(fonts, "Approve", ok_b.x + 20, ok_b.y + 5, 64, 11.0, true, C_BG);
+                        cv.draw_text_clipped(
+                            fonts,
+                            "Approve",
+                            ok_b.x + 20,
+                            ok_b.y + 5,
+                            64,
+                            11.0,
+                            true,
+                            C_BG,
+                        );
                         cv.fill_rounded_rect(no_b, 6.0, C_DANGER, 1.0);
-                        cv.draw_text_clipped(fonts, "Decline", no_b.x + 20, no_b.y + 5, 64, 11.0, true, C_BG);
+                        cv.draw_text_clipped(
+                            fonts,
+                            "Decline",
+                            no_b.x + 20,
+                            no_b.y + 5,
+                            64,
+                            11.0,
+                            true,
+                            C_BG,
+                        );
                         self.hit_boxes.push(HitBox {
                             rect: ok_b,
                             action: UiAction::ConfirmTool(conf.request_id.clone(), true),
@@ -1627,11 +1769,29 @@ impl CompanionApp {
                     } else if let Some(ref clar) = snap.pending_clarification {
                         let cr = Rect::new(10, chat_top, log_w - 20, 66);
                         cv.fill_rounded_rect(cr, 9.0, C_CARD_ALT, 1.0);
-                        cv.draw_text_clipped(fonts, &clar.question, 18, chat_top + 6, log_w - 36, 11.0, true, C_ACCENT);
+                        cv.draw_text_clipped(
+                            fonts,
+                            &clar.question,
+                            18,
+                            chat_top + 6,
+                            log_w - 36,
+                            11.0,
+                            true,
+                            C_ACCENT,
+                        );
                         for (i, opt) in clar.candidates.iter().take(3).enumerate() {
                             let b = Rect::new(18 + i as i32 * 112, chat_top + 34, 104, 24);
                             cv.fill_rounded_rect(b, 6.0, C_CARD, 1.0);
-                            cv.draw_text_clipped(fonts, opt, b.x + 6, b.y + 6, 92, 10.5, false, C_FG);
+                            cv.draw_text_clipped(
+                                fonts,
+                                opt,
+                                b.x + 6,
+                                b.y + 6,
+                                92,
+                                10.5,
+                                false,
+                                C_FG,
+                            );
                             self.hit_boxes.push(HitBox {
                                 rect: b,
                                 action: UiAction::SelectClarification(i),
@@ -1701,7 +1861,11 @@ impl CompanionApp {
                 cv.stroke_rounded_rect(
                     ask_box,
                     8.0,
-                    if self.focus == FocusField::AskInput { C_ACCENT } else { C_BORDER },
+                    if self.focus == FocusField::AskInput {
+                        C_ACCENT
+                    } else {
+                        C_BORDER
+                    },
                     1.0,
                 );
                 let atxt = if self.ask_input.is_empty() {
@@ -1717,7 +1881,11 @@ impl CompanionApp {
                     log_w - 150,
                     12.0,
                     false,
-                    if self.ask_input.is_empty() { C_MUTED } else { C_FG },
+                    if self.ask_input.is_empty() {
+                        C_MUTED
+                    } else {
+                        C_FG
+                    },
                 );
                 self.hit_boxes.push(HitBox {
                     rect: ask_box,
@@ -1812,7 +1980,9 @@ impl ApplicationHandler<CompanionEvent> for CompanionApp {
             CompanionEvent::Wake => {}
             CompanionEvent::Tray(cmd) => match cmd {
                 TrayCommand::ToggleVisible => self.toggle_visible(),
-                TrayCommand::ToggleCompact => self.execute_action(UiAction::ToggleCompact, event_loop),
+                TrayCommand::ToggleCompact => {
+                    self.execute_action(UiAction::ToggleCompact, event_loop)
+                }
                 TrayCommand::ExitApp => {
                     self.save_state();
                     event_loop.exit();
@@ -1913,7 +2083,12 @@ impl ApplicationHandler<CompanionEvent> for CompanionApp {
             } => {
                 let lx = (self.cursor_pos.x as f32 / self.scale_factor).round() as i32;
                 let ly = (self.cursor_pos.y as f32 / self.scale_factor).round() as i32;
-                if let Some(hb) = self.hit_boxes.iter().rev().find(|h| h.rect.contains(lx, ly)) {
+                if let Some(hb) = self
+                    .hit_boxes
+                    .iter()
+                    .rev()
+                    .find(|h| h.rect.contains(lx, ly))
+                {
                     let act = hb.action.clone();
                     let is_slider = hb.is_slider;
                     if is_slider {
@@ -1974,7 +2149,10 @@ impl ApplicationHandler<CompanionEvent> for CompanionApp {
                                     buf.push_str(&clip);
                                     self.request_redraw();
                                 } else if self.state.active_tab == ActiveTab::Stash {
-                                    self.execute_action(UiAction::PasteClipboardToStash, event_loop);
+                                    self.execute_action(
+                                        UiAction::PasteClipboardToStash,
+                                        event_loop,
+                                    );
                                 }
                             }
                             return;
@@ -2003,11 +2181,15 @@ impl ApplicationHandler<CompanionEvent> for CompanionApp {
                             self.execute_action(UiAction::SaveEditNote, event_loop);
                         } else {
                             match self.focus {
-                                FocusField::NoteInput => self.execute_action(UiAction::AddNote, event_loop),
+                                FocusField::NoteInput => {
+                                    self.execute_action(UiAction::AddNote, event_loop)
+                                }
                                 FocusField::TimerLabel | FocusField::TimerMins => {
                                     self.execute_action(UiAction::AddCustomTimer, event_loop)
                                 }
-                                FocusField::AskInput => self.execute_action(UiAction::SendPrompt, event_loop),
+                                FocusField::AskInput => {
+                                    self.execute_action(UiAction::SendPrompt, event_loop)
+                                }
                                 _ => {}
                             }
                         }
@@ -2184,7 +2366,9 @@ fn spawn_background_workers(
 
                 let sig = format!(
                     "{:?}:{:?}:{:?}:{:?}",
-                    media.as_ref().map(|m| (&m.title, &m.artist, m.is_playing, m.position_secs)),
+                    media
+                        .as_ref()
+                        .map(|m| (&m.title, &m.artist, m.is_playing, m.position_secs)),
                     volume,
                     muted,
                     stats.as_ref().map(|s| s.available_memory_mb)
@@ -2225,7 +2409,8 @@ fn spawn_background_workers(
             loop {
                 match daemon_rx.recv_timeout(Duration::from_secs(6)) {
                     Ok(DaemonCommand::Refresh) | Err(mpsc::RecvTimeoutError::Timeout) => {
-                        let _ = proxy.send_event(CompanionEvent::DaemonSnapshotUpdated(poll_refresh()));
+                        let _ =
+                            proxy.send_event(CompanionEvent::DaemonSnapshotUpdated(poll_refresh()));
                     }
                     Ok(DaemonCommand::SubmitPrompt(text)) => {
                         let tok = read_ipc_token(&token_path);
@@ -2239,10 +2424,12 @@ fn spawn_background_workers(
                             },
                         );
                         let ev = match res {
-                            Ok(IpcResponse::TurnResult { reply, .. }) => CompanionEvent::DaemonReply {
-                                reply: Some(reply),
-                                error: None,
-                            },
+                            Ok(IpcResponse::TurnResult { reply, .. }) => {
+                                CompanionEvent::DaemonReply {
+                                    reply: Some(reply),
+                                    error: None,
+                                }
+                            }
                             Ok(IpcResponse::Error { message, .. }) => CompanionEvent::DaemonReply {
                                 reply: None,
                                 error: Some(message),
@@ -2268,7 +2455,8 @@ fn spawn_background_workers(
                                 approved,
                             },
                         );
-                        let _ = proxy.send_event(CompanionEvent::DaemonSnapshotUpdated(poll_refresh()));
+                        let _ =
+                            proxy.send_event(CompanionEvent::DaemonSnapshotUpdated(poll_refresh()));
                     }
                     Ok(DaemonCommand::SetVoicePaused(paused)) => {
                         let tok = read_ipc_token(&token_path);
@@ -2277,7 +2465,8 @@ fn spawn_background_workers(
                             tok.as_deref(),
                             IpcRequest::SetVoicePaused { paused },
                         );
-                        let _ = proxy.send_event(CompanionEvent::DaemonSnapshotUpdated(poll_refresh()));
+                        let _ =
+                            proxy.send_event(CompanionEvent::DaemonSnapshotUpdated(poll_refresh()));
                     }
                     Ok(DaemonCommand::InterruptSpeech) => {
                         let tok = read_ipc_token(&token_path);

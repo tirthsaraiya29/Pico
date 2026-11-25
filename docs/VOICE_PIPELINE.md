@@ -1,58 +1,36 @@
-# Pico Real-Time Voice Pipeline
+# Audio & Voice Pipeline
 
 ## Overview
 
-Voice interaction in Pico is engineered for responsiveness, high acoustic fidelity, and natural conversation flow. It eliminates long pauses through streaming pipelines and instantaneous barge-in cancellation.
+Pico's voice pipeline is built to avoid sample-rate distortions ("chipmunk playback"), RIFF WAV header noise injection, wall-clock VAD drift, and silent TTS/STT failures.
 
----
+## 1. Unified Internal Format & Hardware Resampling (`pico-audio`)
 
-## 1. Pipeline Stages
+- Every TTS backend outputs `SynthesizedAudio { samples: Vec<f32>, sample_rate: u32, channels: u16, voice, engine }`.
+- `decode_wav_bytes_to_f32` explicitly parses RIFF WAV headers via `hound` rather than treating WAV containers as raw 16 kHz PCM bytes.
+- `AudioPlayback::start` negotiates the output endpoint's native `sample_rate`, `channels`, and sample format (`F32`, `I16`, `I32`, `U8`, `U16`).
+- `AudioResampler` applies stateful Lanczos-3 windowed-sinc resampling cleanly across chunk boundaries from any source rate to the exact hardware endpoint rate, eliminating pitch/speed mismatches (`16 kHz` -> `48 kHz`, `22.05 kHz` -> `48 kHz`, etc.).
+- Real-time audio callbacks read/write lock-free, cache-aligned SPSC ring buffers (`ringbuf.rs`) with zero allocations or mutexes in audio callbacks and O(1) barge-in buffer invalidation (`interrupt()`).
+- `AudioPlayback::headless()` spawns a lightweight `Condvar`/paced drainer so headless CI tests and servers accurately simulate real-time `is_playing()` completion without hanging.
 
-```mermaid
-sequenceDiagram
-    participant User
-    participant Mic as pico-audio (Capture)
-    participant VAD as pico-voice (VAD)
-    participant STT as pico-voice (STT)
-    participant Core as pico-orchestrator
-    participant TTS as pico-voice (TTS)
-    participant Out as pico-audio (Playback)
+## 2. Deterministic VAD (`pico-voice/src/vad.rs`)
 
-    User->>Mic: Spoken utterance
-    Mic->>VAD: 16kHz mono audio frames
-    Note over VAD: RMS & Noise Floor Tracking
-    VAD->>STT: Finalized speech buffer
-    STT->>Core: Transcribed text string
-    Core->>TTS: Assistant response text
-    TTS->>Out: 16kHz 16-bit PCM bytes
-    Out->>User: Spoken acoustic response
-    
-    opt Barge-In Interruption
-        User->>Mic: "Wait, cancel that!"
-        Mic->>VAD: Voice detected
-        VAD-->>Out: interrupt() [< 15ms]
-        VAD-->>Core: cancel() turn
-    end
-```
+- Counts processed samples (`sample_rate` default `16,000 Hz`) instead of wall-clock `Instant::now()` so pauses and utterance bounds behave deterministically on hardware capture, WAV replay, and CI tests.
+- Maintains a continuous 160ms circular pre-roll buffer (`2,560` samples @ 16 kHz) so initial consonants are preserved when speech triggers after 2 active frames.
+- Dynamically tracks noise floor during silence (`2.8x` noise floor floor-adjusted threshold) and ignores single click/pop spikes.
 
----
+## 3. Text-to-Speech (`pico-voice/src/tts.rs`)
 
-## 2. Audio Capture & Resampling
+- **`SpeechPreprocessor`**: Cleans markdown links, expands `localhost:PORT`, `ms`, `%`, `KB/MB/GB/TB/MHz/GHz`, normalizes file paths, and splits sentences cleanly without breaking decimals (`3.14`) or domains (`example.com`).
+- **Backends**:
+  - `piper`: Neural local ONNX CLI (`--model <onnx> --length_scale <scale> --output-raw`) reading text via `stdin` and parsing `<model>.json` `audio.sample_rate`.
+  - `winrt` / `native_sapi`: Persistent Windows PowerShell worker using WinRT OneCore voices (`Windows.Media.SpeechSynthesis`) with `System.Speech` `SetOutputToWaveStream` fallback, JSON-framed over `stdin` (zero command injection) and returning base64 RIFF WAV.
+  - `espeak` / `speech_dispatcher`: Linux `espeak-ng` / `espeak` `--stdout --stdin` RIFF WAV decoding.
+  - `mock`: Deterministic sinusoidal waveform at `22,050 Hz` for headless tests.
+- All non-mock synthesis failures propagate explicitly as `Err(PicoError::SpeechSynthesis(...))`.
 
-Hardware microphones operate at varied configurations (typically 44,100 Hz or 48,000 Hz stereo). Speech engines require 16,000 Hz single-channel mono PCM.
+## 4. Speech-to-Text (`pico-voice/src/stt.rs` & `scripts/asr_service.py`)
 
-- **Downmixing**: Channels are averaged across frames:
-  $$s_{\text{mono}}[i] = \frac{1}{C} \sum_{c=0}^{C-1} s_{\text{interleaved}}[i \cdot C + c]$$
-- **Resampling**: Linear interpolation converts sample rates on-the-fly without memory allocations or buffering lag:
-  $$s_{\text{target}}[i] = s_{\text{mono}}[\lfloor k \rfloor] \cdot (1 - f) + s_{\text{mono}}[\lceil k \rceil] \cdot f$$
-  where $k = i \cdot \frac{R_{\text{source}}}{16000}$ and $f = k - \lfloor k \rfloor$.
-
----
-
-## 3. Native Zero-Overhead TTS
-
-To guarantee instant speech generation without downloading gigabytes of external neural checkpoints, Pico leverages Windows SAPI (`System.Speech.Synthesis`) via in-process memory streaming:
-- Zero model loading delay (< 80ms initialization).
-- Direct generation of 16kHz 16-bit mono PCM buffers.
-- Modifiable playback speed multiplier ($0.5\times$ to $2.0\times$).
-- Pluggable support for Piper neural ONNX models for multi-voice environments.
+- Captures audio into RAII `TempWavGuard` files (always unlinked on scope exit).
+- `AsrDaemon` discovers `python3`/`python` (or honors `VoiceConfig::python_binary`), enforces bounded startup & inference timeouts, and supports `Parakeet-TDT-0.6B`, `Moonshine-Tiny-ONNX`, and `Faster-Whisper` via `scripts/asr_service.py` (supporting 8/16/24/32-bit mono/multi-channel WAV normalization to 16 kHz float32) plus `whisper-cli` `.bin` discovery.
+- `SpeechNormalizer` removes utterance-initial hesitation fillers (`like um`, `uh`, `er`, `err`, `ah`, `hmm`), hyphenated stutters (`c-can`), and consecutive duplicates while preserving mid-sentence words (`looks like notepad`), math expressions (`3.14 * 2 + 5`), IPs (`8.8.8.8`), and Unix paths (`/etc/hosts`).

@@ -1,8 +1,8 @@
 //! Native display brightness control across Windows and Linux.
 
-use pico_core::error::Result;
 #[cfg(not(any(target_os = "windows", target_os = "linux")))]
 use pico_core::error::PicoError;
+use pico_core::error::Result;
 
 pub struct PlatformDisplay;
 
@@ -52,9 +52,9 @@ impl PlatformDisplay {
 
 #[cfg(target_os = "windows")]
 mod win_display {
+    #[cfg(not(any(target_os = "windows", target_os = "linux")))]
+    use pico_core::error::PicoError;
     use pico_core::error::{PicoError, Result};
-#[cfg(not(any(target_os = "windows", target_os = "linux")))]
-use pico_core::error::PicoError;
     use std::process::Command;
     use windows::Win32::Devices::Display::{
         DestroyPhysicalMonitors, GetMonitorBrightness, GetNumberOfPhysicalMonitorsFromHMONITOR,
@@ -78,7 +78,12 @@ use pico_core::error::PicoError;
             let mut min_b = 0u32;
             let mut cur_b = 0u32;
             let mut max_b = 0u32;
-            let ok = GetMonitorBrightness(monitors[0].hPhysicalMonitor, &mut min_b, &mut cur_b, &mut max_b) != 0;
+            let ok = GetMonitorBrightness(
+                monitors[0].hPhysicalMonitor,
+                &mut min_b,
+                &mut cur_b,
+                &mut max_b,
+            ) != 0;
             let _ = DestroyPhysicalMonitors(&monitors);
             if ok && max_b > min_b {
                 let pct = ((cur_b - min_b) as f32 / (max_b - min_b) as f32) * 100.0;
@@ -105,7 +110,12 @@ use pico_core::error::PicoError;
             let mut cur_b = 0u32;
             let mut max_b = 0u32;
             let mut updated = None;
-            if GetMonitorBrightness(monitors[0].hPhysicalMonitor, &mut min_b, &mut cur_b, &mut max_b) != 0
+            if GetMonitorBrightness(
+                monitors[0].hPhysicalMonitor,
+                &mut min_b,
+                &mut cur_b,
+                &mut max_b,
+            ) != 0
                 && max_b > min_b
             {
                 let target = min_b + (((max_b - min_b) * percent) / 100);

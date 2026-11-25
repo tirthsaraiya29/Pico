@@ -1,12 +1,12 @@
 # Pico System Configuration File
 # Non-Generative Probabilistic Decision Intelligence & Continuous Learning
-# Optimized for local execution on Windows 11 x64 (Intel Core Ultra 7 356H, 32GB RAM, Intel Arc Graphics)
+# Cross-platform local execution on Windows 11 and Linux
 
 [decision]
 model_version = "pico-decision-v1.0.0"
 confidence_threshold = 0.60
 max_candidates = 15
-enable_cross_encoder = true
+enable_cross_encoder = true                 # Enables multi-feature candidate ranking pass
 calibration_temperature = 1.0
 clarification_margin = 0.08
 model_dir = "models/decision"
@@ -23,13 +23,13 @@ learning_rate = 0.05
 
 [voice]
 vad_threshold = 0.015                       # Energy threshold for voice detection
-silence_duration_ms = 700                   # Milliseconds of silence before speech finalization
-stt_engine = "whisper"                      # Options: "whisper", "local"
-tts_engine = "native_sapi"                  # Options: "native_sapi", "piper"
+silence_duration_ms = 600                   # Milliseconds of silence before speech finalization
+stt_engine = "auto"                         # Options: "auto" (Parakeet-TDT, Moonshine, Whisper), "parakeet", "moonshine", "whisper", "mock"
+tts_engine = "auto"                         # Options: "auto" (Piper -> WinRT/SAPI or eSpeak), "piper", "winrt", "native_sapi", "speech_dispatcher", "espeak", "mock"
 speech_rate = 1.0                           # 0.5 to 2.0 playback rate
 push_to_talk = false                        # Set true for manual key trigger
 ptt_key = "Space"
-enable_barge_in = true                      # Immediately interrupts playback when user speaks
+enable_barge_in = true                      # Interrupt TTS playback when user speech is detected
 
 [audio]
 sample_rate = 16000                         # 16kHz standard for speech processing

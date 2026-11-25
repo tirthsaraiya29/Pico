@@ -128,12 +128,7 @@ fn resolve_candidate_choice(
     // 1. Ordinal selection: "first", "the second one", "option two", "execute the first", "choose the second"
     if let Some(idx) = parse_ordinal_choice(lower_reply, state.options.len()) {
         let opt = &state.options[idx];
-        return finalize_selected_option(
-            state,
-            opt,
-            raw_reply,
-            &format!("ordinal_{}", idx + 1),
-        );
+        return finalize_selected_option(state, opt, raw_reply, &format!("ordinal_{}", idx + 1));
     }
 
     // 2. Explicit tool-name / suffix / distinct description keyword match
@@ -150,7 +145,10 @@ fn resolve_candidate_choice(
             return finalize_selected_option(state, opt, raw_reply, "rephrase_hint");
         }
     } else {
-        debug!(reply = raw_reply, "User interrupted clarification with a new command");
+        debug!(
+            reply = raw_reply,
+            "User interrupted clarification with a new command"
+        );
         return ClarificationOutcome::InterruptedByNewCommand;
     }
 
@@ -392,10 +390,7 @@ fn strip_slot_lead_in(text: &str) -> &str {
     text
 }
 
-fn compute_missing_required(
-    schema: &Value,
-    args: &serde_json::Map<String, Value>,
-) -> Vec<String> {
+fn compute_missing_required(schema: &Value, args: &serde_json::Map<String, Value>) -> Vec<String> {
     schema
         .get("required")
         .and_then(|r| r.as_array())
@@ -431,8 +426,8 @@ pub fn parse_ordinal_choice(lower_input: &str, option_count: usize) -> Option<us
 
     let allowed_wrappers = [
         "the", "option", "choice", "action", "number", "one", "execute", "choose", "pick",
-        "select", "run", "do", "use", "go", "with", "take", "try", "prefer", "want", "please",
-        "i", "id", "would", "like", "let", "s",
+        "select", "run", "do", "use", "go", "with", "take", "try", "prefer", "want", "please", "i",
+        "id", "would", "like", "let", "s",
     ];
 
     let mut found_idx: Option<usize> = None;
@@ -454,7 +449,14 @@ pub fn parse_ordinal_choice(lower_input: &str, option_count: usize) -> Option<us
 
         if let Some(idx) = ordinal_idx {
             // Note: "the first one" has "first" AND trailing "one". Keep "first" cleanly.
-            if tok == "one" && tokens[..pos].iter().any(|t| matches!(t.as_str(), "first" | "second" | "third" | "fourth" | "fifth")) {
+            if tok == "one"
+                && tokens[..pos].iter().any(|t| {
+                    matches!(
+                        t.as_str(),
+                        "first" | "second" | "third" | "fourth" | "fifth"
+                    )
+                })
+            {
                 continue;
             }
             if found_idx.is_some() && found_idx != Some(idx) {
@@ -493,7 +495,9 @@ fn match_explicit_option(
 fn match_constraint_hint(lower_reply: &str, options: &[ClarificationOption]) -> Option<usize> {
     let reply_words: Vec<String> = lower_reply
         .split(|c: char| !c.is_alphanumeric())
-        .filter(|w| w.len() >= 3 && !matches!(*w, "the" | "use" | "run" | "mode" | "action" | "one"))
+        .filter(|w| {
+            w.len() >= 3 && !matches!(*w, "the" | "use" | "run" | "mode" | "action" | "one")
+        })
         .map(String::from)
         .collect();
     if reply_words.is_empty() {
@@ -509,7 +513,10 @@ fn match_constraint_hint(lower_reply: &str, options: &[ClarificationOption]) -> 
                 .replace(['.', '_'], " ");
             let hits = reply_words
                 .iter()
-                .filter(|w| text.split_whitespace().any(|t| t == w.as_str() || t.starts_with(w.as_str())))
+                .filter(|w| {
+                    text.split_whitespace()
+                        .any(|t| t == w.as_str() || t.starts_with(w.as_str()))
+                })
                 .count();
             (i, hits)
         })
@@ -645,7 +652,11 @@ mod tests {
         for phrase in ["first", "the first", "option one", "execute the first", "1"] {
             match resolve_followup(&st, phrase) {
                 ClarificationOutcome::ExecuteAction { action_name, .. } => {
-                    assert_eq!(action_name, "open_browser_normal", "failed phrase: {}", phrase);
+                    assert_eq!(
+                        action_name, "open_browser_normal",
+                        "failed phrase: {}",
+                        phrase
+                    );
                 }
                 other => panic!("unexpected outcome for '{}': {:?}", phrase, other),
             }

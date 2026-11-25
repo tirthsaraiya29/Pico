@@ -67,7 +67,9 @@ impl<T: Copy + Default> RingBufferInner<T> {
 }
 
 /// Creates a bounded lock-free SPSC ring buffer pair with power-of-two capacity >= `min_capacity`.
-pub fn spsc_ring_buffer<T: Copy + Default>(min_capacity: usize) -> (SpscProducer<T>, SpscConsumer<T>) {
+pub fn spsc_ring_buffer<T: Copy + Default>(
+    min_capacity: usize,
+) -> (SpscProducer<T>, SpscConsumer<T>) {
     let inner = Arc::new(RingBufferInner::new(min_capacity));
     (
         SpscProducer {
@@ -161,7 +163,10 @@ impl<T: Copy + Default> SpscConsumer<T> {
         }
         let slot = t & self.inner.mask;
         let val = unsafe { *self.inner.buffer[slot].get() };
-        self.inner.tail.0.store(t.wrapping_add(1), Ordering::Release);
+        self.inner
+            .tail
+            .0
+            .store(t.wrapping_add(1), Ordering::Release);
         Some(val)
     }
 

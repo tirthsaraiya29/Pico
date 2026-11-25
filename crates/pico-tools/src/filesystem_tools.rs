@@ -103,10 +103,12 @@ impl Tool for ReadFileTool {
                 break;
             }
             line_buf.clear();
-            let n = reader.read_line(&mut line_buf).map_err(|e| PicoError::ToolExecution {
-                tool: self.name().into(),
-                message: format!("Failed reading file {}: {}", safe_path.display(), e),
-            })?;
+            let n = reader
+                .read_line(&mut line_buf)
+                .map_err(|e| PicoError::ToolExecution {
+                    tool: self.name().into(),
+                    message: format!("Failed reading file {}: {}", safe_path.display(), e),
+                })?;
             if n == 0 {
                 break;
             }
@@ -358,7 +360,8 @@ mod tests {
 
     #[tokio::test]
     async fn test_read_file_streaming_respects_max_lines_and_blocks_sensitive() {
-        let root = std::env::temp_dir().join(format!("pico_fs_test_{}", uuid::Uuid::new_v4().simple()));
+        let root =
+            std::env::temp_dir().join(format!("pico_fs_test_{}", uuid::Uuid::new_v4().simple()));
         std::fs::create_dir_all(&root).unwrap();
         let big = root.join("large.txt");
         let lines: String = (0..100).map(|i| format!("line-{}\n", i)).collect();

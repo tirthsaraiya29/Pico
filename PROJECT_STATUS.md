@@ -1,54 +1,27 @@
-# Pico — Engineering Status & Implementation Tracker
+# Pico Project Status
 
-**Repository**: `Pico`  
-**Target Architecture**: Windows 11 x64 and Linux x86_64  
-**Hardware Profile**: Intel Core Ultra 7 356H, 32GB RAM, Intel Arc Graphics  
-**Last Updated**: 2026-11-22  
-**Current Implementation Stage**: Production Ready • Non-Generative Probabilistic Decision Intelligence, 2,112 Tool Ecosystem, Pure Voice Interaction & Native Rust 60 FPS Desktop App
+Status reflects verified repository state and observed test/benchmark runs on branch `main`.
 
----
+## Workspace Implementation Matrix
 
-## 1. Component Implementation Status
+| Subsystem | Status | Key Verification & Engineering Notes |
+|---|---|---|
+| Core & IPC (`pico-core`) | Verified | `ClarificationState`, `SynthesizedAudio` format metadata, IPC v1 envelope + 64 KB frame cap (`5/5` unit tests). |
+| Security (`pico-security`) | Verified | Fail-closed `PathSandbox`, traversal/symlink/ADS/credential guards, context-bound single-use confirmations, redacting `AuditLogger` (`25/25` unit tests). |
+| Decision (`pico-decision`) | Verified | Persistent session-scoped clarification (ordinals, tool names, rephrasing, missing args, timeout, cancellation), separator/camelCase BM25 `ToolIndex` (`16/16` unit tests). |
+| Inference (`pico-inference`) | Verified | FNV-1a hashed embeddings, `MultiFeatureRanker`, softmax + Platt calibration (`8/8` unit tests, `ECE = 0.0962` on held-out cases). |
+| Learning (`pico-learning`) | Verified | Real dynamic feature evaluation without label leakage, gradient ranking updates, checkpoint rollback & rate limiting (`6/6` unit tests). |
+| Platform (`pico-platform`) | Verified | Native Win32/WinRT GSMTC media + thumbnails, WASAPI/pactl volume, DXVA2/WMI brightness, Win32 clipboard, `RtlGetVersion`, battery sensor, Linux MPRIS2/`sysfs` (`2/2` lib tests + live execution). |
+| Tools (`pico-tools`) | Verified | Deduplicated curated host-OS catalog (removed 2,016 synthetic duplicates), parameterized scripts, streaming file caps, DNS-pinned `FetchWebContentTool` with IPv4+IPv6 SSRF blocks, shell wrapper blocking (`19/19` unit + `5/5` catalog tests). |
+| Audio DSP (`pico-audio`) | Verified | Lock-free cache-aligned SPSC ring buffer, explicit RIFF WAV decoder, Lanczos-3 sinc resampler matching device output rate, headless real-time drain thread (`7/7` unit tests). |
+| Voice Pipeline (`pico-voice`) | Verified | Sample-counted `VadProcessor` with 160ms pre-roll, `SpeechPreprocessor`, multi-backend TTS (`piper`/`winrt`/`native_sapi`/`espeak`/`mock`) failing explicitly on errors, hardened `SpeechNormalizer`, RAII WAV cleanup (`19/19` unit tests). |
+| Memory (`pico-memory`) | Verified | SQLite WAL storage with `spawn_blocking` isolation and escaped `LIKE` wildcard queries (`6/6` unit tests). |
+| Orchestrator (`pico-orchestrator`) | Verified | Session-isolated clarification routing, `ObjectiveVerifier` readback checks, authenticated Named Pipe / Unix Socket IPC server (`3/3` unit, `9/9` E2E, `5/5` benchmark tests). |
+| Desktop Companion (`pico-desktop`) | Verified | CPU-rendered `winit` + `softbuffer` + `ab_glyph` companion (`Media`, `Focus`, `Notes`, `Stash`, `Ask`, Win32 tray + `Alt+Space` hotkey); measured **41.04 MB** release RSS and **0.47%** core / **0.03%** system idle CPU (`4/4` unit tests). |
+| CLI & Scripts (`pico-cli`, `scripts/`) | Verified | Added `daemon` subcommand with `--no-voice`, concurrent `VoiceConfirmationCoordinator` queue, hardened multi-format WAV downmixing in `scripts/*.py`. |
 
-| Component | Status | Test Coverage | Verification Notes |
-| :--- | :---: | :---: | :--- |
-| **Workspace & Toolchain** | :white_check_mark: Complete | 100% | Rust 1.80+ MSVC / GCC, zero clippy warnings, pure Rust native desktop |
-| **`pico-core`** | :white_check_mark: Complete | 4/4 Tests Passed | Configuration schemas, domain events, session types, universal `PicoError` |
-| **`pico-security`** | :white_check_mark: Complete | 15/15 Tests Passed | 4-tier permission policy, verbal voice confirmation, path sandbox, ADS/DOS device protection |
-| **`pico-platform`** | :white_check_mark: Complete | 2/2 Tests Passed | Windows 11 native APIs & Linux procfs/sysfs/systemd adapters |
-| **`pico-audio`** | :white_check_mark: Complete | 2/2 Tests Passed | CPAL capture & playback, lock-free ring buffers, polyphase 16kHz resampler |
-| **`pico-voice`** | :white_check_mark: Complete | 7/7 Tests Passed | Adaptive VAD, thinking/stutter pause detector, SpeechNormalizer, SAPI TTS, sub-15ms barge-in |
-| **`pico-inference`** | :white_check_mark: Complete | 7/7 Tests Passed | Dense subword semantic embeddings, Platt probability calibration, cross-encoder ranking |
-| **`pico-decision`** | :white_check_mark: Complete | 11/11 Tests Passed | Non-generative intent classifier, inverted BM25 tool catalog index, schema argument extraction |
-| **`pico-learning`** | :white_check_mark: Complete | 5/5 Tests Passed | SQLite experience store, pairwise margin trainer, 22-domain held-out evaluation suite, rollback |
-| **`pico-tools`** | :white_check_mark: Complete | 19/19 Tests Passed | 1,056 Windows & 1,056 Linux tools (2,112 total), AST arithmetic parser, anti-SSRF defense |
-| **`pico-memory`** | :white_check_mark: Complete | 5/5 Tests Passed | SQLite WAL storage with busy timeouts, context window budgeter, long-term memory retrieval |
-| **`pico-orchestrator`**| :white_check_mark: Complete | 7/7 E2E Tests Passed | Autonomous multi-step runtime coordinator, objective evaluation, loop detection, state machine |
-| **`pico-cli`** | :white_check_mark: Complete | Verified CLI | Pure voice interaction, verbal confirmation coordinator, diagnostic doctor (`pico doctor`) |
-| **`pico-desktop`** | :white_check_mark: Complete | Verified GUI | Pure native Rust 60 FPS app (egui/eframe), concentric audio radar, live execution timeline |
-| **Website & Portal** | :white_check_mark: Complete | Verified | Mobile-responsive landing page, serverless issue submission backend (`api/submit.js`), issue templates |
-| **One-Click Scripts** | :white_check_mark: Complete | Verified | `test.bat` (Windows) and `test.sh` (Linux) running tests, building, and launching native GUI |
+## Known Limitations
 
----
-
-## 2. Definition of Done Checklist
-
-- [x] Application starts reliably (`pico-cli.exe`, `pico-desktop.exe`).
-- [x] Pure native Rust desktop app implemented with `eframe` (egui), replacing desktop web server.
-- [x] Web server dependencies (`axum`, `tower`, `tower-http`) completely removed.
-- [x] Text-based chat removed; system operates strictly through natural voice input.
-- [x] Adaptive VAD detects mid-sentence thinking and stutter pauses vs genuine end-of-speech.
-- [x] `SpeechNormalizer` cleans acoustic stutters and vocal fillers.
-- [x] Sub-15ms full-duplex voice barge-in interruption halts TTS immediately when speech begins.
-- [x] Verbal voice confirmation coordinator asks for verbal *"confirm"* / *"cancel"* on dangerous actions.
-- [x] All user-commanded dangerous operations are supported when verbally authorized.
-- [x] Massive 2,112 OS tool ecosystem spanning 22 domains indexed via inverted BM25 (< 0.05ms retrieval).
-- [x] Multi-feature cross-encoder scoring and Platt probability calibration ($P \in [0, 1]$).
-- [x] Continuous on-device learning with anti-poisoning guards and held-out evaluation promotion gates.
-- [x] One-click `test.bat` and `test.sh` scripts run all tests, build binaries, and launch desktop GUI.
-- [x] GitHub issue templates created (bug reports, feature requests, appreciation, private security).
-- [x] Website issue submission portal implemented with serverless backend (`api/submit.js`) and private contact storage.
-- [x] Website UI overhauled for full mobile responsiveness (viewports `< 480px` and `< 768px`).
-- [x] All placeholder content and obsolete LLM references eradicated from codebase and documentation.
-- [x] Unit, integration, and security test suite: 75/75 tests passed (100% success rate).
-- [x] Clean compilation across the entire workspace with zero warnings.
+- Continuous hands-free microphone transcription accuracy depends on local model files present under `models/` (`Parakeet-TDT`, `Moonshine ONNX`, or `whisper.cpp` `.bin`). When no models are installed and configured with `stt_engine = "auto"`, the recognizer falls back cleanly or returns an explicit error instead of fabricating text.
+- On Linux desktop environments running pure Wayland compositors without tray protocol extensions, `pico-desktop` gracefully falls back to normal window minimize/focus and `notify-send` alerts rather than registering a Windows-specific `Shell_NotifyIconW` tray handle.
+- GitHub Actions CI validates `ubuntu-latest` and `windows-latest` compilation, `rustfmt`, `clippy -- -D warnings`, all unit/integration tests, and release builds; physical speaker/microphone hardware round-trips remain host-verified locally.

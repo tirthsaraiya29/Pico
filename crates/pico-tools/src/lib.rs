@@ -113,12 +113,14 @@ mod tests {
         let defs = reg.get_tool_definitions();
         assert!(defs.len() >= 20);
         #[cfg(target_os = "windows")]
-        assert!(defs
-            .iter()
-            .all(|d| !d["function"]["name"].as_str().unwrap().starts_with("linux.")));
+        assert!(defs.iter().all(|d| !d["function"]["name"]
+            .as_str()
+            .unwrap()
+            .starts_with("linux.")));
         #[cfg(target_os = "linux")]
-        assert!(defs
-            .iter()
-            .all(|d| !d["function"]["name"].as_str().unwrap().starts_with("windows.")));
+        assert!(defs.iter().all(|d| !d["function"]["name"]
+            .as_str()
+            .unwrap()
+            .starts_with("windows.")));
     }
 }

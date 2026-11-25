@@ -1,6 +1,6 @@
-use pico_core::error::Result;
 #[cfg(not(any(target_os = "windows", target_os = "linux")))]
 use pico_core::error::PicoError;
+use pico_core::error::Result;
 
 pub struct PlatformClipboard;
 
@@ -45,9 +45,9 @@ impl PlatformClipboard {
 
 #[cfg(target_os = "windows")]
 mod win_clip {
+    #[cfg(not(any(target_os = "windows", target_os = "linux")))]
+    use pico_core::error::PicoError;
     use pico_core::error::{PicoError, Result};
-#[cfg(not(any(target_os = "windows", target_os = "linux")))]
-use pico_core::error::PicoError;
     use windows::Win32::Foundation::{HANDLE, HGLOBAL};
     use windows::Win32::System::DataExchange::{
         CloseClipboard, EmptyClipboard, GetClipboardData, IsClipboardFormatAvailable,
@@ -85,9 +85,8 @@ use pico_core::error::PicoError;
             if IsClipboardFormatAvailable(CF_UNICODETEXT_U32).is_err() {
                 return Ok(String::new());
             }
-            let handle = GetClipboardData(CF_UNICODETEXT_U32).map_err(|e| {
-                PicoError::Platform(format!("GetClipboardData failed: {}", e))
-            })?;
+            let handle = GetClipboardData(CF_UNICODETEXT_U32)
+                .map_err(|e| PicoError::Platform(format!("GetClipboardData failed: {}", e)))?;
             let hglobal = HGLOBAL(handle.0 as *mut _);
             let ptr = GlobalLock(hglobal) as *const u16;
             if ptr.is_null() {
@@ -113,9 +112,8 @@ use pico_core::error::PicoError;
                 .map_err(|e| PicoError::Platform(format!("EmptyClipboard failed: {}", e)))?;
             let wide: Vec<u16> = text.encode_utf16().chain(Some(0)).collect();
             let byte_len = wide.len() * std::mem::size_of::<u16>();
-            let hglobal = GlobalAlloc(GMEM_MOVEABLE, byte_len).map_err(|e| {
-                PicoError::Platform(format!("Clipboard GlobalAlloc failed: {}", e))
-            })?;
+            let hglobal = GlobalAlloc(GMEM_MOVEABLE, byte_len)
+                .map_err(|e| PicoError::Platform(format!("Clipboard GlobalAlloc failed: {}", e)))?;
             let dst = GlobalLock(hglobal) as *mut u16;
             if dst.is_null() {
                 return Err(PicoError::Platform(
@@ -124,9 +122,8 @@ use pico_core::error::PicoError;
             }
             std::ptr::copy_nonoverlapping(wide.as_ptr(), dst, wide.len());
             let _ = GlobalUnlock(hglobal);
-            SetClipboardData(CF_UNICODETEXT_U32, HANDLE(hglobal.0 as isize)).map_err(|e| {
-                PicoError::Platform(format!("SetClipboardData failed: {}", e))
-            })?;
+            SetClipboardData(CF_UNICODETEXT_U32, HANDLE(hglobal.0 as isize))
+                .map_err(|e| PicoError::Platform(format!("SetClipboardData failed: {}", e)))?;
             Ok(())
         }
     }

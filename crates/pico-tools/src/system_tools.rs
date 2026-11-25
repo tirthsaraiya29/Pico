@@ -170,7 +170,9 @@ impl Tool for OpenApplicationTool {
             .and_then(|v| v.as_str())
             .ok_or_else(|| PicoError::ToolExecution {
                 tool: self.name().into(),
-                message: "Missing 'application' argument. Which application would you like to open?".into(),
+                message:
+                    "Missing 'application' argument. Which application would you like to open?"
+                        .into(),
             })?;
 
         PlatformApps::open_application(app)?;
