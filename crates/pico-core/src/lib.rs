@@ -9,7 +9,7 @@ pub use config::{
     AudioConfig, DecisionConfig, DesktopConfig, LearningConfig, MemoryConfig, PicoConfig,
     SecurityConfig, VoiceConfig,
 };
-pub use error::{PicoError, Result};
+pub use error::{PicoError, PicoErrorCode, Result};
 pub use events::PicoEvent;
 pub use ipc::{
     decode_ipc_envelope, default_ipc_endpoint, default_ipc_token_path, encode_ipc_line,
@@ -57,12 +57,41 @@ mod tests {
 
     #[test]
     fn test_event_serialization() {
+        let sid = SessionId::new();
         let event = PicoEvent::VoiceActivityStarted {
+            session_id: Some(sid),
             timestamp: chrono::Utc::now(),
         };
+        assert_eq!(event.session_id(), Some(sid));
         let serialized = serde_json::to_string(&event).expect("Serialization failed");
         let deserialized: PicoEvent =
             serde_json::from_str(&serialized).expect("Deserialization failed");
         assert_eq!(event, deserialized);
+    }
+
+    #[test]
+    fn test_error_codes_and_tool_result_truncation() {
+        assert_eq!(
+            PicoError::ToolNotFound("foo".into()).code(),
+            PicoErrorCode::PicoToolNotFound
+        );
+        assert_eq!(
+            PicoError::Security("bad".into()).code_str(),
+            "PICO_SECURITY_VIOLATION"
+        );
+
+        let sid = SessionId::new();
+        let huge = "🦀".repeat(20_000);
+        let result = ToolResult {
+            call_id: "c1".into(),
+            name: "read_file".into(),
+            success: true,
+            content: serde_json::json!({ "text": huge }),
+            error: None,
+            execution_duration_ms: 1,
+        };
+        let msg = Message::new_tool_result(sid, &result);
+        assert!(msg.content.ends_with("...[truncated]"));
+        assert!(msg.content.chars().count() <= 16_384 + "...[truncated]".len());
     }
 }

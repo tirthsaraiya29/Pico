@@ -292,27 +292,108 @@ impl SqliteStore {
     }
 
     pub fn search_facts(&self, query: &str, limit: usize) -> Result<Vec<String>> {
+        self.search_facts_ranked(query, limit, 0.0)
+    }
+
+    /// Searches facts using token-overlap relevance scoring combined with optional
+    /// exponential recency decay (`decay_half_life_days > 0.0`).
+    pub fn search_facts_ranked(
+        &self,
+        query: &str,
+        limit: usize,
+        decay_half_life_days: f32,
+    ) -> Result<Vec<String>> {
+        if limit == 0 {
+            return Ok(Vec::new());
+        }
         let conn = self.conn.lock().unwrap_or_else(|p| p.into_inner());
-        let escaped = query
+        let trimmed = query.trim();
+        let lower_q = trimmed.to_lowercase();
+        let query_tokens: Vec<String> = lower_q
+            .split(|c: char| !c.is_alphanumeric() && c != '%' && c != '_')
+            .filter(|t| !t.is_empty())
+            .map(|t| t.to_string())
+            .collect();
+
+        let escaped = trimmed
             .replace('\\', "\\\\")
             .replace('%', "\\%")
             .replace('_', "\\_");
         let pattern = format!("%{}%", escaped);
 
-        let mut stmt = conn
-            .prepare(
-                "SELECT fact FROM memories WHERE fact LIKE ?1 ESCAPE '\\' OR category LIKE ?1 ESCAPE '\\' LIMIT ?2",
+        // Fetch candidate rows matching either the full query or all rows when multi-token
+        // queries need partial-token relevance ranking.
+        let mut stmt = if query_tokens.len() <= 1 {
+            conn.prepare(
+                "SELECT category, fact, created_at FROM memories \
+                 WHERE fact LIKE ?1 ESCAPE '\\' OR category LIKE ?1 ESCAPE '\\'",
             )
-            .map_err(|e| PicoError::Memory(format!("Prepare search failed: {}", e)))?;
+            .map_err(|e| PicoError::Memory(format!("Prepare search failed: {}", e)))?
+        } else {
+            conn.prepare("SELECT category, fact, created_at FROM memories")
+                .map_err(|e| PicoError::Memory(format!("Prepare search failed: {}", e)))?
+        };
 
-        let rows = stmt
-            .query_map(params![pattern, limit as i64], |row| {
-                row.get::<_, String>(0)
-            })
-            .map_err(|e| PicoError::Memory(format!("Memory search failed: {}", e)))?;
+        let map_row = |row: &rusqlite::Row<'_>| -> rusqlite::Result<(String, String, String)> {
+            Ok((row.get(0)?, row.get(1)?, row.get(2)?))
+        };
 
-        rows.collect::<rusqlite::Result<Vec<String>>>()
-            .map_err(|e| PicoError::Memory(format!("Row decode failed during search: {}", e)))
+        let rows = if query_tokens.len() <= 1 {
+            stmt.query_map(params![pattern], map_row)
+        } else {
+            stmt.query_map([], map_row)
+        }
+        .map_err(|e| PicoError::Memory(format!("Memory search failed: {}", e)))?;
+
+        let now = chrono::Utc::now();
+        let mut scored: Vec<(f64, String)> = Vec::new();
+        for row in rows {
+            let (category, fact, created_at_str) = row.map_err(|e| {
+                PicoError::Memory(format!("Row decode failed during search: {}", e))
+            })?;
+            let fact_lower = fact.to_lowercase();
+            let cat_lower = category.to_lowercase();
+
+            let mut relevance = 0.0f64;
+            if !lower_q.is_empty() && fact_lower.contains(&lower_q) {
+                relevance += 2.0;
+            }
+            if !lower_q.is_empty() && cat_lower.contains(&lower_q) {
+                relevance += 0.75;
+            }
+            if !query_tokens.is_empty() {
+                let matched = query_tokens
+                    .iter()
+                    .filter(|tok| {
+                        fact_lower.contains(tok.as_str()) || cat_lower.contains(tok.as_str())
+                    })
+                    .count();
+                if matched == 0 && relevance == 0.0 {
+                    continue;
+                }
+                relevance += (matched as f64 / query_tokens.len() as f64) * 1.5;
+            } else if relevance == 0.0 {
+                relevance = 0.1;
+            }
+
+            let decay = if decay_half_life_days > 0.0 {
+                let age_days = chrono::DateTime::parse_from_rfc3339(&created_at_str)
+                    .map(|dt| {
+                        let secs = (now - dt.with_timezone(&chrono::Utc)).num_seconds().max(0);
+                        secs as f64 / 86_400.0
+                    })
+                    .unwrap_or(0.0);
+                0.5f64.powf(age_days / decay_half_life_days as f64)
+            } else {
+                1.0
+            };
+
+            scored.push((relevance * decay, fact));
+        }
+
+        scored.sort_by(|a, b| b.0.partial_cmp(&a.0).unwrap_or(std::cmp::Ordering::Equal));
+        scored.truncate(limit);
+        Ok(scored.into_iter().map(|(_, f)| f).collect())
     }
 
     pub fn set_preference(&self, key: &str, value: &str) -> Result<()> {

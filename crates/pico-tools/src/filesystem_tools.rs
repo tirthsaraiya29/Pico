@@ -264,6 +264,11 @@ impl Tool for SearchFilesTool {
                 "directory": {
                     "type": "string",
                     "description": "Directory to search within (defaults to current workspace)"
+                },
+                "exclude_dirs": {
+                    "type": "array",
+                    "items": { "type": "string" },
+                    "description": "Additional directory names to exclude from traversal"
                 }
             },
             "required": ["pattern"],
@@ -289,6 +294,31 @@ impl Tool for SearchFilesTool {
             .and_then(|v| v.as_str())
             .unwrap_or(".");
 
+        let mut excluded: Vec<String> = [
+            "target",
+            ".git",
+            "node_modules",
+            ".venv",
+            "venv",
+            "__pycache__",
+            "models",
+            ".mypy_cache",
+            ".pytest_cache",
+        ]
+        .iter()
+        .map(|s| s.to_string())
+        .collect();
+        if let Some(arr) = arguments.get("exclude_dirs").and_then(|v| v.as_array()) {
+            for item in arr {
+                if let Some(s) = item.as_str() {
+                    let trimmed = s.trim();
+                    if !trimmed.is_empty() {
+                        excluded.push(trimmed.to_string());
+                    }
+                }
+            }
+        }
+
         let safe_dir = self.sandbox.validate_path(dir_str)?;
         let mut matches = Vec::new();
         let mut visited = 0usize;
@@ -298,6 +328,7 @@ impl Tool for SearchFilesTool {
             sandbox: &PathSandbox,
             dir: &Path,
             pattern: &str,
+            excluded: &[String],
             matches: &mut Vec<String>,
             visited: &mut usize,
             depth: usize,
@@ -320,7 +351,7 @@ impl Tool for SearchFilesTool {
                     }
                     let path = entry.path();
                     let name = entry.file_name().to_string_lossy().to_string();
-                    if name == "target" || name == ".git" || name == "node_modules" {
+                    if excluded.iter().any(|ex| ex.eq_ignore_ascii_case(&name)) {
                         continue;
                     }
                     if name.to_lowercase().contains(pattern) {
@@ -329,7 +360,15 @@ impl Tool for SearchFilesTool {
                         }
                     }
                     if ft.is_dir() && sandbox.validate_path(&path).is_ok() {
-                        walk(sandbox, &path, pattern, matches, visited, depth + 1);
+                        walk(
+                            sandbox,
+                            &path,
+                            pattern,
+                            excluded,
+                            matches,
+                            visited,
+                            depth + 1,
+                        );
                     }
                 }
             }
@@ -339,6 +378,7 @@ impl Tool for SearchFilesTool {
             &self.sandbox,
             &safe_dir,
             &pattern_lower,
+            &excluded,
             &mut matches,
             &mut visited,
             0,
@@ -381,6 +421,36 @@ mod tests {
             .execute(json!({ "path": env_path.to_str().unwrap() }))
             .await
             .is_err());
+
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    #[tokio::test]
+    async fn test_search_files_skips_venv_pycache_and_custom_excludes() {
+        let root =
+            std::env::temp_dir().join(format!("pico_search_ex_{}", uuid::Uuid::new_v4().simple()));
+        std::fs::create_dir_all(root.join(".venv")).unwrap();
+        std::fs::create_dir_all(root.join("__pycache__")).unwrap();
+        std::fs::create_dir_all(root.join("custom_skip")).unwrap();
+        std::fs::create_dir_all(root.join("src")).unwrap();
+        std::fs::write(root.join(".venv/secret.py"), "x").unwrap();
+        std::fs::write(root.join("__pycache__/mod.pyc"), "x").unwrap();
+        std::fs::write(root.join("custom_skip/target.txt"), "x").unwrap();
+        std::fs::write(root.join("src/target.txt"), "x").unwrap();
+
+        let sandbox = Arc::new(PathSandbox::new(vec![root.clone()], vec![]));
+        let search = SearchFilesTool::new(sandbox);
+        let res = search
+            .execute(json!({
+                "pattern": "t",
+                "directory": root.to_str().unwrap(),
+                "exclude_dirs": ["custom_skip"]
+            }))
+            .await
+            .unwrap();
+        let matches = res["matches"].as_array().unwrap();
+        assert_eq!(matches.len(), 1);
+        assert!(matches[0].as_str().unwrap().contains("src"));
 
         let _ = std::fs::remove_dir_all(&root);
     }

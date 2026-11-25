@@ -98,6 +98,7 @@ impl VoicePipeline {
                         let clean = text.trim();
                         if !clean.is_empty() {
                             let _ = event_tx.send(PicoEvent::TranscriptionFinalized {
+                                session_id: None,
                                 text: clean.to_string(),
                                 latency_ms: t0.elapsed().as_millis() as u64,
                             });
@@ -109,6 +110,7 @@ impl VoicePipeline {
                     Err(e) => {
                         warn!(error = %e, "ASR transcription failed for captured utterance");
                         let _ = event_tx.send(PicoEvent::Error {
+                            session_id: None,
                             component: "stt".into(),
                             message: e.to_string(),
                         });
@@ -155,6 +157,7 @@ impl VoicePipeline {
                             speak_cancelled.store(true, Ordering::SeqCst);
                             playback_handle.interrupt();
                             let _ = event_tx.send(PicoEvent::PlaybackInterrupted {
+                                session_id: None,
                                 reason: "User barge-in".into(),
                             });
                             vad.reset();
@@ -175,6 +178,7 @@ impl VoicePipeline {
                 if prev_state == VadState::Silence && new_state == VadState::Speaking {
                     speech_started_at = Some(Instant::now());
                     let _ = event_tx.send(PicoEvent::VoiceActivityStarted {
+                        session_id: None,
                         timestamp: Utc::now(),
                     });
                 }
@@ -185,6 +189,7 @@ impl VoicePipeline {
                         .map(|s| s.elapsed().as_millis() as u64)
                         .unwrap_or_else(|| (utterance_pcm.len() as u64 * 1000) / 16_000);
                     let _ = event_tx.send(PicoEvent::VoiceActivityStopped {
+                        session_id: None,
                         timestamp: Utc::now(),
                         duration_ms,
                     });
@@ -209,6 +214,7 @@ impl VoicePipeline {
         self.speak_cancelled.store(false, Ordering::SeqCst);
         let t0 = Instant::now();
         let _ = self.event_tx.send(PicoEvent::SpeechSynthesisStarted {
+            session_id: None,
             text_length: text.len(),
         });
 
@@ -245,7 +251,9 @@ impl VoicePipeline {
             total_audio_ms += duration_ms;
 
             if !playback_started_sent {
-                let _ = self.event_tx.send(PicoEvent::PlaybackStarted);
+                let _ = self
+                    .event_tx
+                    .send(PicoEvent::PlaybackStarted { session_id: None });
                 playback_started_sent = true;
             }
 
@@ -263,6 +271,7 @@ impl VoicePipeline {
         }
 
         let _ = self.event_tx.send(PicoEvent::SpeechSynthesisFinished {
+            session_id: None,
             audio_duration_ms: total_audio_ms,
             latency_ms: t0.elapsed().as_millis() as u64,
         });
@@ -281,7 +290,9 @@ impl VoicePipeline {
             .store(Self::now_epoch_ms().saturating_add(180), Ordering::Relaxed);
 
         if playback_started_sent {
-            let _ = self.event_tx.send(PicoEvent::PlaybackFinished);
+            let _ = self
+                .event_tx
+                .send(PicoEvent::PlaybackFinished { session_id: None });
         }
 
         Ok(())
@@ -294,6 +305,7 @@ impl VoicePipeline {
         let latency_ms = t0.elapsed().as_millis() as u64;
         if !text.is_empty() {
             let _ = self.event_tx.send(PicoEvent::TranscriptionFinalized {
+                session_id: None,
                 text: text.clone(),
                 latency_ms,
             });
@@ -306,6 +318,7 @@ impl VoicePipeline {
         self.speak_cancelled.store(true, Ordering::SeqCst);
         self.playback_handle.interrupt();
         let _ = self.event_tx.send(PicoEvent::PlaybackInterrupted {
+            session_id: None,
             reason: "Explicit interruption".into(),
         });
     }
@@ -326,6 +339,35 @@ impl VoicePipeline {
 
     pub fn stt_engine(&self) -> &str {
         self.recognizer.stt_engine()
+    }
+
+    /// Emits a `PicoEvent::VoiceBackendStatus` summarizing STT and TTS readiness and errors.
+    pub fn emit_backend_status(&self) {
+        let tts_voices = self.synthesizer.list_voices();
+        let tts_ready = self.tts_engine() == "mock" || !tts_voices.is_empty();
+        let tts_error = if tts_ready {
+            None
+        } else {
+            Some(format!(
+                "TTS engine '{}' has no discovered voices",
+                self.tts_engine()
+            ))
+        };
+
+        let stt_engine = self.stt_engine().to_string();
+        let (stt_ready, stt_error) = match self.validate_config() {
+            Ok(()) => (true, None),
+            Err(e) => (false, Some(e.to_string())),
+        };
+
+        let _ = self.event_tx.send(PicoEvent::VoiceBackendStatus {
+            stt_engine,
+            stt_ready,
+            tts_engine: self.tts_engine().to_string(),
+            tts_ready,
+            stt_error,
+            tts_error,
+        });
     }
 
     /// Checks whether a configuration error prevents audio capture or voice validation.

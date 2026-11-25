@@ -31,14 +31,109 @@ impl ToolRegistry {
         policy.set_confirmation_provider(provider);
     }
 
+    /// Validates that a tool's JSON Schema is a well-formed object schema with valid
+    /// `properties`, `required` fields, and parameter types.
+    pub fn validate_schema(
+        tool_name: &str,
+        schema: &serde_json::Value,
+    ) -> std::result::Result<(), String> {
+        if schema.get("type").and_then(|t| t.as_str()) != Some("object") {
+            return Err(format!(
+                "Tool '{}' schema must have type == 'object'",
+                tool_name
+            ));
+        }
+
+        let props = match schema.get("properties") {
+            Some(p) => p.as_object().ok_or_else(|| {
+                format!(
+                    "Tool '{}' schema 'properties' must be a JSON object",
+                    tool_name
+                )
+            })?,
+            None => {
+                return Err(format!(
+                    "Tool '{}' schema must declare 'properties' object",
+                    tool_name
+                ))
+            }
+        };
+
+        const VALID_TYPES: [&str; 7] = [
+            "string", "number", "integer", "boolean", "array", "object", "null",
+        ];
+
+        for (prop_name, prop_def) in props {
+            let obj = prop_def.as_object().ok_or_else(|| {
+                format!(
+                    "Tool '{}' property '{}' definition must be an object",
+                    tool_name, prop_name
+                )
+            })?;
+            let has_combinator =
+                obj.contains_key("enum") || obj.contains_key("anyOf") || obj.contains_key("oneOf");
+            if let Some(ty) = obj.get("type") {
+                if let Some(s) = ty.as_str() {
+                    if !VALID_TYPES.contains(&s) {
+                        return Err(format!(
+                            "Tool '{}' property '{}' has invalid type '{}'",
+                            tool_name, prop_name, s
+                        ));
+                    }
+                } else if let Some(arr) = ty.as_array() {
+                    for item in arr {
+                        let s = item.as_str().unwrap_or("");
+                        if !VALID_TYPES.contains(&s) {
+                            return Err(format!(
+                                "Tool '{}' property '{}' has invalid type entry '{}'",
+                                tool_name, prop_name, s
+                            ));
+                        }
+                    }
+                } else {
+                    return Err(format!(
+                        "Tool '{}' property '{}' has non-string 'type'",
+                        tool_name, prop_name
+                    ));
+                }
+            } else if !has_combinator {
+                return Err(format!(
+                    "Tool '{}' property '{}' must specify 'type' or combinator",
+                    tool_name, prop_name
+                ));
+            }
+        }
+
+        if let Some(req) = schema.get("required") {
+            let req_arr = req.as_array().ok_or_else(|| {
+                format!("Tool '{}' schema 'required' must be an array", tool_name)
+            })?;
+            for item in req_arr {
+                let field = item.as_str().ok_or_else(|| {
+                    format!(
+                        "Tool '{}' schema 'required' contains non-string entry",
+                        tool_name
+                    )
+                })?;
+                if !props.contains_key(field) {
+                    return Err(format!(
+                        "Tool '{}' schema 'required' field '{}' is missing from 'properties'",
+                        tool_name, field
+                    ));
+                }
+            }
+        }
+
+        Ok(())
+    }
+
     /// Registers a tool in the registry after validating its schema contract.
     pub fn register(&mut self, tool: Arc<dyn Tool>) {
         let schema = tool.parameters_schema();
-        debug_assert!(
-            schema.get("type").and_then(|t| t.as_str()) == Some("object"),
-            "Tool '{}' schema must have type == 'object'",
-            tool.name()
-        );
+        if let Err(err) = Self::validate_schema(tool.name(), &schema) {
+            warn!(error = %err, "Tool schema validation failed");
+            debug_assert!(false, "{}", err);
+        }
         debug!(name = %tool.name(), "Registered tool");
         self.tools.insert(tool.name().to_string(), tool);
     }
@@ -208,5 +303,36 @@ impl ToolRegistry {
                 }
             }
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_validate_schema_catches_malformed_definitions() {
+        let valid = serde_json::json!({
+            "type": "object",
+            "properties": {
+                "path": { "type": "string" },
+                "lines": { "type": "integer" }
+            },
+            "required": ["path"]
+        });
+        assert!(ToolRegistry::validate_schema("valid_tool", &valid).is_ok());
+
+        let missing_prop = serde_json::json!({
+            "type": "object",
+            "properties": { "path": { "type": "string" } },
+            "required": ["nonexistent"]
+        });
+        assert!(ToolRegistry::validate_schema("bad_req", &missing_prop).is_err());
+
+        let bad_type = serde_json::json!({
+            "type": "object",
+            "properties": { "x": { "type": "float64" } }
+        });
+        assert!(ToolRegistry::validate_schema("bad_type", &bad_type).is_err());
     }
 }

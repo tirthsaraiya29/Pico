@@ -699,5 +699,38 @@ async fn test_benchmark_resource_profile() {
             final_mem
         );
     }
+
+    // Export reproducible JSON benchmark report (BUG-089)
+    let build_mode = if cfg!(debug_assertions) {
+        "debug"
+    } else {
+        "release"
+    };
+    let cpu_cores = std::thread::available_parallelism()
+        .map(|n| n.get())
+        .unwrap_or(1);
+    let report = serde_json::json!({
+        "os": std::env::consts::OS,
+        "arch": std::env::consts::ARCH,
+        "family": std::env::consts::FAMILY,
+        "build_mode": build_mode,
+        "cpu_cores": cpu_cores,
+        "sample_count": 500,
+        "throughput_qps": qps,
+        "elapsed_secs": total_elapsed.as_secs_f64(),
+        "initial_rss_mb": initial_mem,
+        "final_rss_mb": final_mem,
+        "rss_delta_mb": mem_diff,
+    });
+    let report_path = std::env::temp_dir().join("pico_benchmark_report.json");
+    std::fs::write(
+        &report_path,
+        serde_json::to_string_pretty(&report).expect("serialize benchmark report"),
+    )
+    .expect("write benchmark report");
+    println!(
+        "Benchmark JSON report written to: {}",
+        report_path.display()
+    );
     println!("==================================================================\n");
 }

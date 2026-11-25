@@ -14,19 +14,46 @@ pub struct AudioResampler {
     ratio: f64,
     phase: f64,
     tail: Vec<f32>,
+    polyphase_3x_up: Option<[[f64; 7]; 3]>,
 }
 
 impl AudioResampler {
     pub fn new(source_rate: u32, target_rate: u32) -> Self {
         let src = source_rate.max(1);
         let dst = target_rate.max(1);
+        let polyphase_3x_up = if dst == src.saturating_mul(3) {
+            Some(Self::build_3x_upsample_table())
+        } else {
+            None
+        };
         Self {
             source_rate: src,
             target_rate: dst,
             ratio: src as f64 / dst as f64,
             phase: 0.0,
             tail: Vec::new(),
+            polyphase_3x_up,
         }
+    }
+
+    fn build_3x_upsample_table() -> [[f64; 7]; 3] {
+        let mut table = [[0.0f64; 7]; 3];
+        for (p, row) in table.iter_mut().enumerate() {
+            let frac = p as f64 / 3.0;
+            let mut sum = 0.0f64;
+            for (i, coeff) in row.iter_mut().enumerate() {
+                let offset = (i as isize - 3) as f64;
+                let w = lanczos_kernel(frac - offset);
+                *coeff = w;
+                sum += w;
+            }
+            if sum.abs() > 1e-9 {
+                for coeff in row.iter_mut() {
+                    *coeff /= sum;
+                }
+            }
+        }
+        table
     }
 
     pub fn reset(&mut self) {
@@ -65,6 +92,20 @@ impl AudioResampler {
         let mut out = Vec::with_capacity(est_out);
 
         while self.phase < max_pos {
+            if let Some(ref table) = self.polyphase_3x_up {
+                let base = self.phase.floor() as isize;
+                let sub = ((self.phase - base as f64) * 3.0).round() as usize;
+                let row = &table[sub.min(2)];
+                let mut acc = 0.0f64;
+                for (i, &w) in row.iter().enumerate() {
+                    let idx =
+                        (base + i as isize - 3).clamp(0, (combined.len() - 1) as isize) as usize;
+                    acc += (combined[idx] as f64) * w;
+                }
+                out.push((acc as f32).clamp(-1.0, 1.0));
+                self.phase += self.ratio;
+                continue;
+            }
             let center = self.phase;
             let k_start = (center - support).floor().max(0.0) as isize;
             let k_end = (center + support).ceil().min((combined.len() - 1) as f64) as isize;

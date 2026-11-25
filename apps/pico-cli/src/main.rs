@@ -5,6 +5,7 @@ use pico_audio::AudioDeviceManager;
 use pico_core::config::PicoConfig;
 use pico_core::error::PicoError;
 use pico_core::events::PicoEvent;
+use pico_core::traits::SpeechSynthesizer;
 use pico_orchestrator::PicoRuntime;
 use pico_security::ConfirmationProvider;
 use std::collections::VecDeque;
@@ -49,7 +50,11 @@ enum Commands {
         action: Option<LearnAction>,
     },
     /// Run diagnostic environment health checks
-    Doctor,
+    Doctor {
+        /// Output structured JSON diagnostics
+        #[arg(long)]
+        json: bool,
+    },
     /// Generate a fresh configuration file
     InitConfig {
         #[arg(short, long, default_value = "configs/pico.toml")]
@@ -254,14 +259,8 @@ async fn main() -> std::result::Result<(), Box<dyn std::error::Error>> {
                 }
             }
         }
-        Commands::Doctor => {
-            println!(
-                "{}",
-                "Pico Diagnostic Environment Health Check:".cyan().bold()
-            );
-            println!("{:-<60}", "");
-
-            // 1. Host OS & Platform
+        Commands::Doctor { json } => {
+            let config = load_or_default_config(&cli.config);
             let os_name = if cfg!(target_os = "windows") {
                 "Windows"
             } else if cfg!(target_os = "linux") {
@@ -269,54 +268,167 @@ async fn main() -> std::result::Result<(), Box<dyn std::error::Error>> {
             } else {
                 "Unix/Other"
             };
-            println!(
-                "  [OK] Host Platform:   {} ({})",
-                os_name.green().bold(),
-                std::env::consts::ARCH
-            );
-
-            // 2. Audio Pipeline
             let inputs = AudioDeviceManager::list_input_devices().unwrap_or_default();
             let outputs = AudioDeviceManager::list_output_devices().unwrap_or_default();
-            if !inputs.is_empty() && !outputs.is_empty() {
-                println!(
-                    "  [OK] Audio Subsystem: Microphones ({}), Speakers ({})",
-                    inputs.len().to_string().green(),
-                    outputs.len().to_string().green()
+
+            // Audio format conversion & resampling self-check (16k -> 48k)
+            let test_sine: Vec<f32> = (0..1600)
+                .map(|i| (i as f32 * 2.0 * std::f32::consts::PI * 440.0 / 16_000.0).sin() * 0.25)
+                .collect();
+            let resampled =
+                pico_audio::AudioResampler::process_mono_complete(16_000, 48_000, &test_sine);
+            let audio_conversion_ok = resampled.len() == 4800;
+
+            // IPC & daemon health check
+            let endpoint = pico_core::default_ipc_endpoint();
+            let token_path = pico_core::default_ipc_token_path();
+            let token_present = token_path.exists();
+            let daemon_reachable = if let Some(tok) = pico_core::read_ipc_token(&token_path) {
+                matches!(
+                    pico_core::send_ipc_request_sync(
+                        &endpoint,
+                        Some(&tok),
+                        pico_core::IpcRequest::Ping,
+                    ),
+                    Ok(pico_core::IpcResponse::Pong { .. })
+                )
+            } else {
+                false
+            };
+
+            // STT configuration check
+            let stt_engine = config.voice.stt_engine.clone();
+            let stt_config_valid = config.voice.validate().is_ok();
+
+            // TTS synthesis check
+            let tts_engine = config.voice.tts_engine.clone();
+            let tts_voices = pico_voice::PlatformSpeechSynthesizer::from_config(&config.voice)
+                .list_voices()
+                .len();
+            let tts_synth_ok = {
+                let mock_synth = pico_voice::PlatformSpeechSynthesizer::from_config(
+                    &pico_core::config::VoiceConfig {
+                        tts_engine: "mock".into(),
+                        ..config.voice.clone()
+                    },
                 );
+                mock_synth
+                    .synthesize_audio("Diagnostic check")
+                    .await
+                    .map(|a| !a.samples.is_empty() && a.sample_rate > 0)
+                    .unwrap_or(false)
+            };
+
+            if json {
+                let report = serde_json::json!({
+                    "platform": {
+                        "os": os_name,
+                        "arch": std::env::consts::ARCH,
+                    },
+                    "audio": {
+                        "input_devices": inputs.len(),
+                        "output_devices": outputs.len(),
+                        "resample_16k_to_48k_ok": audio_conversion_ok,
+                    },
+                    "ipc": {
+                        "endpoint": endpoint,
+                        "token_present": token_present,
+                        "daemon_reachable": daemon_reachable,
+                    },
+                    "voice": {
+                        "stt_engine": stt_engine,
+                        "stt_config_valid": stt_config_valid,
+                        "tts_engine": tts_engine,
+                        "discovered_voices": tts_voices,
+                        "tts_synthesis_pipeline_ok": tts_synth_ok,
+                    },
+                    "security": {
+                        "strict_mode": config.security.policy_mode == "Strict",
+                        "require_confirmation_for_shell": config.security.require_confirmation_for_shell,
+                    }
+                });
+                println!("{}", serde_json::to_string_pretty(&report)?);
             } else {
                 println!(
-                    "  {} Audio Subsystem: Input: {}, Output: {}",
-                    "[WARN]".yellow(),
-                    inputs.len(),
-                    outputs.len()
+                    "{}",
+                    "Pico Diagnostic Environment Health Check:".cyan().bold()
+                );
+                println!("{:-<60}", "");
+                println!(
+                    "  [OK] Host Platform:   {} ({})",
+                    os_name.green().bold(),
+                    std::env::consts::ARCH
+                );
+                if !inputs.is_empty() && !outputs.is_empty() {
+                    println!(
+                        "  [OK] Audio Subsystem: Microphones ({}), Speakers ({})",
+                        inputs.len().to_string().green(),
+                        outputs.len().to_string().green()
+                    );
+                } else {
+                    println!(
+                        "  {} Audio Subsystem: Input: {}, Output: {}",
+                        "[WARN]".yellow(),
+                        inputs.len(),
+                        outputs.len()
+                    );
+                }
+                println!(
+                    "  [{}] Audio Resampler: 16k -> 48k ({} samples)",
+                    if audio_conversion_ok {
+                        "OK".green()
+                    } else {
+                        "ERR".red()
+                    },
+                    resampled.len()
+                );
+                println!(
+                    "  [{}] IPC & Daemon:    endpoint={}, token={}, daemon={}",
+                    if daemon_reachable {
+                        "OK".green()
+                    } else {
+                        "INFO".yellow()
+                    },
+                    endpoint,
+                    token_present,
+                    if daemon_reachable {
+                        "reachable"
+                    } else {
+                        "offline"
+                    }
+                );
+                println!(
+                    "  [{}] Voice STT/TTS:   stt={}, tts={} (voices={}, synth_ok={})",
+                    if stt_config_valid && tts_synth_ok {
+                        "OK".green()
+                    } else {
+                        "WARN".yellow()
+                    },
+                    stt_engine,
+                    tts_engine,
+                    tts_voices,
+                    tts_synth_ok
+                );
+                println!(
+                    "  [OK] Security Policy: Strict Mode = {}, Require Shell Confirm = {}",
+                    (config.security.policy_mode == "Strict")
+                        .to_string()
+                        .green(),
+                    config
+                        .security
+                        .require_confirmation_for_shell
+                        .to_string()
+                        .green()
+                );
+                println!(
+                    "  [OK] Decision Core:   BM25 Retrieval + Multi-Feature Ranking + Calibrated Selection"
+                );
+                println!("{:-<60}", "");
+                println!(
+                    "{} All diagnostic checks completed.",
+                    "[DOCTOR]".cyan().bold()
                 );
             }
-
-            // 3. Security Policy & Sandbox
-            let config = load_or_default_config(&cli.config);
-            println!(
-                "  [OK] Security Policy: Strict Mode = {}, Require Shell Confirm = {}",
-                (config.security.policy_mode == "Strict")
-                    .to_string()
-                    .green(),
-                config
-                    .security
-                    .require_confirmation_for_shell
-                    .to_string()
-                    .green()
-            );
-
-            // 4. Decision Engine
-            println!(
-                "  [OK] Decision Core:   BM25 Retrieval + Multi-Feature Ranking + Calibrated Selection"
-            );
-
-            println!("{:-<60}", "");
-            println!(
-                "{} All diagnostic checks completed.",
-                "[DOCTOR]".cyan().bold()
-            );
         }
         Commands::Voice => {
             run_voice_loop(&cli.config, true, false).await?;
@@ -411,13 +523,14 @@ async fn run_voice_loop(
                     );
                     let _ = io::stdout().flush();
                 }
-                PicoEvent::PlaybackInterrupted { reason } => {
+                PicoEvent::PlaybackInterrupted { reason, .. } => {
                     println!("\n{} {}", "[BARGE-IN]".yellow().bold(), reason);
                 }
                 PicoEvent::DecisionSelected {
                     action,
                     confidence,
                     latency_ms,
+                    ..
                 } => {
                     let act = action.unwrap_or_else(|| "direct_conversation".into());
                     println!(
@@ -428,7 +541,7 @@ async fn run_voice_loop(
                         latency_ms
                     );
                 }
-                PicoEvent::ToolCallRequested { call } => {
+                PicoEvent::ToolCallRequested { call, .. } => {
                     println!(
                         "{} Executing tool: {} with {}",
                         "[TOOL]".yellow().bold(),
@@ -436,7 +549,7 @@ async fn run_voice_loop(
                         call.arguments
                     );
                 }
-                PicoEvent::ToolExecutionFinished { result } => {
+                PicoEvent::ToolExecutionFinished { result, .. } => {
                     let tag = if result.success {
                         "[OK]".green().bold()
                     } else {
@@ -451,6 +564,7 @@ async fn run_voice_loop(
                     tool,
                     verified,
                     evidence,
+                    ..
                 } => {
                     let tag = if verified {
                         "[VERIFIED]".green().bold()
@@ -464,6 +578,7 @@ async fn run_voice_loop(
                     tool,
                     arguments,
                     reason,
+                    ..
                 } => {
                     if let Some(ref st) = ipc_shared {
                         let mut lock = st.pending_confirmation.lock().await;

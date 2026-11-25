@@ -203,23 +203,30 @@ impl Message {
     }
 
     pub fn new_tool_result(session_id: SessionId, result: &ToolResult) -> Self {
-        let serialized = result.content.to_string();
-        let content = if serialized.chars().count() > MAX_TOOL_HISTORY_CHARS {
-            let mut truncated: String = serialized.chars().take(MAX_TOOL_HISTORY_CHARS).collect();
-            truncated.push_str("...[truncated]");
-            truncated
-        } else {
-            serialized
-        };
         Self {
             id: Uuid::new_v4(),
             session_id,
             role: Role::Tool,
-            content,
+            content: result.bounded_content_string(MAX_TOOL_HISTORY_CHARS),
             tool_calls: None,
             tool_call_id: Some(result.call_id.clone()),
             timestamp: Utc::now(),
             token_count: None,
+        }
+    }
+}
+
+impl ToolResult {
+    /// Serializes `content` and safely truncates it to at most `max_chars` Unicode scalar values
+    /// (plus a truncation marker) so oversized tool outputs never bloat session history.
+    pub fn bounded_content_string(&self, max_chars: usize) -> String {
+        let serialized = self.content.to_string();
+        if serialized.chars().count() > max_chars {
+            let mut truncated: String = serialized.chars().take(max_chars).collect();
+            truncated.push_str("...[truncated]");
+            truncated
+        } else {
+            serialized
         }
     }
 }

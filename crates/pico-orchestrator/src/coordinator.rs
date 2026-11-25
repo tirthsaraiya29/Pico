@@ -65,10 +65,14 @@ impl PicoRuntime {
 
         let confirmation_timeout =
             std::time::Duration::from_secs(config.security.command_timeout_seconds.max(10));
+        let sid_ref = Arc::new(Mutex::new(SessionId::new()));
         let mut confirmation_mgr = ChannelConfirmationManager::new(confirmation_timeout);
         let ev_sender = event_tx.clone();
+        let prompt_sid_ref = sid_ref.clone();
         confirmation_mgr.set_prompt_callback(Arc::new(move |req_id, tool, args| {
+            let sid = prompt_sid_ref.try_lock().ok().map(|g| *g);
             let _ = ev_sender.send(PicoEvent::ToolPermissionPrompt {
+                session_id: sid,
                 call_id: req_id.to_string(),
                 tool: tool.to_string(),
                 arguments: args.clone(),
@@ -140,10 +144,11 @@ impl PicoRuntime {
         }
 
         let voice = Arc::new(VoicePipeline::new(config.voice.clone(), event_tx.clone())?);
+        voice.emit_backend_status();
 
         Ok(Self {
             config,
-            session_id: Arc::new(Mutex::new(SessionId::new())),
+            session_id: sid_ref,
             decision,
             learning,
             registry,
@@ -331,6 +336,7 @@ impl PicoRuntime {
                     }
                     self.clarifications.lock().await.insert(sid, updated_state);
                     let _ = self.event_tx.send(PicoEvent::ClarificationRequested {
+                        session_id: Some(sid),
                         question: prompt.clone(),
                         candidates: pending_state
                             .options
@@ -394,11 +400,13 @@ impl PicoRuntime {
 
             if total_sub_queries > 1 {
                 let _ = self.event_tx.send(PicoEvent::StatusUpdate {
+                    session_id: Some(sid),
                     status: format!("Step {}/{}: {}", q_idx + 1, total_sub_queries, query),
                 });
             }
 
             let _ = self.event_tx.send(PicoEvent::DecisionStarted {
+                session_id: Some(sid),
                 request: query.to_string(),
                 candidate_count: max_cands,
             });
@@ -408,6 +416,7 @@ impl PicoRuntime {
             match decision_outcome {
                 DecisionResult::DirectConversation { response } => {
                     let _ = self.event_tx.send(PicoEvent::DecisionSelected {
+                        session_id: Some(sid),
                         action: None,
                         confidence: 1.0,
                         latency_ms: t_start.elapsed().as_millis() as u64,
@@ -421,6 +430,7 @@ impl PicoRuntime {
                     top_candidates,
                 } => {
                     let _ = self.event_tx.send(PicoEvent::ClarificationRequested {
+                        session_id: Some(sid),
                         question: prompt.clone(),
                         candidates: top_candidates
                             .iter()
@@ -547,10 +557,12 @@ impl PicoRuntime {
         }
 
         let _ = self.event_tx.send(PicoEvent::CandidatesRanked {
+            session_id: Some(sid),
             candidates: ranked_scores.clone(),
         });
 
         let _ = self.event_tx.send(PicoEvent::DecisionSelected {
+            session_id: Some(sid),
             action: Some(action_name.to_string()),
             confidence,
             latency_ms: t_start.elapsed().as_millis() as u64,
@@ -568,10 +580,12 @@ impl PicoRuntime {
             reason: None,
         };
 
-        let _ = self
-            .event_tx
-            .send(PicoEvent::ToolCallRequested { call: tool_call });
+        let _ = self.event_tx.send(PicoEvent::ToolCallRequested {
+            session_id: Some(sid),
+            call: tool_call,
+        });
         let _ = self.event_tx.send(PicoEvent::ToolExecutionStarted {
+            session_id: Some(sid),
             call_id: call_id.clone(),
             tool: action_name.to_string(),
         });
@@ -582,6 +596,7 @@ impl PicoRuntime {
             .await;
 
         let _ = self.event_tx.send(PicoEvent::ToolExecutionFinished {
+            session_id: Some(sid),
             result: result.clone(),
         });
 
@@ -595,6 +610,7 @@ impl PicoRuntime {
         let _ = self
             .event_tx
             .send(PicoEvent::ObjectiveVerificationCompleted {
+                session_id: Some(sid),
                 tool: action_name.to_string(),
                 verified: verification.verified,
                 evidence: verification.evidence.clone(),
@@ -656,6 +672,7 @@ impl PicoRuntime {
         *self.last_observation_id.lock().await = Some(obs_id.clone());
 
         let _ = self.event_tx.send(PicoEvent::ExperienceObserved {
+            session_id: Some(sid),
             observation_id: obs_id,
             action: action_name.to_string(),
             success: all_ok,

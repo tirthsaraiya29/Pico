@@ -18,21 +18,39 @@ pub enum Token {
     Comma,
 }
 
+const MAX_CALC_INPUT_BYTES: usize = 8_192;
+const MAX_CALC_TOKENS: usize = 512;
+
 pub struct Lexer<'a> {
+    input_len: usize,
     chars: std::iter::Peekable<std::str::Chars<'a>>,
 }
 
 impl<'a> Lexer<'a> {
     pub fn new(input: &'a str) -> Self {
         Self {
+            input_len: input.len(),
             chars: input.chars().peekable(),
         }
     }
 
     pub fn tokenize(&mut self) -> Result<Vec<Token>, String> {
+        if self.input_len > MAX_CALC_INPUT_BYTES {
+            return Err(format!(
+                "Arithmetic expression exceeds maximum input size ({} > {} bytes)",
+                self.input_len, MAX_CALC_INPUT_BYTES
+            ));
+        }
+
         let mut tokens = Vec::new();
 
         while let Some(&ch) = self.chars.peek() {
+            if tokens.len() >= MAX_CALC_TOKENS {
+                return Err(format!(
+                    "Arithmetic expression exceeds maximum token count ({})",
+                    MAX_CALC_TOKENS
+                ));
+            }
             match ch {
                 ' ' | '\t' | '\r' | '\n' => {
                     self.chars.next();
@@ -546,5 +564,14 @@ mod tests {
     fn test_recursion_depth_limit() {
         let deep = "(".repeat(40) + "1" + &")".repeat(40);
         assert!(evaluate_expression(&deep).is_err());
+    }
+
+    #[test]
+    fn test_lexer_input_and_token_limits() {
+        let huge_input = "1+".repeat(5000) + "1";
+        assert!(evaluate_expression(&huge_input).is_err());
+
+        let many_tokens = "1+".repeat(300) + "1"; // > 512 tokens
+        assert!(evaluate_expression(&many_tokens).is_err());
     }
 }

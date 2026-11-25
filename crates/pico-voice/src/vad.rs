@@ -7,6 +7,14 @@ pub enum VadState {
     Speaking,
 }
 
+#[derive(Debug, Clone, PartialEq)]
+pub struct VadCalibrationReport {
+    pub noise_floor_rms: f32,
+    pub recommended_threshold: f32,
+    pub zero_crossing_rate: f32,
+    pub is_clipping: bool,
+}
+
 /// Deterministic Voice Activity Detector and Speech Turn Segmenter.
 ///
 /// Uses exact sample counts (rather than wall-clock `Instant::now()`) so speech pauses
@@ -80,6 +88,39 @@ impl VadProcessor {
         (sum_sq / samples.len() as f64).sqrt() as f32
     }
 
+    /// Computes normalized Zero-Crossing Rate (ZCR) in `[0.0, 1.0]`.
+    /// Typical human speech at 16 kHz falls roughly in `[0.015, 0.35]`.
+    pub fn compute_zcr(samples: &[i16]) -> f32 {
+        if samples.len() < 2 {
+            return 0.0;
+        }
+        let crossings = samples
+            .windows(2)
+            .filter(|w| (w[0] >= 0 && w[1] < 0) || (w[0] < 0 && w[1] >= 0))
+            .count();
+        crossings as f32 / (samples.len() - 1) as f32
+    }
+
+    /// Calibrates the adaptive noise floor from an ambient background sample and returns
+    /// diagnostic speech-quality metrics.
+    pub fn calibrate_noise_floor(&mut self, ambient_samples: &[i16]) -> VadCalibrationReport {
+        let rms = Self::compute_rms(ambient_samples);
+        let zcr = Self::compute_zcr(ambient_samples);
+        let is_clipping = ambient_samples
+            .iter()
+            .any(|&s| s == i16::MAX || s == i16::MIN);
+        if !ambient_samples.is_empty() {
+            self.noise_floor = rms.clamp(0.002, 0.25);
+        }
+        let recommended_threshold = (self.noise_floor * 2.8).clamp(0.008, 0.35);
+        VadCalibrationReport {
+            noise_floor_rms: self.noise_floor,
+            recommended_threshold,
+            zero_crossing_rate: zcr,
+            is_clipping,
+        }
+    }
+
     /// Appends samples to the rolling pre-roll buffer while preserving `pre_roll_capacity`.
     fn push_pre_roll(&mut self, chunk: &[i16]) {
         if self.pre_roll_capacity == 0 || chunk.is_empty() {
@@ -111,7 +152,10 @@ impl VadProcessor {
         }
 
         let dynamic_threshold = self.energy_threshold.max(self.noise_floor * 2.8);
-        let is_voice = rms > dynamic_threshold;
+        let zcr = Self::compute_zcr(chunk);
+        // Reject marginal-energy DC rumble or extreme high-frequency hiss outside speech ZCR band.
+        let speech_like_zcr = (0.005..=0.65).contains(&zcr) || rms > dynamic_threshold * 1.5;
+        let is_voice = rms > dynamic_threshold && speech_like_zcr;
 
         if is_voice {
             self.consecutive_voice_frames += 1;
@@ -299,5 +343,24 @@ mod tests {
             .expect("Flush should emit >= 350ms speech");
         assert!(flushed.len() >= 6400);
         assert_eq!(vad.current_state(), VadState::Silence);
+    }
+
+    #[test]
+    fn test_vad_zcr_and_noise_floor_calibration() {
+        let mut vad = VadProcessor::new(0.015, 500);
+        // 250 Hz sine wave at 16 kHz -> ~500 crossings/sec -> ZCR ~ 0.031 (speech-like)
+        let speech_tone: Vec<i16> = (0..1600)
+            .map(|i| {
+                ((i as f32 * 2.0 * std::f32::consts::PI * 250.0 / 16_000.0).sin() * 8000.0) as i16
+            })
+            .collect();
+        let zcr = VadProcessor::compute_zcr(&speech_tone);
+        assert!((0.015..=0.10).contains(&zcr), "unexpected ZCR {zcr}");
+
+        let ambient = vec![120i16; 1600];
+        let report = vad.calibrate_noise_floor(&ambient);
+        assert!(!report.is_clipping);
+        assert!(report.noise_floor_rms > 0.0);
+        assert!(report.recommended_threshold >= 0.008);
     }
 }

@@ -123,7 +123,8 @@ impl MemoryStore for MemoryManager {
     async fn search_relevant_context(&self, query: &str, limit: usize) -> Result<Vec<String>> {
         let store = self.store.clone();
         let q = query.to_string();
-        tokio::task::spawn_blocking(move || store.search_facts(&q, limit))
+        let half_life = self.config.decay_half_life_days;
+        tokio::task::spawn_blocking(move || store.search_facts_ranked(&q, limit, half_life))
             .await
             .map_err(|e| {
                 pico_core::error::PicoError::Memory(format!("Search facts panicked: {}", e))

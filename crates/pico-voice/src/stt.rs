@@ -81,6 +81,34 @@ impl SpeechNormalizer {
             deduplicated.push(clean_tok.to_string());
         }
 
+        // Collapse adjacent 2-word and 3-word stutters (e.g. "set the set the volume")
+        // while preserving numeric sequences (e.g. "10 20 10 20").
+        for n in [3usize, 2usize] {
+            let mut i = 0;
+            let mut next = Vec::with_capacity(deduplicated.len());
+            while i < deduplicated.len() {
+                if i + 2 * n <= deduplicated.len() {
+                    let a = &deduplicated[i..i + n];
+                    let b = &deduplicated[i + n..i + 2 * n];
+                    let all_digits = a
+                        .iter()
+                        .all(|t| t.chars().all(|c| c.is_ascii_digit() || c == '.'));
+                    if !all_digits
+                        && a.iter()
+                            .zip(b.iter())
+                            .all(|(x, y)| x.eq_ignore_ascii_case(y))
+                    {
+                        next.extend(a.iter().cloned());
+                        i += 2 * n;
+                        continue;
+                    }
+                }
+                next.push(deduplicated[i].clone());
+                i += 1;
+            }
+            deduplicated = next;
+        }
+
         let cleaned = deduplicated.join(" ").trim().to_string();
         if cleaned.is_empty() {
             return String::new();
@@ -631,6 +659,21 @@ mod tests {
         let stutter = "p-pico w-what time is it it";
         let cleaned_stutter = SpeechNormalizer::normalize(stutter);
         assert_eq!(cleaned_stutter, "pico what time is it");
+
+        let multi_word = "set the set the volume to 50";
+        assert_eq!(
+            SpeechNormalizer::normalize(multi_word),
+            "set the volume to 50"
+        );
+
+        let three_word = "can you please can you please open notepad";
+        assert_eq!(
+            SpeechNormalizer::normalize(three_word),
+            "can you please open notepad"
+        );
+
+        let numeric_seq = "10 20 10 20";
+        assert_eq!(SpeechNormalizer::normalize(numeric_seq), "10 20 10 20");
 
         let fillers = "like um can you err calculate 25 plus 10";
         let cleaned_fillers = SpeechNormalizer::normalize(fillers);

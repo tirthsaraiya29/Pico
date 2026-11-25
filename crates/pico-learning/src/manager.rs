@@ -34,7 +34,8 @@ pub struct LearningManager {
 impl LearningManager {
     pub fn new(config: LearningConfig) -> Result<Self> {
         let store = Arc::new(ExperienceStore::new(&config.database_path)?);
-        let guard = AntiPoisoningGuard::default();
+        let guard_path = config.database_path.with_extension("guard.json");
+        let guard = AntiPoisoningGuard::with_state_path(5, 0.15, Some(guard_path));
         let evaluator = ModelEvaluator::new();
         let trainer = RankingTrainer::new(config.learning_rate);
 

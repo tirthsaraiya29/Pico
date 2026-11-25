@@ -104,4 +104,22 @@ mod tests {
         let underscore_hits = manager.search_relevant_context("a_b", 10).await.unwrap();
         assert!(underscore_hits.is_empty());
     }
+
+    #[tokio::test]
+    async fn test_ranked_memory_search_and_decay() {
+        let store = SqliteStore::in_memory().unwrap();
+        store
+            .insert_fact("notes", "User likes Rust programming")
+            .unwrap();
+        store
+            .insert_fact(
+                "rust",
+                "User prefers dark mode and Rust async Tokio workflows",
+            )
+            .unwrap();
+
+        let results = store.search_facts_ranked("rust tokio", 5, 30.0).unwrap();
+        assert_eq!(results.len(), 2);
+        assert!(results[0].contains("Tokio"));
+    }
 }
