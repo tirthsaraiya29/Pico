@@ -1,5 +1,6 @@
 pub mod capture;
 pub mod devices;
+mod host_com;
 pub mod playback;
 pub mod resampler;
 pub mod ringbuf;

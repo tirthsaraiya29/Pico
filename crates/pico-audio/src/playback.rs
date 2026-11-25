@@ -135,7 +135,8 @@ impl PlaybackHandle {
 
 pub struct AudioPlayback {
     handle: PlaybackHandle,
-    _shutdown_tx: Option<mpsc::Sender<()>>,
+    stream_id: Option<u64>,
+    _headless_shutdown_tx: Option<mpsc::Sender<()>>,
 }
 
 impl AudioPlayback {
@@ -143,11 +144,7 @@ impl AudioPlayback {
     /// using the device's actual negotiated sample rate and channel count cleanly.
     pub fn start(device_name: Option<&str>) -> Result<Self> {
         let dev_name_opt = device_name.map(|s| s.to_string());
-        let (init_tx, init_rx) = mpsc::channel::<Result<PlaybackHandle>>();
-        let (shutdown_tx, shutdown_rx) = mpsc::channel::<()>();
-
-        std::thread::spawn(move || {
-            let host = cpal::default_host();
+        let (stream_id, handle) = crate::host_com::spawn_stream(move |host| {
             let device = if let Some(ref target_name) = dev_name_opt {
                 match host.output_devices() {
                     Ok(mut devs) => devs
@@ -160,23 +157,15 @@ impl AudioPlayback {
             };
 
             let Some(device) = device else {
-                let _ = init_tx.send(Err(PicoError::Audio(
+                return Err(PicoError::Audio(
                     "No default audio output device found".to_string(),
-                )));
-                return;
+                ));
             };
 
             let dev_name = device.name().unwrap_or_else(|_| "Unknown".into());
-            let default_config = match device.default_output_config() {
-                Ok(c) => c,
-                Err(e) => {
-                    let _ = init_tx.send(Err(PicoError::Audio(format!(
-                        "Failed to get output config: {}",
-                        e
-                    ))));
-                    return;
-                }
-            };
+            let default_config = device
+                .default_output_config()
+                .map_err(|e| PicoError::Audio(format!("Failed to get output config: {}", e)))?;
 
             let sample_format = default_config.sample_format();
             let output_sample_rate = default_config.sample_rate().0;
@@ -201,7 +190,7 @@ impl AudioPlayback {
             };
 
             let playing_flag = is_playing;
-            let stream_res = match sample_format {
+            let stream = match sample_format {
                 cpal::SampleFormat::F32 => device.build_output_stream(
                     &config,
                     move |data: &mut [f32], _: &cpal::OutputCallbackInfo| {
@@ -283,54 +272,32 @@ impl AudioPlayback {
                     None,
                 ),
                 other => {
-                    let _ = init_tx.send(Err(PicoError::Audio(format!(
+                    return Err(PicoError::Audio(format!(
                         "Unsupported audio output sample format: {:?}",
                         other
-                    ))));
-                    return;
-                }
-            };
-
-            match stream_res {
-                Ok(stream) => {
-                    if let Err(e) = stream.play() {
-                        let _ = init_tx.send(Err(PicoError::Audio(format!(
-                            "Failed to play audio output stream: {}",
-                            e
-                        ))));
-                        return;
-                    }
-                    info!(
-                        device = %dev_name,
-                        sample_rate = output_sample_rate,
-                        channels = output_channels,
-                        format = ?sample_format,
-                        "Hardware audio playback initialized"
-                    );
-                    let _ = init_tx.send(Ok(handle));
-                    let _ = shutdown_rx.recv();
-                    drop(stream);
-                }
-                Err(e) => {
-                    let _ = init_tx.send(Err(PicoError::Audio(format!(
-                        "Failed to build output stream: {}",
-                        e
-                    ))));
+                    )));
                 }
             }
-        });
+            .map_err(|e| PicoError::Audio(format!("Failed to build output stream: {}", e)))?;
 
-        match init_rx.recv() {
-            Ok(Ok(handle)) => Ok(Self {
-                handle,
-                _shutdown_tx: Some(shutdown_tx),
-            }),
-            Ok(Err(e)) => Err(e),
-            Err(e) => Err(PicoError::Audio(format!(
-                "Audio playback thread terminated prematurely: {}",
-                e
-            ))),
-        }
+            stream.play().map_err(|e| {
+                PicoError::Audio(format!("Failed to play audio output stream: {}", e))
+            })?;
+            info!(
+                device = %dev_name,
+                sample_rate = output_sample_rate,
+                channels = output_channels,
+                format = ?sample_format,
+                "Hardware audio playback initialized"
+            );
+            Ok((stream, handle))
+        })?;
+
+        Ok(Self {
+            handle,
+            stream_id: Some(stream_id),
+            _headless_shutdown_tx: None,
+        })
     }
 
     /// Gracefully returns a headless non-hardware fallback handle when audio output is disabled/unavailable in tests.
@@ -362,7 +329,8 @@ impl AudioPlayback {
 
         Self {
             handle,
-            _shutdown_tx: Some(shutdown_tx),
+            stream_id: None,
+            _headless_shutdown_tx: Some(shutdown_tx),
         }
     }
 
@@ -395,6 +363,9 @@ impl AudioPlayback {
 impl Drop for AudioPlayback {
     fn drop(&mut self) {
         self.handle.interrupt();
-        self._shutdown_tx.take();
+        if let Some(id) = self.stream_id.take() {
+            crate::host_com::drop_stream(id);
+        }
+        self._headless_shutdown_tx.take();
     }
 }
