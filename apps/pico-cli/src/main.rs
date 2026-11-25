@@ -7,6 +7,7 @@ use pico_core::error::PicoError;
 use pico_core::events::PicoEvent;
 use pico_orchestrator::PicoRuntime;
 use pico_security::ConfirmationProvider;
+use std::collections::VecDeque;
 use std::io::{self, Write};
 use std::path::PathBuf;
 use std::sync::Arc;
@@ -63,8 +64,8 @@ enum LearnAction {
     },
 }
 
-type PendingConfirmation = Option<(String, String, oneshot::Sender<bool>)>;
-type SharedPendingConfirmation = Arc<Mutex<PendingConfirmation>>;
+type PendingConfirmationQueue = VecDeque<(String, String, oneshot::Sender<bool>)>;
+type SharedPendingConfirmation = Arc<Mutex<PendingConfirmationQueue>>;
 
 /// Request-scoped interactive voice confirmation provider.
 /// Prompts the user verbally and routes spoken responses ("confirm" / "cancel") to authorize high-risk actions.
@@ -74,7 +75,7 @@ struct VoiceConfirmationCoordinator {
 
 impl VoiceConfirmationCoordinator {
     fn new() -> (Self, SharedPendingConfirmation) {
-        let pending = Arc::new(Mutex::new(None));
+        let pending = Arc::new(Mutex::new(VecDeque::new()));
         (
             Self {
                 pending: pending.clone(),
@@ -95,7 +96,7 @@ impl ConfirmationProvider for VoiceConfirmationCoordinator {
         let (tx, rx) = oneshot::channel();
         {
             let mut lock = self.pending.lock().await;
-            *lock = Some((request_id.to_string(), tool_name.to_string(), tx));
+            lock.push_back((request_id.to_string(), tool_name.to_string(), tx));
         }
 
         // Wait up to 15 seconds for verbal voice confirmation
@@ -104,7 +105,7 @@ impl ConfirmationProvider for VoiceConfirmationCoordinator {
             Ok(Err(_)) => Err(PicoError::Cancelled("Confirmation cancelled".into())),
             Err(_) => {
                 let mut lock = self.pending.lock().await;
-                *lock = None;
+                lock.retain(|(id, _, _)| id != request_id);
                 Err(PicoError::PermissionDenied {
                     action: tool_name.to_string(),
                     reason: "Voice confirmation timed out after 15 seconds".to_string(),
@@ -459,7 +460,7 @@ async fn run_voice_loop(
             // 1. Check if there is an active voice confirmation prompt awaiting user response
             let pending_tx = {
                 let mut lock = pending_clone.lock().await;
-                lock.take()
+                lock.pop_front()
             };
 
             if let Some((req_id, tool_name, tx)) = pending_tx {
@@ -467,7 +468,7 @@ async fn run_voice_loop(
                     pico_security::VoiceAuthDecision::Approved => {
                         println!(
                             "{} User verbally confirmed action '{}'. Proceeding.",
-                            "✓ [APPROVED]".green().bold(),
+                            "[APPROVED]".green().bold(),
                             tool_name
                         );
                         let _ = tx.send(true);
@@ -480,7 +481,7 @@ async fn run_voice_loop(
                     pico_security::VoiceAuthDecision::Declined { reason } => {
                         println!(
                             "{} User verbally declined action '{}' ({}). Aborting.",
-                            "✗ [DECLINED]".red().bold(),
+                            "[DECLINED]".red().bold(),
                             tool_name,
                             reason
                         );
@@ -491,11 +492,11 @@ async fn run_voice_loop(
                     pico_security::VoiceAuthDecision::Ambiguous { prompt } => {
                         println!(
                             "{} Ambiguous confirmation response. Repeating prompt.",
-                            "⚠️".yellow()
+                            "[WARN]".yellow()
                         );
                         let _ = rt.voice().speak(&prompt).await;
                         let mut lock = pending_clone.lock().await;
-                        *lock = Some((req_id, tool_name, tx));
+                        lock.push_front((req_id, tool_name, tx));
                         continue;
                     }
                 }

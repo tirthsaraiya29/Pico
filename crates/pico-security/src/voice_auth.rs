@@ -201,6 +201,10 @@ mod tests {
                 trap
             );
         }
+
+        // Simultaneous negation + affirmation must fail closed (declined)
+        let mixed = VoiceAuthorizer::evaluate_utterance("no wait yes confirm", "dangerous_tool");
+        assert!(matches!(mixed, VoiceAuthDecision::Declined { .. }));
     }
 
     #[test]

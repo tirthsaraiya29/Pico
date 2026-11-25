@@ -84,4 +84,24 @@ mod tests {
         let remaining = manager.list_facts(None).await.unwrap();
         assert!(remaining.is_empty());
     }
+
+    #[tokio::test]
+    async fn test_search_facts_escapes_like_wildcards() {
+        let manager = MemoryManager::in_memory(MemoryConfig::default()).unwrap();
+        manager
+            .remember_fact("metric", "CPU usage hit 95%")
+            .await
+            .unwrap();
+        manager
+            .remember_fact("secret", "unrelated memory entry")
+            .await
+            .unwrap();
+
+        let percent_hits = manager.search_relevant_context("%", 10).await.unwrap();
+        assert_eq!(percent_hits.len(), 1);
+        assert_eq!(percent_hits[0], "CPU usage hit 95%");
+
+        let underscore_hits = manager.search_relevant_context("a_b", 10).await.unwrap();
+        assert!(underscore_hits.is_empty());
+    }
 }

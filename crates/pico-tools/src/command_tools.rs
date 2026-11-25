@@ -3,8 +3,36 @@ use pico_core::error::{PicoError, Result};
 use pico_core::traits::{PermissionTier, Tool};
 use pico_security::InputSanitizer;
 use serde_json::json;
+use std::path::Path;
 
-/// Tool to execute approved system shell commands.
+const MAX_COMMAND_OUTPUT_BYTES: usize = 256 * 1024;
+
+fn is_shell_interpreter_wrapper(cmd: &str) -> bool {
+    let base = Path::new(cmd)
+        .file_stem()
+        .and_then(|s| s.to_str())
+        .unwrap_or(cmd)
+        .to_ascii_lowercase();
+    matches!(
+        base.as_str(),
+        "cmd" | "powershell" | "pwsh" | "sh" | "bash" | "zsh" | "fish" | "wsl"
+    )
+}
+
+fn bounded_lossy_utf8(bytes: &[u8]) -> String {
+    if bytes.len() <= MAX_COMMAND_OUTPUT_BYTES {
+        String::from_utf8_lossy(bytes).to_string()
+    } else {
+        let slice = &bytes[..MAX_COMMAND_OUTPUT_BYTES];
+        format!(
+            "{}\n...[output truncated at {} bytes]",
+            String::from_utf8_lossy(slice),
+            MAX_COMMAND_OUTPUT_BYTES
+        )
+    }
+}
+
+/// Tool to execute approved non-shell executables directly without spawning arbitrary shell interpreters.
 pub struct ExecuteShellCommandTool;
 
 #[async_trait]
@@ -14,7 +42,7 @@ impl Tool for ExecuteShellCommandTool {
     }
 
     fn description(&self) -> &str {
-        "Executes a validated shell command on the host operating system. Strictly requires user confirmation."
+        "Executes a validated executable directly (no raw shell wrappers). Strictly requires user confirmation."
     }
 
     fn parameters_schema(&self) -> serde_json::Value {
@@ -49,10 +77,9 @@ impl Tool for ExecuteShellCommandTool {
                 message: "Missing 'command' argument".into(),
             })?;
 
-        // Sanitize command executable
-        if !InputSanitizer::is_safe_shell_arg(command) {
+        if !InputSanitizer::is_safe_shell_arg(command) || is_shell_interpreter_wrapper(command) {
             return Err(PicoError::Security(format!(
-                "Command name '{}' contains invalid or dangerous characters",
+                "Command '{}' is rejected (dangerous characters or bare shell interpreter wrapper)",
                 command
             )));
         }
@@ -60,15 +87,18 @@ impl Tool for ExecuteShellCommandTool {
         let mut args_list = Vec::new();
         if let Some(arr) = arguments.get("arguments").and_then(|v| v.as_array()) {
             for arg_val in arr {
-                if let Some(s) = arg_val.as_str() {
-                    if !InputSanitizer::is_safe_shell_arg(s) {
-                        return Err(PicoError::Security(format!(
-                            "Command argument '{}' contains dangerous shell metacharacters",
-                            s
-                        )));
-                    }
-                    args_list.push(s.to_string());
+                let Some(s) = arg_val.as_str() else {
+                    return Err(PicoError::Security(
+                        "Command arguments must be strings".into(),
+                    ));
+                };
+                if !InputSanitizer::is_safe_shell_arg(s) {
+                    return Err(PicoError::Security(format!(
+                        "Command argument '{}' contains dangerous shell metacharacters",
+                        s
+                    )));
                 }
+                args_list.push(s.to_string());
             }
         }
 
@@ -111,8 +141,8 @@ impl Tool for ExecuteShellCommandTool {
             }
         };
 
-        let stdout = String::from_utf8_lossy(&output.stdout).to_string();
-        let stderr = String::from_utf8_lossy(&output.stderr).to_string();
+        let stdout = bounded_lossy_utf8(&output.stdout);
+        let stderr = bounded_lossy_utf8(&output.stderr);
         let exit_code = output.status.code().unwrap_or(-1);
 
         if !output.status.success() {
@@ -129,11 +159,29 @@ impl Tool for ExecuteShellCommandTool {
 
         Ok(json!({
             "command": command,
-            "args": args_list,
+            "arguments": args_list,
             "exit_code": exit_code,
-            "success": true,
-            "stdout": stdout,
-            "stderr": stderr
+            "stdout": stdout.trim(),
+            "stderr": stderr.trim(),
         }))
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[tokio::test]
+    async fn test_shell_wrappers_blocked() {
+        let tool = ExecuteShellCommandTool;
+        for wrapper in ["powershell", "cmd.exe", "bash", "/bin/sh", "pwsh"] {
+            assert!(
+                tool.execute(json!({ "command": wrapper, "arguments": ["-c", "echo hi"] }))
+                    .await
+                    .is_err(),
+                "Wrapper '{}' must be blocked",
+                wrapper
+            );
+        }
     }
 }

@@ -473,31 +473,56 @@ fn is_safe_public_ipv4(ip: Ipv4Addr) -> bool {
 }
 
 fn is_safe_public_ipv6(ip: Ipv6Addr) -> bool {
-    // Loopback ::1
-    if ip.is_loopback() {
+    if ip.is_loopback() || ip.is_unspecified() || ip.is_multicast() {
         return false;
     }
-    // Unspecified ::
-    if ip.is_unspecified() {
-        return false;
+    // Check IPv4-mapped (::ffff:a.b.c.d) and IPv4-compatible (::a.b.c.d) addresses.
+    if let Some(v4) = ip.to_ipv4_mapped().or_else(|| ip.to_ipv4()) {
+        return is_safe_public_ipv4(v4);
     }
-    // Multicast ff00::/8
-    if ip.is_multicast() {
-        return false;
-    }
+
     let segs = ip.segments();
-    // Unique Local fc00::/7 (RFC 4193 private)
+    // Unique Local fc00::/7 (RFC 4193)
     if (segs[0] & 0xfe00) == 0xfc00 {
         return false;
     }
-    // Link-Local Unicast fe80::/10 (RFC 4291)
-    if (segs[0] & 0xffc0) == 0xfe80 {
+    // Link-Local Unicast fe80::/10 (RFC 4291) & deprecated Site-Local fec0::/10
+    if (segs[0] & 0xffc0) == 0xfe80 || (segs[0] & 0xffc0) == 0xfec0 {
         return false;
     }
-    true
+    // Discard-Only 0100::/64 (RFC 6666)
+    if segs[0] == 0x0100 && segs[1] == 0 && segs[2] == 0 && segs[3] == 0 {
+        return false;
+    }
+    // NAT64 well-known (64:ff9b::/96) and local-use (64:ff9b:1::/48)
+    if segs[0] == 0x0064 && segs[1] == 0xff9b {
+        if segs[2] == 0 && segs[3] == 0 && segs[4] == 0 && segs[5] == 0 {
+            let embedded = Ipv4Addr::new(
+                (segs[6] >> 8) as u8,
+                (segs[6] & 0xff) as u8,
+                (segs[7] >> 8) as u8,
+                (segs[7] & 0xff) as u8,
+            );
+            return is_safe_public_ipv4(embedded);
+        }
+        return false;
+    }
+    // 6to4 2002::/16 (RFC 3056) embeds IPv4 in segs[1..=2]
+    if segs[0] == 0x2002 {
+        let embedded = Ipv4Addr::new(
+            (segs[1] >> 8) as u8,
+            (segs[1] & 0xff) as u8,
+            (segs[2] >> 8) as u8,
+            (segs[2] & 0xff) as u8,
+        );
+        return is_safe_public_ipv4(embedded);
+    }
+    // Teredo 2001::/32, Benchmarking 2001:2::/48, ORCHID 2001:10::/28, Documentation 2001:db8::/32
+    !(segs[0] == 0x2001
+        && (segs[1] == 0 || segs[1] == 0x0002 || (segs[1] & 0xfff0) == 0x0010 || segs[1] == 0x0db8))
 }
 
-async fn validate_url_ssrf(url_str: &str) -> Result<reqwest::Url> {
+async fn validate_and_resolve_ssrf(url_str: &str) -> Result<(reqwest::Url, Vec<std::net::SocketAddr>)> {
     let parsed = reqwest::Url::parse(url_str)
         .map_err(|e| PicoError::Security(format!("Invalid URL '{}': {}", url_str, e)))?;
 
@@ -506,6 +531,12 @@ async fn validate_url_ssrf(url_str: &str) -> Result<reqwest::Url> {
             "Scheme '{}' is not permitted. Only http and https are allowed.",
             parsed.scheme()
         )));
+    }
+
+    if !parsed.username().is_empty() || parsed.password().is_some() {
+        return Err(PicoError::Security(
+            "URLs containing embedded user credentials are forbidden".into(),
+        ));
     }
 
     let host_str = parsed
@@ -524,16 +555,22 @@ async fn validate_url_ssrf(url_str: &str) -> Result<reqwest::Url> {
     }
 
     let port = parsed.port_or_known_default().unwrap_or(80);
-    let socket_addrs = tokio::net::lookup_host((host_str, port))
+    let socket_addrs: Vec<std::net::SocketAddr> = tokio::net::lookup_host((host_str, port))
         .await
         .map_err(|e| PicoError::ToolExecution {
             tool: "fetch_web_content".into(),
             message: format!("DNS resolution failed for '{}': {}", host_str, e),
-        })?;
+        })?
+        .collect();
 
-    let mut resolved_any = false;
-    for addr in socket_addrs {
-        resolved_any = true;
+    if socket_addrs.is_empty() {
+        return Err(PicoError::ToolExecution {
+            tool: "fetch_web_content".into(),
+            message: format!("No IP addresses resolved for '{}'", host_str),
+        });
+    }
+
+    for addr in &socket_addrs {
         if !is_safe_public_ip(addr.ip()) {
             return Err(PicoError::Security(format!(
                 "Host '{}' resolved to forbidden private/internal IP address '{}'",
@@ -543,20 +580,11 @@ async fn validate_url_ssrf(url_str: &str) -> Result<reqwest::Url> {
         }
     }
 
-    if !resolved_any {
-        return Err(PicoError::ToolExecution {
-            tool: "fetch_web_content".into(),
-            message: format!("No IP addresses resolved for '{}'", host_str),
-        });
-    }
-
-    Ok(parsed)
+    Ok((parsed, socket_addrs))
 }
 
-/// Tool to fetch text from a URL with robust anti-SSRF protections.
-pub struct FetchWebContentTool {
-    client: reqwest::Client,
-}
+/// Tool to fetch text from a URL with anti-SSRF validation, DNS pinning, and bounded response size.
+pub struct FetchWebContentTool;
 
 impl Default for FetchWebContentTool {
     fn default() -> Self {
@@ -566,13 +594,7 @@ impl Default for FetchWebContentTool {
 
 impl FetchWebContentTool {
     pub fn new() -> Self {
-        let client = reqwest::Client::builder()
-            .timeout(Duration::from_secs(15))
-            .redirect(reqwest::redirect::Policy::none()) // Manual verified redirect validation
-            .user_agent("Pico-Assistant/0.1.0")
-            .build()
-            .unwrap_or_default();
-        Self { client }
+        Self
     }
 }
 
@@ -605,6 +627,7 @@ impl Tool for FetchWebContentTool {
     }
 
     async fn execute(&self, arguments: serde_json::Value) -> Result<serde_json::Value> {
+        const MAX_HTTP_BODY_BYTES: usize = 256 * 1024;
         let mut target_url_str = arguments
             .get("url")
             .and_then(|v| v.as_str())
@@ -618,10 +641,24 @@ impl Tool for FetchWebContentTool {
         let max_hops = 5;
 
         loop {
-            let validated_url = validate_url_ssrf(&target_url_str).await?;
+            let (validated_url, pinned_addrs) = validate_and_resolve_ssrf(&target_url_str).await?;
+            let host = validated_url
+                .host_str()
+                .ok_or_else(|| PicoError::Security("URL missing host".into()))?;
 
-            let resp = self
-                .client
+            // Pin resolved & validated socket addresses directly to defeat DNS rebinding TOCTOU.
+            let pinned_client = reqwest::Client::builder()
+                .timeout(Duration::from_secs(15))
+                .redirect(reqwest::redirect::Policy::none())
+                .user_agent("Pico-Assistant/0.1.0")
+                .resolve_to_addrs(host, &pinned_addrs)
+                .build()
+                .map_err(|e| PicoError::ToolExecution {
+                    tool: self.name().into(),
+                    message: format!("HTTP client build error: {}", e),
+                })?;
+
+            let mut resp = pinned_client
                 .get(validated_url.clone())
                 .send()
                 .await
@@ -646,9 +683,23 @@ impl Tool for FetchWebContentTool {
             }
 
             let status_code = status.as_u16();
-            let body = resp.text().await.unwrap_or_default();
+            let mut body_bytes = Vec::new();
+            while let Some(chunk) = resp.chunk().await.map_err(|e| PicoError::ToolExecution {
+                tool: self.name().into(),
+                message: format!("Failed reading HTTP body: {}", e),
+            })? {
+                let remaining = MAX_HTTP_BODY_BYTES.saturating_sub(body_bytes.len());
+                if remaining == 0 {
+                    break;
+                }
+                let take = chunk.len().min(remaining);
+                body_bytes.extend_from_slice(&chunk[..take]);
+                if body_bytes.len() >= MAX_HTTP_BODY_BYTES {
+                    break;
+                }
+            }
+            let body = String::from_utf8_lossy(&body_bytes);
 
-            // Basic HTML tag stripping for clean LLM consumption
             let text_stripped = body
                 .split('<')
                 .filter_map(|chunk| chunk.split_once('>').map(|(_, text)| text))
@@ -665,7 +716,8 @@ impl Tool for FetchWebContentTool {
             return Ok(json!({
                 "url": target_url_str,
                 "status": status_code,
-                "text": truncated
+                "text": truncated,
+                "bytes_fetched": body_bytes.len()
             }));
         }
     }
@@ -690,7 +742,6 @@ mod tests {
             .unwrap();
         assert_eq!(res2["result"], "12");
 
-        // Malicious input attempts MUST fail cleanly without execution
         assert!(calc
             .execute(json!({ "expression": "cmd.exe /c calc" }))
             .await
@@ -709,36 +760,50 @@ mod tests {
     fn test_ssrf_ip_filtering() {
         use std::str::FromStr;
 
-        // Loopback addresses must be rejected
-        assert!(!is_safe_public_ip(IpAddr::from_str("127.0.0.1").unwrap()));
-        assert!(!is_safe_public_ip(IpAddr::from_str("127.1.2.3").unwrap()));
-        assert!(!is_safe_public_ip(IpAddr::from_str("::1").unwrap()));
+        // Loopback, RFC1918, metadata, IPv6-mapped, NAT64, 6to4, Teredo, documentation all rejected
+        for blocked in [
+            "127.0.0.1",
+            "127.1.2.3",
+            "::1",
+            "::ffff:127.0.0.1",
+            "::ffff:169.254.169.254",
+            "10.0.0.1",
+            "172.16.5.10",
+            "192.168.1.1",
+            "169.254.169.254",
+            "fe80::1",
+            "64:ff9b::127.0.0.1",
+            "64:ff9b:1::1",
+            "2002:7f00:0001::1",
+            "2002:a9fe:a9fe::1",
+            "2001:0::1",
+            "2001:db8::1",
+            "fec0::1",
+        ] {
+            assert!(
+                !is_safe_public_ip(IpAddr::from_str(blocked).unwrap()),
+                "Internal/tunnel IP '{}' must be rejected",
+                blocked
+            );
+        }
 
-        // RFC 1918 Private addresses must be rejected
-        assert!(!is_safe_public_ip(IpAddr::from_str("10.0.0.1").unwrap()));
-        assert!(!is_safe_public_ip(IpAddr::from_str("172.16.5.10").unwrap()));
-        assert!(!is_safe_public_ip(IpAddr::from_str("192.168.1.1").unwrap()));
-
-        // Cloud metadata (169.254.169.254) & Link-local must be rejected
-        assert!(!is_safe_public_ip(
-            IpAddr::from_str("169.254.169.254").unwrap()
-        ));
-        assert!(!is_safe_public_ip(IpAddr::from_str("fe80::1").unwrap()));
-
-        // Public IPs should be allowed
+        // Genuine public IPs remain permitted
         assert!(is_safe_public_ip(IpAddr::from_str("8.8.8.8").unwrap()));
         assert!(is_safe_public_ip(IpAddr::from_str("1.1.1.1").unwrap()));
+        assert!(is_safe_public_ip(IpAddr::from_str("2001:4860:4860::8888").unwrap()));
     }
 
     #[tokio::test]
     async fn test_ssrf_url_validation() {
-        // Localhost and private schemes must be rejected
-        assert!(validate_url_ssrf("http://localhost:8080").await.is_err());
-        assert!(validate_url_ssrf("http://127.0.0.1:8765").await.is_err());
-        assert!(validate_url_ssrf("http://169.254.169.254/latest/meta-data")
+        assert!(validate_and_resolve_ssrf("http://localhost:8080").await.is_err());
+        assert!(validate_and_resolve_ssrf("http://127.0.0.1:8765").await.is_err());
+        assert!(validate_and_resolve_ssrf("http://169.254.169.254/latest/meta-data")
             .await
             .is_err());
-        assert!(validate_url_ssrf("ftp://example.com").await.is_err());
-        assert!(validate_url_ssrf("file:///etc/passwd").await.is_err());
+        assert!(validate_and_resolve_ssrf("https://user:pass@8.8.8.8/")
+            .await
+            .is_err());
+        assert!(validate_and_resolve_ssrf("ftp://example.com").await.is_err());
+        assert!(validate_and_resolve_ssrf("file:///etc/passwd").await.is_err());
     }
 }

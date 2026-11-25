@@ -26,12 +26,40 @@ const rateMap = new Map();
 const RATE_LIMIT = 5;
 const RATE_WINDOW_MS = 10 * 60 * 1000; // 10 minutes
 
-function json(res, status, obj) {
-  res.statusCode = status;
-  res.setHeader('Content-Type', 'application/json');
-  res.setHeader('Access-Control-Allow-Origin', '*');
+// Allowed CORS origins (comma-separated ALLOWED_ORIGINS env override supported).
+const DEFAULT_ORIGINS = [
+  'https://tirthsaraiya29.github.io',
+  'https://pico-assistant.vercel.app',
+  'https://pico.vercel.app'
+];
+
+function resolveCorsOrigin(req) {
+  const origin = req.headers && typeof req.headers.origin === 'string' ? req.headers.origin.trim() : '';
+  if (!origin) return null;
+  const extra = (process.env.ALLOWED_ORIGINS || '').split(',').map(s => s.trim()).filter(Boolean);
+  const allowed = DEFAULT_ORIGINS.concat(extra);
+  if (allowed.includes(origin)) return origin;
+  if (process.env.NODE_ENV !== 'production' && /^https?:\/\/(localhost|127\.0\.0\.1)(:\d+)?$/i.test(origin)) {
+    return origin;
+  }
+  return null;
+}
+
+function setCorsHeaders(req, res) {
+  const allowedOrigin = resolveCorsOrigin(req);
+  if (allowedOrigin) {
+    res.setHeader('Access-Control-Allow-Origin', allowedOrigin);
+  }
+  res.setHeader('Vary', 'Origin');
   res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
   res.setHeader('Access-Control-Allow-Methods', 'POST, OPTIONS');
+}
+
+function json(req, res, status, obj) {
+  res.statusCode = status;
+  res.setHeader('Content-Type', 'application/json');
+  res.setHeader('X-Content-Type-Options', 'nosniff');
+  setCorsHeaders(req, res);
   res.end(JSON.stringify(obj));
 }
 
@@ -133,28 +161,38 @@ async function storeContact(ref, email, phone, github, githubPublic, token, cont
 module.exports = async (req, res) => {
   if (req.method === 'OPTIONS') {
     res.statusCode = 204;
-    res.setHeader('Access-Control-Allow-Origin', '*');
-    res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
-    res.setHeader('Access-Control-Allow-Methods', 'POST, OPTIONS');
+    setCorsHeaders(req, res);
     return res.end();
   }
 
   if (req.method !== 'POST') {
-    return json(res, 405, { ok: false, error: 'Method not allowed' });
+    return json(req, res, 405, { ok: false, error: 'Method not allowed' });
+  }
+
+  const contentType = String(req.headers['content-type'] || '').toLowerCase();
+  if (!contentType.includes('application/json')) {
+    return json(req, res, 415, { ok: false, error: 'Content-Type must be application/json' });
   }
 
   const token = process.env.GITHUB_TOKEN;
   if (!token) {
-    return json(res, 503, {
+    return json(req, res, 503, {
       ok: false,
       error: 'Submission service is not configured with GITHUB_TOKEN. Please submit issues directly on GitHub at https://github.com/tirthsaraiya29/Pico/issues.'
     });
   }
 
-  const ip = (req.headers['x-forwarded-for'] || req.socket.remoteAddress || 'unknown').split(',')[0].trim();
+  // Prefer proxy-validated IP headers or socket peer address rather than spoofable XFF leftmost values.
+  const ip = cleanStr(
+    req.headers['x-vercel-forwarded-for'] ||
+      req.headers['x-real-ip'] ||
+      (req.socket && req.socket.remoteAddress) ||
+      'unknown',
+    64
+  );
   const rate = checkRate(ip);
   if (!rate.ok) {
-    return json(res, 429, { ok: false, error: 'Too many submissions. Please wait before trying again.', retry_after: rate.retry });
+    return json(req, res, 429, { ok: false, error: 'Too many submissions. Please wait before trying again.', retry_after: rate.retry });
   }
 
   let body;
@@ -170,18 +208,18 @@ module.exports = async (req, res) => {
     });
     body = JSON.parse(raw);
   } catch (e) {
-    return json(res, 400, { ok: false, error: 'Invalid JSON request payload.' });
+    return json(req, res, 400, { ok: false, error: 'Invalid JSON request payload.' });
   }
 
   const category = cleanStr(body.category, 20);
   const honeypot = cleanStr(body.website, 100);
   if (honeypot) {
     // Silent drop for bot spam
-    return json(res, 200, { ok: true });
+    return json(req, res, 200, { ok: true });
   }
 
   if (body._ts && Date.now() - Number(body._ts) < 2000) {
-    return json(res, 400, { ok: false, error: 'Submission rejected: submitted too quickly (bot check).' });
+    return json(req, res, 400, { ok: false, error: 'Submission rejected: submitted too quickly (bot check).' });
   }
 
   const fields = body.fields && typeof body.fields === 'object' ? body.fields : {};
@@ -194,11 +232,11 @@ module.exports = async (req, res) => {
   const githubPublic = github && body.contact_github_public === true;
 
   if (!email && !phone) {
-    return json(res, 400, { ok: false, error: 'Contact information (email or phone) is required so we can follow up.' });
+    return json(req, res, 400, { ok: false, error: 'Contact information (email or phone) is required so we can follow up.' });
   }
 
   if (github && !/^[a-zA-Z\d](?:[a-zA-Z\d]|-(?=[a-zA-Z\d])){0,38}$/.test(github)) {
-    return json(res, 400, { ok: false, error: 'Invalid GitHub username format.' });
+    return json(req, res, 400, { ok: false, error: 'Invalid GitHub username format.' });
   }
 
   const ref = `sub-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
@@ -208,7 +246,7 @@ module.exports = async (req, res) => {
     // Security vulnerabilities: private only, NEVER a public issue
     if (category === 'security') {
       if (f.ack !== true && f.ack !== 'true') {
-        return json(res, 400, { ok: false, error: 'You must acknowledge confidential handling.' });
+        return json(req, res, 400, { ok: false, error: 'You must acknowledge confidential handling.' });
       }
 
       await storeContact(ref, email, phone, github, false, process.env.PRIVATE_REPO_TOKEN || token, contactsRepo);
@@ -239,7 +277,7 @@ module.exports = async (req, res) => {
         throw new Error(`security report store failed: ${saved.status}`);
       }
 
-      return json(res, 200, {
+      return json(req, res, 200, {
         ok: true,
         reference: ref,
         message: 'Security vulnerability report received privately. Thank you for responsible disclosure.'
@@ -249,7 +287,7 @@ module.exports = async (req, res) => {
     // Public categories: create GitHub issue
     const tpl = LABELS[category];
     if (!tpl) {
-      return json(res, 400, { ok: false, error: 'Unknown submission category.' });
+      return json(req, res, 400, { ok: false, error: 'Unknown submission category.' });
     }
 
     const titleGuess = f.description || f.problem || f.message || '';
@@ -266,7 +304,7 @@ module.exports = async (req, res) => {
     if (!created.ok) {
       const errText = await created.text();
       console.error(`issue creation failed: ${created.status} ${errText.slice(0, 300)}`);
-      return json(res, 502, {
+      return json(req, res, 502, {
         ok: false,
         error: 'Could not create issue on GitHub. Please submit directly via https://github.com/tirthsaraiya29/Pico/issues.'
       });
@@ -281,13 +319,13 @@ module.exports = async (req, res) => {
       console.error(`contact storage failed for issue ${issue.number}: ${e.message}`);
     }
 
-    return json(res, 200, {
+    return json(req, res, 200, {
       ok: true,
       number: issue.number,
       url: issue.html_url
     });
   } catch (e) {
     console.error(`submit error: ${e.message}`);
-    return json(res, 500, { ok: false, error: 'Internal error processing submission. Please try again.' });
+    return json(req, res, 500, { ok: false, error: 'Internal error processing submission. Please try again.' });
   }
 };

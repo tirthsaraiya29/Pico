@@ -4,7 +4,7 @@ pub mod sandbox;
 pub mod sanitizer;
 pub mod voice_auth;
 
-pub use audit::{AuditLogger, AuditRecord};
+pub use audit::{AuditEntry, AuditLogger, AuditRecord};
 pub use policy::{
     ChannelConfirmationManager, ConfirmationCallback, ConfirmationProvider, SecurityPolicy,
 };

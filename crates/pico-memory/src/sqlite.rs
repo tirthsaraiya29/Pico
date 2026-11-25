@@ -293,18 +293,24 @@ impl SqliteStore {
 
     pub fn search_facts(&self, query: &str, limit: usize) -> Result<Vec<String>> {
         let conn = self.conn.lock().unwrap_or_else(|p| p.into_inner());
-        let pattern = format!("%{}%", query);
+        let escaped = query
+            .replace('\\', "\\\\")
+            .replace('%', "\\%")
+            .replace('_', "\\_");
+        let pattern = format!("%{}%", escaped);
 
         let mut stmt = conn
-            .prepare("SELECT fact FROM memories WHERE fact LIKE ?1 OR category LIKE ?1 LIMIT ?2")
+            .prepare(
+                "SELECT fact FROM memories WHERE fact LIKE ?1 ESCAPE '\\' OR category LIKE ?1 ESCAPE '\\' LIMIT ?2",
+            )
             .map_err(|e| PicoError::Memory(format!("Prepare search failed: {}", e)))?;
 
         let rows = stmt
-            .query_map(params![pattern, limit as i64], |row| row.get(0))
+            .query_map(params![pattern, limit as i64], |row| row.get::<_, String>(0))
             .map_err(|e| PicoError::Memory(format!("Memory search failed: {}", e)))?;
 
-        let facts: Vec<String> = rows.flatten().collect();
-        Ok(facts)
+        rows.collect::<rusqlite::Result<Vec<String>>>()
+            .map_err(|e| PicoError::Memory(format!("Row decode failed during search: {}", e)))
     }
 
     pub fn set_preference(&self, key: &str, value: &str) -> Result<()> {

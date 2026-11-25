@@ -23,23 +23,35 @@ impl InputSanitizer {
 
     /// Checks if a text string contains recognizable prompt injection patterns.
     pub fn contains_prompt_injection(text: &str) -> bool {
-        for pattern in Self::patterns() {
-            if pattern.is_match(text) {
-                return true;
-            }
-        }
-        false
+        Self::patterns().iter().any(|p| p.is_match(text))
     }
 
-    /// Checks for dangerous shell metacharacters in command argument strings.
+    /// Checks for dangerous shell metacharacters, NUL bytes, or subshells in command arguments.
     pub fn is_safe_shell_arg(arg: &str) -> bool {
-        // Disallow unescaped chained command separators, subshells, output redirectors
-        let dangerous_tokens = ["|", ";", "&&", "||", "`", "$(", ">", "<", "\n", "\r"];
+        if arg.contains('\0') {
+            return false;
+        }
+        let dangerous_tokens = [
+            "|", ";", "&&", "||", "`", "$(", "${", "<(", ">(", ">", "<", "\n", "\r",
+        ];
         for token in dangerous_tokens {
             if arg.contains(token) {
                 return false;
             }
         }
         true
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_shell_arg_blocks_nul_and_subshells() {
+        assert!(InputSanitizer::is_safe_shell_arg("8.8.8.8"));
+        assert!(!InputSanitizer::is_safe_shell_arg("foo\0bar"));
+        assert!(!InputSanitizer::is_safe_shell_arg("${IFS}cat"));
+        assert!(!InputSanitizer::is_safe_shell_arg("$(whoami)"));
     }
 }
