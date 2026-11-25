@@ -60,22 +60,34 @@ jobs:
         run: cargo fmt --all -- --check
 
       - name: Clippy Linter
-        shell: bash
-        run: |
-          set -o pipefail
-          if ! cargo clippy --workspace --all-targets --all-features -- -D warnings 2>&1 | tee "$RUNNER_TEMP/clippy_ci.log"; then
-            grep -E "error(\[|:)|warning:|-->" "$RUNNER_TEMP/clippy_ci.log" | head -n 30 | while IFS= read -r line; do echo "::error::$line"; done
-            exit 1
-          fi
+        run: cargo clippy --workspace --all-targets --all-features -- -D warnings
 
       - name: Run All Workspace Tests
         shell: bash
         run: |
-          set -o pipefail
-          if ! cargo test --workspace --all-features 2>&1 | tee "$RUNNER_TEMP/test_ci.log"; then
-            grep -E "FAILED|panicked at|assertion|error(\[|:)|timed out|Process completed" "$RUNNER_TEMP/test_ci.log" | head -n 30 | while IFS= read -r line; do echo "::error::$line"; done
-            exit 1
-          fi
+          PY=python3
+          if ! command -v python3 >/dev/null 2>&1; then PY=python; fi
+          "$PY" -c '
+          import os, re, subprocess, sys
+          proc = subprocess.Popen(
+              ["cargo", "test", "--workspace", "--all-features"],
+              stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, errors="replace"
+          )
+          lines = []
+          for line in proc.stdout:
+              sys.stdout.write(line)
+              sys.stdout.flush()
+              lines.append(line.rstrip("\r\n"))
+          rc = proc.wait()
+          if rc != 0:
+              bad = [l for l in lines if re.search(r"FAILED|panicked at|assertion|failures:|error(\[|:)", l)]
+              tail = bad[:20] if bad else lines[-20:]
+              for l in tail:
+                  print("::error::" + l[:300])
+              if not tail:
+                  print("::error::cargo test exited with code " + str(rc))
+              sys.exit(rc)
+          '
 
       - name: Build Release
         run: cargo build --workspace --release
