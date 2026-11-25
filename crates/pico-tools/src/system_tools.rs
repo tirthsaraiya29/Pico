@@ -78,7 +78,7 @@ impl Tool for ListProcessesTool {
     }
 }
 
-/// Tool to terminate a running process.
+/// Tool to terminate a running process by PID or process name.
 pub struct KillProcessTool;
 
 #[async_trait]
@@ -98,9 +98,12 @@ impl Tool for KillProcessTool {
                 "pid": {
                     "type": "integer",
                     "description": "Process ID to terminate"
+                },
+                "name": {
+                    "type": "string",
+                    "description": "Process executable name to terminate"
                 }
             },
-            "required": ["pid"],
             "additionalProperties": false
         })
     }
@@ -110,16 +113,22 @@ impl Tool for KillProcessTool {
     }
 
     async fn execute(&self, arguments: serde_json::Value) -> Result<serde_json::Value> {
-        let pid = arguments
-            .get("pid")
-            .and_then(|v| v.as_u64())
-            .ok_or_else(|| PicoError::ToolExecution {
-                tool: self.name().into(),
-                message: "Missing 'pid' argument".into(),
-            })? as u32;
-
-        PlatformApps::kill_process(pid)?;
-        Ok(json!({ "terminated_pid": pid, "status": "success" }))
+        if let Some(pid) = arguments.get("pid").and_then(|v| v.as_u64()) {
+            PlatformApps::kill_process(pid as u32)?;
+            return Ok(json!({ "terminated_pid": pid, "status": "success" }));
+        }
+        if let Some(name) = arguments.get("name").and_then(|v| v.as_str()) {
+            let count = PlatformApps::close_application(name)?;
+            return Ok(json!({
+                "terminated_name": name,
+                "terminated_count": count,
+                "status": "success"
+            }));
+        }
+        Err(PicoError::ToolExecution {
+            tool: self.name().into(),
+            message: "Missing 'pid' or 'name' argument".into(),
+        })
     }
 }
 
@@ -133,7 +142,7 @@ impl Tool for OpenApplicationTool {
     }
 
     fn description(&self) -> &str {
-        "Opens an installed application or file (e.g. 'notepad', 'calc', 'msedge')."
+        "Opens and launches an installed desktop application, browser, program, or website (e.g. open chrome, brave, edge, notepad, calc, code, terminal, explorer, settings)."
     }
 
     fn parameters_schema(&self) -> serde_json::Value {
@@ -142,7 +151,7 @@ impl Tool for OpenApplicationTool {
             "properties": {
                 "application": {
                     "type": "string",
-                    "description": "Application name or executable path (e.g. 'notepad', 'calc')"
+                    "description": "Application name, program, or executable path (e.g. 'notepad', 'calc', 'chrome')"
                 }
             },
             "required": ["application"],
@@ -157,13 +166,65 @@ impl Tool for OpenApplicationTool {
     async fn execute(&self, arguments: serde_json::Value) -> Result<serde_json::Value> {
         let app = arguments
             .get("application")
+            .or_else(|| arguments.get("target"))
             .and_then(|v| v.as_str())
             .ok_or_else(|| PicoError::ToolExecution {
                 tool: self.name().into(),
-                message: "Missing 'application' argument".into(),
+                message: "Missing 'application' argument. Which application would you like to open?".into(),
             })?;
 
         PlatformApps::open_application(app)?;
         Ok(json!({ "opened": app, "status": "success" }))
+    }
+}
+
+/// Tool to cleanly close or stop a running user desktop application by name.
+pub struct CloseApplicationTool;
+
+#[async_trait]
+impl Tool for CloseApplicationTool {
+    fn name(&self) -> &str {
+        "close_application"
+    }
+
+    fn description(&self) -> &str {
+        "Closes, quits, exits, or terminates a running user desktop application or browser (e.g. close brave, quit chrome, close notepad)."
+    }
+
+    fn parameters_schema(&self) -> serde_json::Value {
+        json!({
+            "type": "object",
+            "properties": {
+                "application": {
+                    "type": "string",
+                    "description": "Name of the running application to close (e.g. 'brave', 'chrome', 'notepad')"
+                }
+            },
+            "required": ["application"],
+            "additionalProperties": false
+        })
+    }
+
+    fn permission_tier(&self) -> PermissionTier {
+        PermissionTier::ConfirmationRequired
+    }
+
+    async fn execute(&self, arguments: serde_json::Value) -> Result<serde_json::Value> {
+        let app = arguments
+            .get("application")
+            .or_else(|| arguments.get("name"))
+            .and_then(|v| v.as_str())
+            .ok_or_else(|| PicoError::ToolExecution {
+                tool: self.name().into(),
+                message: "Missing 'application' argument specifying what to close".into(),
+            })?;
+
+        let count = PlatformApps::close_application(app)?;
+        Ok(json!({
+            "closed": app,
+            "terminated_count": count,
+            "status": "success",
+            "message": format!("Closed {} ({} process(es) terminated).", app, count)
+        }))
     }
 }

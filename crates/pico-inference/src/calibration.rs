@@ -16,8 +16,9 @@ pub struct PlattParameters {
 
 impl Default for PlattParameters {
     fn default() -> Self {
-        // Calibrated empirical defaults for Pico composite score distributions [0.0, 1.0]
-        Self { a: 10.0, b: -5.0 }
+        // Calibrated logistic parameters for composite feature scores in [0.0, 1.0].
+        // Avoids saturating competing mid-high candidates (>0.70) above 95% simultaneously.
+        Self { a: 6.5, b: -3.5 }
     }
 }
 
@@ -116,6 +117,67 @@ impl Calibrator {
             }
         }
         blended
+    }
+
+    /// Computes separated choice selection and independent executability probabilities,
+    /// returning `(joint_probability, selection_probability, executability_probability)` per item.
+    ///
+    /// - `selection_probability` forms a mutually exclusive distribution (`sum == 1.0`) across candidates.
+    /// - `executability_probability` estimates calibrated `P(valid | raw_score)` independently of competition.
+    /// - `joint_probability = selection_probability * executability_probability`, preventing two competing
+    ///   candidates from simultaneously claiming near-100% confidence.
+    pub fn joint_decision_probabilities(
+        raw_scores: &[f32],
+        selection_temperature: f32,
+        platt: &PlattParameters,
+    ) -> Vec<(f32, f32, f32)> {
+        if raw_scores.is_empty() {
+            return Vec::new();
+        }
+        let selection = Self::softmax_calibrate(raw_scores, selection_temperature);
+        let exec = Self::platt_calibrate_slice(raw_scores, platt);
+        selection
+            .into_iter()
+            .zip(exec)
+            .map(|(sel, ex)| {
+                let joint = (sel * ex).clamp(0.0, 1.0);
+                (joint, sel, ex)
+            })
+            .collect()
+    }
+
+    /// Fits Platt logistic parameters `(a, b)` via gradient descent on binary cross-entropy (NLL).
+    pub fn fit_platt_parameters(
+        samples: &[(f32, bool)],
+        epochs: usize,
+        learning_rate: f32,
+    ) -> PlattParameters {
+        if samples.is_empty() || epochs == 0 {
+            return PlattParameters::default();
+        }
+        let mut a = 5.0f32;
+        let mut b = -2.5f32;
+        let n = samples.len() as f32;
+        let lr = learning_rate.clamp(1e-4, 2.0);
+        let l2 = 1e-3f32;
+
+        for _ in 0..epochs {
+            let mut grad_a = 0.0f32;
+            let mut grad_b = 0.0f32;
+            for &(s, label) in samples {
+                let p = Self::platt_calibrate(s, &PlattParameters { a, b });
+                let y = if label { 1.0f32 } else { 0.0f32 };
+                let err = p - y;
+                grad_a += err * s;
+                grad_b += err;
+            }
+            a -= lr * (grad_a / n + l2 * a);
+            b -= lr * (grad_b / n);
+        }
+        PlattParameters {
+            a: a.clamp(0.5, 25.0),
+            b: b.clamp(-20.0, 10.0),
+        }
     }
 
     /// Evaluates decision margin between the top two probabilities.

@@ -31,8 +31,14 @@ impl ToolRegistry {
         policy.set_confirmation_provider(provider);
     }
 
-    /// Registers a tool in the registry.
+    /// Registers a tool in the registry after validating its schema contract.
     pub fn register(&mut self, tool: Arc<dyn Tool>) {
+        let schema = tool.parameters_schema();
+        debug_assert!(
+            schema.get("type").and_then(|t| t.as_str()) == Some("object"),
+            "Tool '{}' schema must have type == 'object'",
+            tool.name()
+        );
         debug!(name = %tool.name(), "Registered tool");
         self.tools.insert(tool.name().to_string(), tool);
     }
@@ -41,7 +47,7 @@ impl ToolRegistry {
     pub fn register_batch(&mut self, tools: Vec<Arc<dyn Tool>>) {
         let count = tools.len();
         for tool in tools {
-            self.tools.insert(tool.name().to_string(), tool);
+            self.register(tool);
         }
         info!(count = count, "Registered batch of tools");
     }
@@ -51,9 +57,11 @@ impl ToolRegistry {
         self.default_timeout = timeout;
     }
 
-    /// Returns a list of all registered tools.
+    /// Returns a deterministically sorted list of all registered tools.
     pub fn all_tools(&self) -> Vec<Arc<dyn Tool>> {
-        self.tools.values().cloned().collect()
+        let mut list: Vec<Arc<dyn Tool>> = self.tools.values().cloned().collect();
+        list.sort_by(|a, b| a.name().cmp(b.name()));
+        list
     }
 
     /// Retrieves a specific tool by name.
@@ -61,10 +69,10 @@ impl ToolRegistry {
         self.tools.get(name).cloned()
     }
 
-    /// Returns OpenAI/Ollama tool definitions JSON array.
+    /// Returns deterministically ordered tool definitions JSON array.
     pub fn get_tool_definitions(&self) -> Vec<serde_json::Value> {
-        self.tools
-            .values()
+        self.all_tools()
+            .into_iter()
             .map(|t| {
                 serde_json::json!({
                     "type": "function",

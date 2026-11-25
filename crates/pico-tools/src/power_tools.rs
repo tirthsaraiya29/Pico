@@ -4,7 +4,9 @@ use async_trait::async_trait;
 use pico_core::error::{PicoError, Result};
 use pico_core::traits::{PermissionTier, Tool};
 use serde_json::{json, Value};
-use std::process::Command;
+use std::process::Stdio;
+use std::time::Duration;
+use tokio::process::Command;
 
 /// Tool to lock the workstation session.
 pub struct LockScreenTool;
@@ -22,32 +24,50 @@ impl Tool for LockScreenTool {
     fn parameters_schema(&self) -> Value {
         json!({
             "type": "object",
-            "properties": {}
+            "properties": {},
+            "additionalProperties": false
         })
     }
 
     fn permission_tier(&self) -> PermissionTier {
-        PermissionTier::LowRisk
+        PermissionTier::ConfirmationRequired
     }
 
     async fn execute(&self, _arguments: Value) -> Result<Value> {
         #[cfg(target_os = "windows")]
-        {
-            let status = Command::new("rundll32.exe")
+        let status = tokio::time::timeout(
+            Duration::from_secs(5),
+            Command::new("rundll32.exe")
                 .args(["user32.dll,LockWorkStation"])
-                .status()
-                .map_err(|e| PicoError::Platform(format!("Failed to lock workstation: {}", e)))?;
-
-            if !status.success() {
-                return Err(PicoError::Platform(
-                    "Failed to execute lock workstation command".into(),
-                ));
-            }
-        }
+                .stdin(Stdio::null())
+                .stdout(Stdio::null())
+                .stderr(Stdio::null())
+                .status(),
+        )
+        .await
+        .map_err(|_| PicoError::Platform("Workstation lock command timed out".into()))?
+        .map_err(|e| PicoError::Platform(format!("Failed to lock workstation: {}", e)))?;
 
         #[cfg(target_os = "linux")]
-        {
-            let _ = Command::new("loginctl").args(["lock-session"]).status();
+        let status = tokio::time::timeout(
+            Duration::from_secs(5),
+            Command::new("loginctl")
+                .args(["lock-session"])
+                .stdin(Stdio::null())
+                .stdout(Stdio::null())
+                .stderr(Stdio::null())
+                .status(),
+        )
+        .await
+        .map_err(|_| PicoError::Platform("Workstation lock command timed out".into()))?
+        .map_err(|e| PicoError::Platform(format!("Failed to run loginctl: {}", e)))?;
+
+        #[cfg(any(target_os = "windows", target_os = "linux"))]
+        if !status.success() {
+            return Err(PicoError::Platform(format!(
+                "Lock workstation command failed with status {}",
+                status
+            )));
         }
 
         Ok(json!({
@@ -73,7 +93,8 @@ impl Tool for SleepSystemTool {
     fn parameters_schema(&self) -> Value {
         json!({
             "type": "object",
-            "properties": {}
+            "properties": {},
+            "additionalProperties": false
         })
     }
 
@@ -83,20 +104,39 @@ impl Tool for SleepSystemTool {
 
     async fn execute(&self, _arguments: Value) -> Result<Value> {
         #[cfg(target_os = "windows")]
-        {
-            let status = Command::new("rundll32.exe")
+        let status = tokio::time::timeout(
+            Duration::from_secs(5),
+            Command::new("rundll32.exe")
                 .args(["powrprof.dll,SetSuspendState", "0,1,0"])
-                .status()
-                .map_err(|e| PicoError::Platform(format!("Failed to suspend computer: {}", e)))?;
-
-            if !status.success() {
-                return Err(PicoError::Platform("Failed to suspend system".into()));
-            }
-        }
+                .stdin(Stdio::null())
+                .stdout(Stdio::null())
+                .stderr(Stdio::null())
+                .status(),
+        )
+        .await
+        .map_err(|_| PicoError::Platform("System suspend command timed out".into()))?
+        .map_err(|e| PicoError::Platform(format!("Failed to suspend computer: {}", e)))?;
 
         #[cfg(target_os = "linux")]
-        {
-            let _ = Command::new("systemctl").args(["suspend"]).status();
+        let status = tokio::time::timeout(
+            Duration::from_secs(5),
+            Command::new("systemctl")
+                .args(["suspend"])
+                .stdin(Stdio::null())
+                .stdout(Stdio::null())
+                .stderr(Stdio::null())
+                .status(),
+        )
+        .await
+        .map_err(|_| PicoError::Platform("System suspend command timed out".into()))?
+        .map_err(|e| PicoError::Platform(format!("Failed to suspend system: {}", e)))?;
+
+        #[cfg(any(target_os = "windows", target_os = "linux"))]
+        if !status.success() {
+            return Err(PicoError::Platform(format!(
+                "System suspend command failed with status {}",
+                status
+            )));
         }
 
         Ok(json!({

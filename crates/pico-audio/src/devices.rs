@@ -1,92 +1,91 @@
 use cpal::traits::{DeviceTrait, HostTrait};
-use pico_core::error::Result;
-use tracing::info;
+use pico_core::error::{PicoError, Result};
+use serde::{Deserialize, Serialize};
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct AudioDeviceInfo {
     pub name: String,
+    pub is_input: bool,
     pub is_default: bool,
-    pub supported_sample_rates: Vec<u32>,
+    pub default_sample_rate: u32,
+    pub channels: u16,
+    pub sample_format: String,
 }
 
 pub struct AudioDeviceManager;
 
 impl AudioDeviceManager {
-    /// Lists all available input (microphone) devices.
+    /// Lists all available audio input (capture) devices with negotiated default formats.
     pub fn list_input_devices() -> Result<Vec<AudioDeviceInfo>> {
         let host = cpal::default_host();
-        let default_device_name = host
+        let default_name = host
             .default_input_device()
-            .and_then(|d| d.name().ok())
-            .unwrap_or_default();
-
-        let devices = match host.input_devices() {
-            Ok(d) => d,
-            Err(e) => {
-                info!(
-                    "No audio input devices found or audio service unavailable: {}",
-                    e
-                );
-                return Ok(Vec::new());
-            }
-        };
+            .and_then(|d| d.name().ok());
+        let devices = host
+            .input_devices()
+            .map_err(|e| PicoError::Audio(format!("Failed to enumerate input devices: {}", e)))?;
 
         let mut list = Vec::new();
         for dev in devices {
             if let Ok(name) = dev.name() {
-                let is_default = name == default_device_name;
-                let sample_rates = dev
-                    .supported_input_configs()
-                    .map(|configs| configs.map(|c| c.max_sample_rate().0).collect::<Vec<u32>>())
-                    .unwrap_or_default();
-
+                let (default_sample_rate, channels, sample_format) = dev
+                    .default_input_config()
+                    .map(|c| {
+                        (
+                            c.sample_rate().0,
+                            c.channels(),
+                            format!("{:?}", c.sample_format()),
+                        )
+                    })
+                    .unwrap_or((16_000, 1, "Unknown".into()));
+                let is_default = default_name.as_deref() == Some(name.as_str());
                 list.push(AudioDeviceInfo {
                     name,
+                    is_input: true,
                     is_default,
-                    supported_sample_rates: sample_rates,
+                    default_sample_rate,
+                    channels,
+                    sample_format,
                 });
             }
         }
-        info!(count = list.len(), "Enumerated audio input devices");
         Ok(list)
     }
 
-    /// Lists all available output (speaker/headphone) devices.
+    /// Lists all available audio output (playback) devices with negotiated default formats.
     pub fn list_output_devices() -> Result<Vec<AudioDeviceInfo>> {
         let host = cpal::default_host();
-        let default_device_name = host
+        let default_name = host
             .default_output_device()
-            .and_then(|d| d.name().ok())
-            .unwrap_or_default();
-
-        let devices = match host.output_devices() {
-            Ok(d) => d,
-            Err(e) => {
-                info!(
-                    "No audio output devices found or audio service unavailable: {}",
-                    e
-                );
-                return Ok(Vec::new());
-            }
-        };
+            .and_then(|d| d.name().ok());
+        let devices = host
+            .output_devices()
+            .map_err(|e| PicoError::Audio(format!("Failed to enumerate output devices: {}", e)))?;
 
         let mut list = Vec::new();
         for dev in devices {
             if let Ok(name) = dev.name() {
-                let is_default = name == default_device_name;
-                let sample_rates = dev
-                    .supported_output_configs()
-                    .map(|configs| configs.map(|c| c.max_sample_rate().0).collect::<Vec<u32>>())
-                    .unwrap_or_default();
-
+                let (default_sample_rate, channels, sample_format) = dev
+                    .default_output_config()
+                    .map(|c| {
+                        (
+                            c.sample_rate().0,
+                            c.channels(),
+                            format!("{:?}", c.sample_format()),
+                        )
+                    })
+                    .unwrap_or((48_000, 2, "Unknown".into()));
+                let is_default = default_name.as_deref() == Some(name.as_str());
                 list.push(AudioDeviceInfo {
                     name,
+                    is_input: false,
                     is_default,
-                    supported_sample_rates: sample_rates,
+                    default_sample_rate,
+                    channels,
+                    sample_format,
                 });
             }
         }
-        info!(count = list.len(), "Enumerated audio output devices");
         Ok(list)
     }
 }

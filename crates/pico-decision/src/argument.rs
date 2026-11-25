@@ -87,11 +87,9 @@ pub fn resolve_arguments(query: &str, tool_name: &str, schema: &Value) -> Argume
             }
         } else if let Some(path) = extract_path(query_clean) {
             args.insert("path".to_string(), json!(path));
-        } else if query_clean.contains("current directory")
-            || query_clean.contains("current folder")
-            || query_clean.contains("here")
-            || query_clean.contains(" .")
-            || query_clean.ends_with('.')
+        } else if query_clean.to_lowercase().contains("current directory")
+            || query_clean.to_lowercase().contains("current folder")
+            || query_clean == "."
         {
             args.insert("path".to_string(), json!("."));
         }
@@ -113,33 +111,104 @@ pub fn resolve_arguments(query: &str, tool_name: &str, schema: &Value) -> Argume
     } else if tool_name.contains("process")
         || tool_name == "kill_process"
         || tool_name == "process_terminate"
+        || tool_name == "close_application"
     {
-        if let Some(pid) = extract_pid(query_clean) {
+        if tool_name == "close_application" {
+            let target = extract_close_app_target(query_clean);
+            if !target.is_empty() {
+                args.insert("application".to_string(), json!(target));
+            }
+        } else if let Some(pid) = extract_pid(query_clean) {
             args.insert("pid".to_string(), json!(pid));
         } else if let Some(proc_name) = extract_target_process_name(query_clean) {
             args.insert("name".to_string(), json!(proc_name));
+        }
+    } else if tool_name == "audio.mute" {
+        let lower = query_clean.to_lowercase();
+        let mute_val = !lower.contains("unmute") && !lower.contains("sound on");
+        args.insert("mute".to_string(), json!(mute_val));
+    } else if tool_name == "display.set_brightness" || tool_name.contains("brightness") {
+        if let Some(pct) = extract_percentage_or_number(query_clean) {
+            args.insert("level".to_string(), json!(pct.min(100)));
+        } else {
+            let lower = query_clean.to_lowercase();
+            let delta = if lower.contains("decrease")
+                || lower.contains("lower")
+                || lower.contains("dim")
+                || lower.contains("down")
+            {
+                -15
+            } else {
+                15
+            };
+            args.insert("delta".to_string(), json!(delta));
         }
     } else if tool_name.contains("audio")
         || tool_name == "set_volume"
         || tool_name == "audio_volume"
     {
         if let Some(pct) = extract_percentage_or_number(query_clean) {
-            args.insert("level".to_string(), json!(pct));
+            args.insert("level".to_string(), json!(pct.min(100)));
+        } else if schema
+            .get("properties")
+            .and_then(|p| p.get("delta"))
+            .is_some()
+        {
+            let lower = query_clean.to_lowercase();
+            let delta = if lower.contains("down")
+                || lower.contains("decrease")
+                || lower.contains("lower")
+                || lower.contains("quieter")
+            {
+                -10
+            } else {
+                10
+            };
+            args.insert("delta".to_string(), json!(delta));
         }
     } else if tool_name.contains("timer") || tool_name == "set_timer" || tool_name == "timer_create"
     {
+        let lower = query_clean.to_lowercase();
+        if lower.contains("list") || lower.contains("show") || lower.contains("active") {
+            args.insert("action".to_string(), json!("list"));
+        } else if lower.contains("cancel") || lower.contains("delete") || lower.contains("stop") {
+            args.insert("action".to_string(), json!("cancel"));
+        } else if lower.contains("pause") {
+            args.insert("action".to_string(), json!("pause"));
+        } else if lower.contains("resume") {
+            args.insert("action".to_string(), json!("resume"));
+        } else {
+            args.insert("action".to_string(), json!("create"));
+        }
         if let Some(secs) = extract_duration_seconds(query_clean) {
             args.insert("seconds".to_string(), json!(secs));
         }
         let label = extract_timer_label(query_clean);
         args.insert("label".to_string(), json!(label));
+    } else if tool_name == "network.ping" || tool_name.contains("ping") {
+        if let Some(host) = extract_host_or_ip(query_clean) {
+            args.insert("host".to_string(), json!(host));
+        } else {
+            args.insert("host".to_string(), json!("8.8.8.8"));
+        }
     } else if tool_name.contains("network") || tool_name == "web_fetch" || tool_name == "http_get" {
         if let Some(url) = extract_url(query_clean) {
             args.insert("url".to_string(), json!(url));
         }
     } else if tool_name == "open_application" || tool_name == "app_launch" {
-        let app = extract_app_target(query_clean);
-        args.insert("target".to_string(), json!(app));
+        let lower = query_clean.to_lowercase();
+        if !lower.starts_with("close ") && !lower.starts_with("quit ") && !lower.starts_with("exit ")
+        {
+            let app = extract_app_target(query_clean);
+            let clean_app = app
+                .trim_matches(|c: char| c.is_ascii_punctuation() || c.is_whitespace())
+                .to_string();
+            if !clean_app.is_empty()
+                && !matches!(clean_app.as_str(), "application" | "app" | "browser" | "program")
+            {
+                args.insert("application".to_string(), json!(clean_app));
+            }
+        }
     } else if tool_name == "clipboard" || tool_name == "clipboard_set" {
         if query_clean.contains("paste")
             || query_clean.contains("read")
@@ -151,12 +220,6 @@ pub fn resolve_arguments(query: &str, tool_name: &str, schema: &Value) -> Argume
             args.insert("action".to_string(), json!("set"));
             let text = extract_quoted_or_trailing(query_clean, &["copy", "clipboard", "set"]);
             args.insert("text".to_string(), json!(text));
-        }
-    } else if tool_name == "network.ping" || tool_name.contains("ping") {
-        if let Some(host) = extract_host_or_ip(query_clean) {
-            args.insert("host".to_string(), json!(host));
-        } else {
-            args.insert("host".to_string(), json!("8.8.8.8"));
         }
     }
 
@@ -238,29 +301,40 @@ pub fn resolve_arguments(query: &str, tool_name: &str, schema: &Value) -> Argume
     }
 }
 
-/// Extracts a math expression by stripping non-math command phrases.
+/// Extracts a math expression by stripping non-math lead-in phrases and normalizing spoken forms.
 pub fn extract_math_expression(query: &str) -> String {
-    let lower = query.to_lowercase();
+    let trimmed = query.trim();
+    let lower = trimmed.to_lowercase();
     let prefixes = [
-        "calculate",
-        "what is",
-        "what's",
-        "compute",
-        "solve",
-        "evaluate",
-        "calc",
-        "please calculate",
+        "please calculate ",
+        "calculate ",
+        "what is ",
+        "what's ",
+        "compute ",
+        "solve ",
+        "evaluate ",
+        "calc ",
     ];
 
-    let mut expr = query.trim();
+    let mut expr = trimmed.to_string();
     for prefix in prefixes {
-        if lower.starts_with(prefix) {
-            expr = query[prefix.len()..].trim();
-            break;
+        if let Some(pos) = lower.find(prefix) {
+            let start = pos + prefix.len();
+            if start < trimmed.len() {
+                expr = trimmed[start..].trim().to_string();
+                break;
+            }
         }
     }
 
-    expr.trim_end_matches('?').trim().to_string()
+    let cleaned = expr.trim_end_matches('?').trim();
+    if let Some(caps) = Regex::new(r"(?i)^(\d+(?:\.\d+)?)\s*(?:percent|%)\s+of\s+(\d+(?:\.\d+)?)$")
+        .ok()
+        .and_then(|re| re.captures(cleaned))
+    {
+        return format!("({} / 100) * {}", &caps[1], &caps[2]);
+    }
+    cleaned.to_string()
 }
 
 /// Extracts a filesystem path from quotes, platform regex, or token analysis.
@@ -421,19 +495,55 @@ pub fn extract_percentage_or_number(query: &str) -> Option<u32> {
     extract_number(query).map(|n| n as u32)
 }
 
-/// Extracts duration in seconds from human expressions.
+/// Extracts duration in seconds from human expressions, summing compound units cleanly.
 pub fn extract_duration_seconds(query: &str) -> Option<u64> {
-    if let Some(caps) = RE_DURATION.captures(query) {
-        let num: u64 = caps[1].parse().ok()?;
-        let unit = &caps[2];
-        let mult = match unit {
-            u if u.starts_with('m') => 60,
-            u if u.starts_with('h') => 3600,
-            _ => 1,
-        };
-        return Some(num * mult);
+    let mut total = 0u64;
+    let mut matched = false;
+    for caps in RE_DURATION.captures_iter(query) {
+        if let Ok(num) = caps[1].parse::<u64>() {
+            let unit = caps[2].to_lowercase();
+            let mult = if unit.starts_with('h') {
+                3600
+            } else if unit.starts_with('m') {
+                60
+            } else {
+                1
+            };
+            total = total.saturating_add(num.saturating_mul(mult));
+            matched = true;
+        }
     }
-    None
+    if matched {
+        Some(total)
+    } else {
+        None
+    }
+}
+
+/// Extracts target application name from close/quit/exit commands.
+pub fn extract_close_app_target(query: &str) -> String {
+    let lower = query.trim().to_lowercase();
+    let mut rem = lower.as_str();
+    for prefix in [
+        "close the ",
+        "quit the ",
+        "exit the ",
+        "close ",
+        "quit ",
+        "exit ",
+    ] {
+        if let Some(rest) = rem.strip_prefix(prefix) {
+            rem = rest.trim();
+            break;
+        }
+    }
+    for suffix in [" browser", " application", " app"] {
+        if let Some(stripped) = rem.strip_suffix(suffix) {
+            rem = stripped.trim();
+        }
+    }
+    rem.trim_matches(|c: char| c.is_ascii_punctuation() || c.is_whitespace())
+        .to_string()
 }
 
 /// Extracts a label for a timer.
@@ -442,6 +552,12 @@ pub fn extract_timer_label(query: &str) -> String {
         return caps[1].to_string();
     }
     let lower = query.to_lowercase();
+    if let Some(pos) = lower.find("called ") {
+        let remainder = query[pos + 7..].trim();
+        if !remainder.is_empty() {
+            return remainder.to_string();
+        }
+    }
     if let Some(pos) = lower.find("for ") {
         let remainder = query[pos + 4..].trim();
         let words: Vec<&str> = remainder.split_whitespace().collect();
@@ -452,14 +568,53 @@ pub fn extract_timer_label(query: &str) -> String {
 
 /// Extracts application target name.
 pub fn extract_app_target(query: &str) -> String {
-    let lower = query.to_lowercase();
-    let prefixes = ["open", "launch", "start", "run"];
-    for p in prefixes {
-        if lower.starts_with(p) {
-            return query[p.len()..].trim().to_string();
+    let mut lower = query.trim().to_lowercase();
+    for courtesy in &["please ", "can you ", "could you ", "pico "] {
+        if let Some(stripped) = lower.strip_prefix(courtesy) {
+            lower = stripped.trim().to_string();
         }
     }
-    query.trim().to_string()
+
+    let prefixes = ["open ", "launch ", "start ", "run "];
+    for p in prefixes {
+        if let Some(rest) = lower.strip_prefix(p) {
+            let mut rem = rest.trim();
+            if let Some(stripped_the) = rem.strip_prefix("the ") {
+                rem = stripped_the.trim();
+            }
+            for noun in ["application ", "program ", "app "] {
+                if let Some(rest_noun) = rem.strip_prefix(noun) {
+                    if !rest_noun.trim().is_empty() {
+                        rem = rest_noun.trim();
+                    }
+                    break;
+                }
+            }
+            if let Some(stripped) = rem.strip_suffix(" browser") {
+                rem = stripped.trim();
+            } else if let Some(stripped) = rem.strip_suffix(" app") {
+                rem = stripped.trim();
+            } else if let Some(stripped) = rem.strip_suffix(" application") {
+                rem = stripped.trim();
+            }
+            let clean = rem.trim_matches(|c: char| c.is_ascii_punctuation() || c.is_whitespace());
+            return clean.to_string();
+        }
+    }
+    let single_prefixes = ["open", "launch", "start", "run"];
+    for p in single_prefixes {
+        if let Some(rest) = lower.strip_prefix(p) {
+            let mut rem = rest.trim();
+            if let Some(stripped_the) = rem.strip_prefix("the ") {
+                rem = stripped_the.trim();
+            }
+            let clean = rem.trim_matches(|c: char| c.is_ascii_punctuation() || c.is_whitespace());
+            return clean.to_string();
+        }
+    }
+    query
+        .trim_matches(|c: char| c.is_ascii_punctuation() || c.is_whitespace())
+        .to_string()
 }
 
 /// Extracts content payload (e.g. for write_file).

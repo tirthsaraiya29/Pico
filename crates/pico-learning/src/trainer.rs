@@ -3,12 +3,10 @@
 
 use crate::observation::ObservationRecord;
 use pico_core::error::Result;
-use pico_inference::embeddings::SemanticEmbedder;
-use pico_inference::ranking::RankingWeights;
+use pico_inference::ranking::{MultiFeatureRanker, RankingWeights};
 use tracing::debug;
 
 pub struct RankingTrainer {
-    embedder: SemanticEmbedder,
     learning_rate: f32,
 }
 
@@ -20,13 +18,10 @@ impl Default for RankingTrainer {
 
 impl RankingTrainer {
     pub fn new(learning_rate: f32) -> Self {
-        Self {
-            embedder: SemanticEmbedder::default(),
-            learning_rate,
-        }
+        Self { learning_rate }
     }
 
-    /// Trains new candidate ranking weights from recorded experience observations.
+    /// Trains new candidate ranking weights using pairwise feature differences from observations.
     pub fn train_step(
         &self,
         current_weights: &RankingWeights,
@@ -36,6 +31,7 @@ impl RankingTrainer {
             return Ok(current_weights.clone());
         }
 
+        let ranker = MultiFeatureRanker::new(current_weights.clone());
         let mut grad_semantic = 0.0f32;
         let mut grad_lexical = 0.0f32;
         let mut grad_intent = 0.0f32;
@@ -44,30 +40,50 @@ impl RankingTrainer {
         for obs in observations {
             let weight = obs.quality.sample_weight();
 
-            // 1. If user corrected the model (e.g. chosen was wrong, target was right)
             if let Some(target) = &obs.corrected_action {
-                // Pairwise margin gradient: boost target features, penalize chosen features
-                let q_emb = self.embedder.embed(&obs.request_text);
-                let target_emb = self.embedder.embed(target);
-                let chosen_emb = self.embedder.embed(&obs.selected_action);
+                let (_, sem_target, lex_target) =
+                    ranker.score_candidate(&obs.request_text, target, target, 0.5, 0.5);
+                let (_, sem_chosen, lex_chosen) = ranker.score_candidate(
+                    &obs.request_text,
+                    &obs.selected_action,
+                    &obs.selected_action,
+                    0.5,
+                    0.5,
+                );
 
-                let sim_target = (q_emb.cosine_similarity(&target_emb) + 1.0) / 2.0;
-                let sim_chosen = (q_emb.cosine_similarity(&chosen_emb) + 1.0) / 2.0;
+                let int_match_target = if target.to_lowercase().contains(&obs.primary_intent.to_lowercase()) { 1.0 } else { 0.5 };
+                let int_match_chosen = if obs.selected_action.to_lowercase().contains(&obs.primary_intent.to_lowercase()) { 1.0 } else { 0.5 };
 
-                grad_semantic += weight * (sim_target - sim_chosen);
-                grad_intent += weight * 0.2; // Intent affinity was likely higher on target
-                grad_lexical += weight * 0.1;
-                grad_history += weight * 0.05;
+                grad_semantic += weight * (sem_target - sem_chosen);
+                grad_lexical += weight * (lex_target - lex_chosen);
+                grad_intent += weight * (int_match_target - int_match_chosen);
+                // Avoid over-weighting stale historical prior on explicit corrections
+                grad_history -= weight * 0.05;
             } else if obs.user_feedback == Some(1) || obs.execution_status == "success" {
-                // Positive reinforcement on successful choice
-                grad_semantic += weight * 0.05;
-                grad_intent += weight * 0.05;
-                grad_lexical += weight * 0.02;
-                grad_history += weight * 0.05;
+                let (_, sem, lex) = ranker.score_candidate(
+                    &obs.request_text,
+                    &obs.selected_action,
+                    &obs.selected_action,
+                    0.5,
+                    0.5,
+                );
+                let margin = (sem + lex) * 0.5 - 0.3;
+                if margin > 0.0 {
+                    grad_semantic += weight * (sem - 0.5).max(0.0) * 0.1;
+                    grad_lexical += weight * (lex - 0.3).max(0.0) * 0.1;
+                    grad_history += weight * 0.02;
+                }
             } else if obs.user_feedback == Some(-1) || obs.execution_status == "failure" {
-                // Negative penalty
-                grad_semantic -= weight * 0.05;
-                grad_intent -= weight * 0.05;
+                let (_, sem, lex) = ranker.score_candidate(
+                    &obs.request_text,
+                    &obs.selected_action,
+                    &obs.selected_action,
+                    0.5,
+                    0.5,
+                );
+                grad_semantic -= weight * (sem - 0.4).max(0.0) * 0.1;
+                grad_lexical -= weight * (lex - 0.3).max(0.0) * 0.1;
+                grad_intent -= weight * 0.02;
             }
         }
 

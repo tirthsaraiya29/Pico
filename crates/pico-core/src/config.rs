@@ -64,6 +64,10 @@ impl PicoConfig {
     }
 }
 
+fn default_clarification_timeout() -> u64 {
+    120
+}
+
 /// Probabilistic Decision Model configuration.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct DecisionConfig {
@@ -73,12 +77,15 @@ pub struct DecisionConfig {
     pub confidence_threshold: f32,
     /// Maximum candidate tools retrieved for ranking evaluation
     pub max_candidates: usize,
-    /// Whether neural cross-encoder candidate scoring is active
+    /// Whether multi-feature ensemble candidate reranking is active
     pub enable_cross_encoder: bool,
     /// Temperature scaling factor for probability calibration
     pub calibration_temperature: f32,
     /// Margin between top 2 candidate probabilities below which clarification is requested
     pub clarification_margin: f32,
+    /// Seconds before an unanswered session clarification prompt expires
+    #[serde(default = "default_clarification_timeout")]
+    pub clarification_timeout_seconds: u64,
     /// Path to model artifacts directory
     pub model_dir: PathBuf,
 }
@@ -87,11 +94,12 @@ impl Default for DecisionConfig {
     fn default() -> Self {
         Self {
             model_version: "pico-decision-v1.0.0".into(),
-            confidence_threshold: 0.60,
+            confidence_threshold: 0.55,
             max_candidates: 15,
             enable_cross_encoder: true,
             calibration_temperature: 1.0,
             clarification_margin: 0.08,
+            clarification_timeout_seconds: default_clarification_timeout(),
             model_dir: PathBuf::from("models/decision"),
         }
     }
@@ -140,14 +148,29 @@ pub struct VoiceConfig {
     pub vad_threshold: f32,
     /// Silence duration in ms required to trigger speech end
     pub silence_duration_ms: u64,
-    /// Speech-to-text engine: "whisper", "local", or "cloud"
+    /// Speech-to-text engine: "auto", "parakeet", "moonshine", "tdt", "whisper", "local", or "mock"
     pub stt_engine: String,
-    /// Text-to-speech engine: "native_sapi", "piper", or "cloud"
+    /// Text-to-speech engine: "auto", "winrt", "native_sapi", "piper", "speech_dispatcher", "espeak", "system", or "mock"
     pub tts_engine: String,
     /// TTS Voice identifier or name
     pub voice_name: Option<String>,
     /// Speech playback rate multiplier (0.5 to 2.0)
     pub speech_rate: f32,
+    /// Optional explicit path to the Piper CLI executable
+    #[serde(default)]
+    pub piper_binary: Option<PathBuf>,
+    /// Optional explicit path to the Piper `.onnx` voice model
+    #[serde(default)]
+    pub piper_model: Option<PathBuf>,
+    /// Optional explicit path to the whisper.cpp / whisper executable
+    #[serde(default)]
+    pub whisper_binary: Option<PathBuf>,
+    /// Optional explicit path to the Whisper `.bin` / ONNX model
+    #[serde(default)]
+    pub whisper_model: Option<PathBuf>,
+    /// Optional explicit path to the Python interpreter for local ASR scripts
+    #[serde(default)]
+    pub python_binary: Option<PathBuf>,
     /// Enable push-to-talk mode rather than continuous VAD
     pub push_to_talk: bool,
     /// Keyboard key code for push-to-talk trigger
@@ -158,7 +181,17 @@ pub struct VoiceConfig {
 
 impl VoiceConfig {
     pub fn validate(&self) -> Result<()> {
-        let valid_stt = ["whisper", "local", "system", "native_sapi", "mock"];
+        let valid_stt = [
+            "auto",
+            "parakeet",
+            "moonshine",
+            "tdt",
+            "whisper",
+            "local",
+            "system",
+            "native_sapi",
+            "mock",
+        ];
         if !valid_stt.contains(&self.stt_engine.to_lowercase().as_str()) {
             return Err(PicoError::Config(format!(
                 "Invalid stt_engine '{}': supported engines are {:?}",
@@ -166,7 +199,16 @@ impl VoiceConfig {
             )));
         }
 
-        let valid_tts = ["native_sapi", "piper", "espeak", "system", "mock"];
+        let valid_tts = [
+            "auto",
+            "winrt",
+            "native_sapi",
+            "piper",
+            "speech_dispatcher",
+            "espeak",
+            "system",
+            "mock",
+        ];
         if !valid_tts.contains(&self.tts_engine.to_lowercase().as_str()) {
             return Err(PicoError::Config(format!(
                 "Invalid tts_engine '{}': supported engines are {:?}",
@@ -204,10 +246,15 @@ impl Default for VoiceConfig {
         Self {
             vad_threshold: 0.015,
             silence_duration_ms: 700,
-            stt_engine: "whisper".into(),
-            tts_engine: "native_sapi".into(),
+            stt_engine: "auto".into(),
+            tts_engine: "auto".into(),
             voice_name: None,
             speech_rate: 1.0,
+            piper_binary: None,
+            piper_model: None,
+            whisper_binary: None,
+            whisper_model: None,
+            python_binary: None,
             push_to_talk: false,
             ptt_key: "Space".into(),
             enable_barge_in: true,

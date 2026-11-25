@@ -54,6 +54,11 @@ pub enum PicoEvent {
         question: String,
         candidates: Vec<String>,
     },
+    ClarificationResolved {
+        session_id: SessionId,
+        selected_action: Option<String>,
+        cancelled: bool,
+    },
 
     // Continuous Learning & Experience
     ExperienceObserved {

@@ -16,3 +16,4 @@ regex = { workspace = true }
 
 [dev-dependencies]
 tokio = { workspace = true }
+chrono = { workspace = true }

@@ -103,8 +103,48 @@ impl PlatformSysInfo {
             }
         }
 
+        #[cfg(target_os = "windows")]
+        let os_label = {
+            let mut label = format!("Windows ({})", std::env::consts::ARCH);
+            // Query exact Windows build via RtlGetVersion to report Windows 11 vs Windows 10 accurately
+            #[repr(C)]
+            #[allow(non_snake_case, clippy::upper_case_acronyms)]
+            struct OSVERSIONINFOW {
+                dwOSVersionInfoSize: u32,
+                dwMajorVersion: u32,
+                dwMinorVersion: u32,
+                dwBuildNumber: u32,
+                dwPlatformId: u32,
+                szCSDVersion: [u16; 128],
+            }
+            #[link(name = "ntdll")]
+            extern "system" {
+                fn RtlGetVersion(lpVersionInformation: *mut OSVERSIONINFOW) -> i32;
+            }
+            unsafe {
+                let mut info = std::mem::zeroed::<OSVERSIONINFOW>();
+                info.dwOSVersionInfoSize = std::mem::size_of::<OSVERSIONINFOW>() as u32;
+                if RtlGetVersion(&mut info) == 0 {
+                    let product = if info.dwMajorVersion >= 10 && info.dwBuildNumber >= 22000 {
+                        "Windows 11"
+                    } else if info.dwMajorVersion >= 10 {
+                        "Windows 10"
+                    } else {
+                        "Windows"
+                    };
+                    label = format!(
+                        "{} {} (build {})",
+                        product,
+                        std::env::consts::ARCH,
+                        info.dwBuildNumber
+                    );
+                }
+            }
+            label
+        };
+
         Ok(SystemStats {
-            os: "Windows 11 x64".to_string(),
+            os: os_label,
             hostname,
             cpu_cores: cores,
             total_memory_mb,
@@ -158,25 +198,27 @@ impl PlatformSysInfo {
             }
         }
 
-        // Battery from /sys/class/power_supply
+        // Battery from /sys/class/power_supply/* (handles BAT0, BAT1, CMB0, macsmc-battery)
         let mut battery_percent = None;
         let mut is_charging = None;
 
-        for bat in &["BAT0", "BAT1"] {
-            let cap_path = format!("/sys/class/power_supply/{}/capacity", bat);
-            if let Ok(cap_str) = std::fs::read_to_string(&cap_path) {
-                if let Ok(pct) = cap_str.trim().parse::<u8>() {
-                    battery_percent = Some(pct);
+        if let Ok(entries) = std::fs::read_dir("/sys/class/power_supply") {
+            for entry in entries.flatten() {
+                let dir = entry.path();
+                if !dir.join("capacity").exists() {
+                    continue;
                 }
-            }
-
-            let status_path = format!("/sys/class/power_supply/{}/status", bat);
-            if let Ok(status_str) = std::fs::read_to_string(&status_path) {
-                is_charging = Some(status_str.trim() == "Charging");
-            }
-
-            if battery_percent.is_some() {
-                break;
+                if let Ok(cap_str) = std::fs::read_to_string(dir.join("capacity")) {
+                    if let Ok(pct) = cap_str.trim().parse::<u8>() {
+                        battery_percent = Some(pct);
+                    }
+                }
+                if let Ok(status_str) = std::fs::read_to_string(dir.join("status")) {
+                    is_charging = Some(status_str.trim() == "Charging");
+                }
+                if battery_percent.is_some() {
+                    break;
+                }
             }
         }
 

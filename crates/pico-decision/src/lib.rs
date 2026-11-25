@@ -1,14 +1,18 @@
-//! `pico-decision`: Probabilistic Decision Intelligence for Project Pico.
-//! Evaluates user intent, dynamically retrieves candidate tools, executes cross-encoder
-//! ranking with calibrated probabilities, resolves arguments deterministically, and synthesizes outcomes.
+//! `pico-decision`: Non-Generative Probabilistic Decision Intelligence for Project Pico.
+//! Evaluates user intent, retrieves candidate tools via BM25, scores with a multi-feature
+//! linear ranker + calibrated softmax/Platt confidence, resolves arguments, and manages clarification state.
 
 pub mod argument;
+pub mod clarification;
 pub mod engine;
 pub mod index;
 pub mod intent;
 pub mod synthesizer;
 
 pub use argument::{resolve_arguments, ArgumentResolution};
+pub use clarification::{
+    looks_like_clarification_reference, resolve_followup, ClarificationOutcome,
+};
 pub use engine::{DecisionEngine, DecisionResult};
 pub use index::{ToolEntry, ToolIndex};
 pub use intent::{IntentClassification, IntentClassifier, UserIntent};
@@ -97,6 +101,7 @@ mod tests {
             DecisionResult::ClarificationRequired {
                 prompt,
                 top_candidates,
+                ..
             } => {
                 assert!(prompt.contains("content") || prompt.contains("file_write"));
                 assert!(!top_candidates.is_empty());

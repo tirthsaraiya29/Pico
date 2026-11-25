@@ -46,19 +46,27 @@ impl RankingWeights {
     }
 }
 
-/// Evaluates candidates with multi-factor cross-scoring.
-pub struct CrossEncoderRanker {
+/// Multi-feature linear candidate ranker with separated softmax choice distribution
+/// and Platt-calibrated executability probability.
+/// This is a weighted linear feature scorer, not a neural transformer cross-encoder.
+pub struct MultiFeatureRanker {
     embedder: SemanticEmbedder,
     weights: RankingWeights,
 }
 
-impl Default for CrossEncoderRanker {
+/// Compatibility alias for callers using the previous name.
+pub type CrossEncoderRanker = MultiFeatureRanker;
+
+impl Default for MultiFeatureRanker {
     fn default() -> Self {
         Self::new(RankingWeights::default())
     }
 }
 
-impl CrossEncoderRanker {
+/// Temperature multiplier scaling composite `[0, 1]` raw scores into clean softmax logits.
+const SELECTION_LOGIT_TEMPERATURE_SCALE: f32 = 0.08;
+
+impl MultiFeatureRanker {
     pub fn new(weights: RankingWeights) -> Self {
         Self {
             embedder: SemanticEmbedder::default(),
@@ -74,7 +82,7 @@ impl CrossEncoderRanker {
         &self.weights
     }
 
-    /// Evaluates a candidate action against a user request.
+    /// Evaluates raw composite score and individual lexical/semantic features for a candidate.
     pub fn score_candidate(
         &self,
         request: &str,
@@ -83,49 +91,58 @@ impl CrossEncoderRanker {
         intent_affinity: f32,
         historical_success: f32,
     ) -> (f32, f32, f32) {
-        // 1. Semantic embedding similarity
         let q_emb = self.embedder.embed(request);
         let candidate_text = format!("{} {}", tool_name, tool_desc);
         let c_emb = self.embedder.embed(&candidate_text);
-        let semantic_sim = (q_emb.cosine_similarity(&c_emb) + 1.0) / 2.0; // normalize to [0, 1]
+        let semantic_sim = ((q_emb.cosine_similarity(&c_emb) + 1.0) / 2.0).clamp(0.0, 1.0);
 
-        // 2. Lexical word overlap with stem and substring matching
         let q_words: Vec<String> = request
-            .split_whitespace()
-            .map(|w| {
-                w.trim_matches(|c: char| !c.is_alphanumeric())
-                    .to_lowercase()
-            })
+            .to_lowercase()
+            .split(|c: char| !c.is_alphanumeric())
             .filter(|w| w.len() >= 3)
+            .map(String::from)
             .collect();
 
-        let mut lexical_matches = 0;
-        let c_lower = candidate_text.to_lowercase();
-        for w in &q_words {
-            let stem_len = w.len().min(4);
-            let stem = &w[..stem_len];
-            if c_lower.contains(w) || (stem.len() >= 3 && c_lower.contains(stem)) {
-                lexical_matches += 1;
+        let c_tokens: Vec<String> = candidate_text
+            .to_lowercase()
+            .split(|c: char| !c.is_alphanumeric())
+            .filter(|w| w.len() >= 2)
+            .map(String::from)
+            .collect();
+
+        let mut lexical_matches = 0.0f32;
+        for qw in &q_words {
+            let exact = c_tokens.iter().any(|ct| ct == qw);
+            if exact {
+                lexical_matches += 1.0;
+            } else if qw.len() >= 4 {
+                let stem = &qw[..qw.len().min(4)];
+                if c_tokens.iter().any(|ct| ct.starts_with(stem)) {
+                    lexical_matches += 0.7;
+                }
             }
         }
 
         let lexical_score = if q_words.is_empty() {
             0.0
         } else {
-            (lexical_matches as f32 / q_words.len() as f32).min(1.0)
+            (lexical_matches / q_words.len() as f32).min(1.0)
         };
 
-        // 3. Composite score
         let raw_score = (self.weights.w_semantic * semantic_sim)
             + (self.weights.w_lexical * lexical_score)
             + (self.weights.w_intent * intent_affinity.clamp(0.0, 1.0))
             + (self.weights.w_history * historical_success.clamp(0.0, 1.0))
             + self.weights.bias;
 
-        (raw_score, semantic_sim, lexical_score)
+        (raw_score.clamp(0.0, 1.5), semantic_sim, lexical_score)
     }
 
     /// Ranks multiple candidate actions and produces calibrated CandidateScore list sorted descending.
+    ///
+    /// Computes both mutually exclusive softmax `selection_probability` (`sum = 1.0`) and
+    /// Platt-calibrated `executability_probability`, combining them into `probability` so
+    /// tied competitors split probability mass instead of inflating near 100% simultaneously.
     pub fn rank_candidates(
         &self,
         request: &str,
@@ -133,6 +150,26 @@ impl CrossEncoderRanker {
         intent_affinities: &[f32],
         history_scores: &[f32],
         temperature: f32,
+    ) -> Vec<CandidateScore> {
+        self.rank_candidates_with_platt(
+            request,
+            candidates,
+            intent_affinities,
+            history_scores,
+            temperature,
+            &PlattParameters::default(),
+        )
+    }
+
+    /// Ranks candidates using caller-supplied fitted Platt parameters.
+    pub fn rank_candidates_with_platt(
+        &self,
+        request: &str,
+        candidates: &[CandidateAction],
+        intent_affinities: &[f32],
+        history_scores: &[f32],
+        temperature: f32,
+        platt: &PlattParameters,
     ) -> Vec<CandidateScore> {
         if candidates.is_empty() {
             return Vec::new();
@@ -152,24 +189,28 @@ impl CrossEncoderRanker {
             intermediate.push((i, raw, sem, lex, intent, hist));
         }
 
-        let platt = PlattParameters::default();
+        let effective_temp = (temperature.max(0.1) * SELECTION_LOGIT_TEMPERATURE_SCALE).max(0.03);
+        let calibrated =
+            Calibrator::joint_decision_probabilities(&raw_scores, effective_temp, platt);
 
         let mut results: Vec<CandidateScore> = intermediate
             .into_iter()
-            .map(|(i, raw, sem, lex, intent, hist)| {
-                let calibrated_prob =
-                    Calibrator::platt_calibrate_with_temperature(raw, &platt, temperature)
-                        .clamp(0.0, 1.0);
-                CandidateScore {
-                    action_name: candidates[i].name.clone(),
-                    raw_score: raw,
-                    probability: calibrated_prob,
-                    intent_match: intent,
-                    lexical_match: lex,
-                    semantic_match: sem,
-                    historical_success_rate: hist,
-                }
-            })
+            .zip(calibrated)
+            .map(
+                |((i, raw, sem, lex, intent, hist), (joint_prob, sel_prob, exec_prob))| {
+                    CandidateScore {
+                        action_name: candidates[i].name.clone(),
+                        raw_score: raw,
+                        probability: joint_prob,
+                        selection_probability: sel_prob,
+                        executability_probability: exec_prob,
+                        intent_match: intent,
+                        lexical_match: lex,
+                        semantic_match: sem,
+                        historical_success_rate: hist,
+                    }
+                },
+            )
             .collect();
 
         results.sort_by(|a, b| {
@@ -186,8 +227,8 @@ mod tests {
     use super::*;
 
     #[test]
-    fn test_cross_encoder_scoring() {
-        let ranker = CrossEncoderRanker::default();
+    fn test_multi_feature_scoring() {
+        let ranker = MultiFeatureRanker::default();
         let (score_match, _, _) = ranker.score_candidate(
             "list running processes on system",
             "sys.list_processes",
@@ -209,6 +250,37 @@ mod tests {
             "Target tool must score higher than irrelevant tool ({} > {})",
             score_match,
             score_irrelevant
+        );
+    }
+
+    #[test]
+    fn test_competing_candidates_do_not_both_exceed_ninety_percent() {
+        let ranker = MultiFeatureRanker::default();
+        let cands = vec![
+            CandidateAction {
+                name: "audio.mute".into(),
+                description: "Mutes master system speaker audio output".into(),
+                category: "audio".into(),
+                permission_tier: pico_core::PermissionTier::LowRisk,
+                parameters_schema: serde_json::json!({}),
+            },
+            CandidateAction {
+                name: "audio.set_volume".into(),
+                description: "Sets master speaker audio volume output level".into(),
+                category: "audio".into(),
+                permission_tier: pico_core::PermissionTier::LowRisk,
+                parameters_schema: serde_json::json!({}),
+            },
+        ];
+
+        let ranked = ranker.rank_candidates("mute speaker sound", &cands, &[1.0, 1.0], &[0.8, 0.8], 1.0);
+        let sum_sel: f32 = ranked.iter().map(|c| c.selection_probability).sum();
+        assert!((sum_sel - 1.0).abs() < 1e-4);
+        assert!(ranked[0].probability + ranked[1].probability <= 1.0 + 1e-4);
+        assert!(
+            ranked[1].probability < 0.55,
+            "Runner-up competing candidate must not claim near-certainty: {}",
+            ranked[1].probability
         );
     }
 }

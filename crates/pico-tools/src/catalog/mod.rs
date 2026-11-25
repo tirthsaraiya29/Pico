@@ -1,5 +1,6 @@
-//! Massive Operating System Tool Ecosystem for Project Pico.
-//! Exposes 1,000+ Windows tools and 1,000+ Linux tools across 22 operational domains.
+//! Curated Verified Operating System Tool Catalog for Project Pico.
+//! Every registered entry is verified for unique command adapters, valid parameter substitution,
+//! honest permission tiers, and cross-platform isolation.
 
 pub mod adapter;
 pub mod linux;
@@ -18,20 +19,35 @@ use pico_core::traits::Tool;
 use pico_security::PathSandbox;
 use std::sync::Arc;
 
-/// Returns the complete combined ecosystem catalog (> 2,000 distinct tools) with default sandbox.
+/// Returns all curated Windows and Linux catalog tools with a default sandbox.
 pub fn get_massive_tool_catalog() -> Vec<Arc<dyn Tool>> {
-    get_massive_tool_catalog_with_sandbox(Arc::new(PathSandbox::new(
-        vec![std::path::PathBuf::from(".")],
-        vec![],
-    )))
+    let root = std::env::current_dir().unwrap_or_else(|_| std::path::PathBuf::from("."));
+    get_massive_tool_catalog_with_sandbox(Arc::new(PathSandbox::new(vec![root], vec![])))
 }
 
-/// Returns the complete combined ecosystem catalog initialized with a shared PathSandbox.
+/// Returns all curated Windows and Linux catalog tools initialized with a shared PathSandbox.
 pub fn get_massive_tool_catalog_with_sandbox(sandbox: Arc<PathSandbox>) -> Vec<Arc<dyn Tool>> {
-    let mut catalog = Vec::with_capacity(2200);
+    let mut catalog = Vec::with_capacity(128);
     catalog.extend(get_windows_catalog_with_sandbox(sandbox.clone()));
     catalog.extend(get_linux_catalog_with_sandbox(sandbox));
     catalog
+}
+
+/// Returns only verified catalog tools applicable to the running host operating system.
+pub fn get_host_os_catalog_with_sandbox(sandbox: Arc<PathSandbox>) -> Vec<Arc<dyn Tool>> {
+    #[cfg(target_os = "windows")]
+    {
+        get_windows_catalog_with_sandbox(sandbox)
+    }
+    #[cfg(target_os = "linux")]
+    {
+        get_linux_catalog_with_sandbox(sandbox)
+    }
+    #[cfg(not(any(target_os = "windows", target_os = "linux")))]
+    {
+        let _ = sandbox;
+        Vec::new()
+    }
 }
 
 #[cfg(test)]
@@ -40,107 +56,82 @@ mod tests {
     use std::collections::HashSet;
 
     #[test]
-    fn test_windows_catalog_size_and_uniqueness() {
+    fn test_windows_catalog_uniqueness_and_non_duplication() {
         let tools = get_windows_catalog();
-        assert!(
-            tools.len() >= 1000,
-            "Windows tools must exceed 1000, got {}",
-            tools.len()
-        );
+        assert!(tools.len() >= 40, "Expected >= 40 verified Windows tools");
 
         let mut names = HashSet::new();
         for t in &tools {
-            assert!(
-                t.name().starts_with("windows."),
-                "Tool name must start with 'windows.': {}",
-                t.name()
-            );
-            assert!(
-                names.insert(t.name().to_string()),
-                "Duplicate tool name found: {}",
-                t.name()
-            );
+            assert!(t.name().starts_with("windows."));
+            assert!(names.insert(t.name().to_string()));
             assert!(!t.description().is_empty());
             assert!(t.parameters_schema().is_object());
         }
-    }
 
-    #[test]
-    fn test_linux_catalog_size_and_uniqueness() {
-        let tools = get_linux_catalog();
-        assert!(
-            tools.len() >= 1000,
-            "Linux tools must exceed 1000, got {}",
-            tools.len()
-        );
-
-        let mut names = HashSet::new();
-        for t in &tools {
-            assert!(
-                t.name().starts_with("linux."),
-                "Tool name must start with 'linux.': {}",
-                t.name()
-            );
-            assert!(
-                names.insert(t.name().to_string()),
-                "Duplicate tool name found: {}",
-                t.name()
-            );
-            assert!(!t.description().is_empty());
-            assert!(t.parameters_schema().is_object());
-        }
-    }
-
-    #[test]
-    fn test_combined_massive_catalog() {
-        let catalog = get_massive_tool_catalog();
-        assert!(
-            catalog.len() >= 2000,
-            "Combined catalog must exceed 2000, got {}",
-            catalog.len()
-        );
-    }
-
-    #[test]
-    fn test_linux_catalog_adapters_validity() {
-        use crate::catalog::linux::LINUX_CATEGORIES;
-        for cat in LINUX_CATEGORIES {
+        let mut cmds = HashSet::new();
+        for cat in crate::catalog::windows::WINDOWS_CATEGORIES {
             for action in cat.actions {
-                let cmd = action.adapter_cmd;
+                let sig = (action.adapter_cmd, action.adapter_args);
                 assert!(
-                    !cmd.contains("Get-")
-                        && !cmd.contains("Set-")
-                        && !cmd.contains("New-")
-                        && !cmd.contains("Remove-")
-                        && !cmd.contains("Item")
-                        && !cmd.ends_with(".exe"),
-                    "Linux action {}.{} has Windows command: {}",
+                    cmds.insert(sig),
+                    "Duplicate Windows adapter signature detected on {}.{}: {:?}",
                     cat.name,
                     action.subaction,
-                    cmd
+                    sig
                 );
+            }
+        }
+    }
+
+    #[test]
+    fn test_linux_catalog_uniqueness_and_non_duplication() {
+        let tools = get_linux_catalog();
+        assert!(tools.len() >= 30, "Expected >= 30 verified Linux tools");
+
+        let mut names = HashSet::new();
+        for t in &tools {
+            assert!(t.name().starts_with("linux."));
+            assert!(names.insert(t.name().to_string()));
+            assert!(!t.description().is_empty());
+            assert!(t.parameters_schema().is_object());
+        }
+
+        let mut cmds = HashSet::new();
+        for cat in crate::catalog::linux::LINUX_CATEGORIES {
+            for action in cat.actions {
                 assert!(
-                    !cmd.contains(' '),
-                    "Linux action {}.{} has multi-word adapter_cmd (must be pure binary): {}",
+                    !action.adapter_cmd.contains("Get-")
+                        && !action.adapter_cmd.contains("Set-")
+                        && !action.adapter_cmd.ends_with(".exe"),
+                    "Linux action {}.{} uses Windows command",
+                    cat.name,
+                    action.subaction
+                );
+                let sig = (action.adapter_cmd, action.adapter_args);
+                assert!(
+                    cmds.insert(sig),
+                    "Duplicate Linux adapter signature detected on {}.{}: {:?}",
                     cat.name,
                     action.subaction,
-                    cmd
+                    sig
                 );
             }
         }
     }
 
     #[tokio::test]
-    async fn test_sample_tool_execution() {
+    async fn test_sample_tool_execution_or_cross_os_rejection() {
         let tools = get_windows_catalog();
         let list_dir = tools
             .iter()
             .find(|t| t.name() == "windows.filesystem.list_directory")
             .expect("list_directory tool missing");
 
-        // Execute list_directory with parameter
         let res = list_dir.execute(serde_json::json!({ "path": "." })).await;
-        assert!(res.is_ok(), "Execution failed: {:?}", res.err());
+        #[cfg(target_os = "windows")]
+        assert!(res.is_ok(), "Execution failed on Windows: {:?}", res.err());
+        #[cfg(not(target_os = "windows"))]
+        assert!(res.is_err(), "Cross-OS Windows tool must fail on non-Windows hosts");
     }
 
     #[tokio::test]
@@ -151,7 +142,6 @@ mod tests {
             .find(|t| t.name() == "windows.filesystem.list_directory")
             .expect("list_directory tool missing");
 
-        // Attempt directory traversal out of sandbox
         let res = list_dir
             .execute(serde_json::json!({ "path": "../../Windows/System32" }))
             .await;

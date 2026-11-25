@@ -229,9 +229,257 @@ async fn test_e2e_loop_detection() {
         .expect("Turn processing failed");
 
     assert!(
-        reply.contains("Execution halted: action 'calculator' was already performed")
-            || reply.contains("42"),
+        reply.contains("Execution halted: action 'calculator' was already performed"),
         "Expected loop detection warning, got: {}",
         reply
     );
+}
+
+#[tokio::test]
+async fn test_e2e_intent_routing_regressions_safe() {
+    use async_trait::async_trait;
+    use pico_security::ConfirmationProvider;
+
+    struct DenyConfirm;
+    #[async_trait]
+    impl ConfirmationProvider for DenyConfirm {
+        async fn request_confirmation(
+            &self,
+            _request_id: &str,
+            _tool_name: &str,
+            _arguments: &serde_json::Value,
+        ) -> pico_core::error::Result<bool> {
+            Ok(false)
+        }
+    }
+
+    let mut config = PicoConfig::default();
+    config.security.audit_log_path = std::path::PathBuf::new();
+    config.memory.database_path = std::env::temp_dir().join(format!(
+        "pico_e2e_regress_{}.sqlite",
+        uuid::Uuid::new_v4().simple()
+    ));
+    config.learning.database_path = std::env::temp_dir().join(format!(
+        "pico_e2e_regress_l_{}.sqlite",
+        uuid::Uuid::new_v4().simple()
+    ));
+
+    let runtime = PicoRuntime::new(config).expect("Runtime initialization failed");
+    runtime.set_confirmation_provider(Arc::new(DenyConfirm)).await;
+
+    // 1. "Set a timer for 30 seconds" MUST NOT be hijacked by substring "second" into DirectConversation
+    let reply_timer = runtime
+        .process_turn("Set a timer for 30 seconds", false)
+        .await
+        .expect("Timer turn failed");
+    assert!(
+        reply_timer.contains("30") && reply_timer.to_lowercase().contains("timer"),
+        "Expected active timer reply for 30 seconds, got: {}",
+        reply_timer
+    );
+
+    // 2. "Close brave" MUST NOT route to open_application or report "Opened Close brave"
+    let reply_close = runtime
+        .process_turn("Close brave", false)
+        .await
+        .expect("Close brave turn failed");
+    assert!(
+        !reply_close.to_lowercase().contains("opened"),
+        "Must never report opening when asked to close: {}",
+        reply_close
+    );
+
+    // 3. "open nonexistent_app_xyz_999" MUST fail honestly, never report "Opened ..."
+    let reply_missing_app = runtime
+        .process_turn("open nonexistent_app_xyz_999", false)
+        .await
+        .expect("Missing app turn failed");
+    assert!(
+        !reply_missing_app.to_lowercase().starts_with("opened nonexistent"),
+        "Unknown app must fail rather than claiming success: {}",
+        reply_missing_app
+    );
+
+    // 4. "increase brightness" MUST route cleanly to display.set_brightness, never windows.display.create_monitor
+    let dec_bright = runtime
+        .decision()
+        .decide("increase brightness")
+        .await
+        .expect("Brightness decision failed");
+    match dec_bright {
+        pico_decision::DecisionResult::ActionSelected { action_name, .. } => {
+            assert_eq!(action_name, "display.set_brightness");
+        }
+        other => panic!("Expected ActionSelected display.set_brightness, got {:?}", other),
+    }
+
+    // 5. "Mute sounds" should select audio.mute deterministically
+    let dec_mute = runtime
+        .decision()
+        .decide("Mute sounds")
+        .await
+        .expect("Mute decision failed");
+    match dec_mute {
+        pico_decision::DecisionResult::ActionSelected { action_name, .. } => {
+            assert_eq!(action_name, "audio.mute");
+        }
+        other => panic!("Expected ActionSelected audio.mute, got {:?}", other),
+    }
+}
+
+#[tokio::test]
+async fn test_e2e_session_scoped_clarification_all_paths() {
+    use pico_core::session::{ClarificationKind, ClarificationOption, ClarificationState, SessionId};
+    use serde_json::json;
+
+    let mut config = PicoConfig::default();
+    config.security.audit_log_path = std::path::PathBuf::new();
+    config.memory.database_path = std::env::temp_dir().join(format!(
+        "pico_e2e_clarify_{}.sqlite",
+        uuid::Uuid::new_v4().simple()
+    ));
+    config.learning.database_path = std::env::temp_dir().join(format!(
+        "pico_e2e_clarify_learn_{}.sqlite",
+        uuid::Uuid::new_v4().simple()
+    ));
+
+    let runtime = PicoRuntime::new(config).expect("Runtime initialization failed");
+
+    // 1. Standalone "first" with NO pending clarification stays safe
+    let reply_alone = runtime.process_turn("first", false).await.expect("Turn failed");
+    assert!(!reply_alone.contains("read_text_head"));
+
+    // 2. Inject realistic two-candidate clarification across two isolated sessions (calc vs sysinfo)
+    let make_state = |sid: SessionId| {
+        ClarificationState::new(
+            sid,
+            "run quick math or specs check",
+            ClarificationKind::CandidateChoice,
+            vec![
+                ClarificationOption {
+                    action_name: "calculator".into(),
+                    description: "Evaluate mathematical expression 7 * 9".into(),
+                    probability: 0.45,
+                    selection_probability: 0.51,
+                    parameters_schema: json!({
+                        "type": "object",
+                        "properties": { "expression": { "type": "string" } },
+                        "required": ["expression"]
+                    }),
+                    pre_extracted_args: json!({ "expression": "7 * 9" }),
+                    missing_required: vec![],
+                },
+                ClarificationOption {
+                    action_name: "get_system_info".into(),
+                    description: "Read current system hardware specs and RAM".into(),
+                    probability: 0.43,
+                    selection_probability: 0.49,
+                    parameters_schema: json!({ "type": "object", "properties": {} }),
+                    pre_extracted_args: json!({}),
+                    missing_required: vec![],
+                },
+            ],
+            120,
+        )
+    };
+
+    let sid_a = SessionId::new();
+    let sid_b = SessionId::new();
+    runtime
+        .set_session_clarification(sid_a, Some(make_state(sid_a)))
+        .await;
+    runtime
+        .set_session_clarification(sid_b, Some(make_state(sid_b)))
+        .await;
+
+    // Session A replies unclear filler first -> preserves clarification state
+    let unclear_a = runtime
+        .process_turn_in_session(sid_a, "hmm wait", false)
+        .await
+        .expect("Unclear reply failed");
+    assert!(unclear_a.to_lowercase().contains("first"));
+    assert!(runtime.has_pending_clarification(sid_a).await);
+
+    // Session B resolves "execute the first" -> executes calculator (63)
+    let reply_b = runtime
+        .process_turn_in_session(sid_b, "execute the first", false)
+        .await
+        .expect("Session B clarification failed");
+    assert!(
+        reply_b.contains("63"),
+        "Session B should execute first candidate calculator (63), got: {}",
+        reply_b
+    );
+    assert!(!runtime.has_pending_clarification(sid_b).await);
+    assert!(runtime.has_pending_clarification(sid_a).await);
+
+    // Session A chooses "the second one" -> executes get_system_info cleanly
+    let reply_a = runtime
+        .process_turn_in_session(sid_a, "the second one", false)
+        .await
+        .expect("Session A clarification failed");
+    assert!(
+        reply_a.contains("CPU cores") || reply_a.contains("RAM"),
+        "Session A should execute second candidate get_system_info, got: {}",
+        reply_a
+    );
+    assert!(!runtime.has_pending_clarification(sid_a).await);
+
+    // 3. Test "option two"
+    let sid_c = SessionId::new();
+    runtime
+        .set_session_clarification(sid_c, Some(make_state(sid_c)))
+        .await;
+    let reply_c = runtime
+        .process_turn_in_session(sid_c, "option two", false)
+        .await
+        .expect("Option two failed");
+    assert!(reply_c.contains("RAM") || reply_c.contains("CPU cores"));
+
+    // 4. Test MissingArguments multi-turn slot fill
+    let sid_d = SessionId::new();
+    let missing_calc_state = ClarificationState::new(
+        sid_d,
+        "calculate",
+        ClarificationKind::MissingArguments {
+            action_name: "calculator".into(),
+            parameters_schema: json!({
+                "type": "object",
+                "properties": { "expression": { "type": "string" } },
+                "required": ["expression"]
+            }),
+            partial_arguments: json!({}),
+            missing_fields: vec!["expression".into()],
+        },
+        vec![],
+        120,
+    );
+    runtime
+        .set_session_clarification(sid_d, Some(missing_calc_state))
+        .await;
+    let reply_slot = runtime
+        .process_turn_in_session(sid_d, "12 * 12", false)
+        .await
+        .expect("Missing args slot fill failed");
+    assert!(
+        reply_slot.contains("144"),
+        "Expected 144 after providing missing expression, got: {}",
+        reply_slot
+    );
+
+    // 5. Test Interruption by new unrelated command
+    let sid_e = SessionId::new();
+    runtime
+        .set_session_clarification(sid_e, Some(make_state(sid_e)))
+        .await;
+    let reply_interrupt = runtime
+        .process_turn_in_session(sid_e, "actually calculate 11 * 11", false)
+        .await
+        .expect("Interruption turn failed");
+    assert!(
+        reply_interrupt.contains("121"),
+        "Expected interrupting command calculation (121), got: {}",
+        reply_interrupt
+    );
+    assert!(!runtime.has_pending_clarification(sid_e).await);
 }

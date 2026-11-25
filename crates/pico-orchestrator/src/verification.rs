@@ -56,12 +56,17 @@ impl ObjectiveVerifier {
         {
             Self::verify_file_deletion(arguments).await
         } else if tool_name == "kill_process"
+            || tool_name == "close_application"
             || tool_name.contains("process.terminate")
             || tool_name.contains("process.kill")
         {
-            Self::verify_process_termination(arguments).await
+            Self::verify_process_termination(tool_name, arguments, result).await
         } else if tool_name.starts_with("audio.") {
             Self::verify_audio_operation(tool_name, arguments, result).await
+        } else if tool_name.starts_with("display.") {
+            Self::verify_display_operation(tool_name, arguments, result).await
+        } else if tool_name == "open_application" {
+            Self::verify_open_application(arguments, result)
         } else {
             Self::verify_generic_execution(tool_name, result)
         }
@@ -258,27 +263,27 @@ impl ObjectiveVerifier {
         }
     }
 
-    /// Verifies that a killed process is no longer running in the active process table.
-    async fn verify_process_termination(arguments: &serde_json::Value) -> ObjectiveVerification {
+    /// Verifies that a terminated PID or closed application is absent from the process table.
+    async fn verify_process_termination(
+        tool_name: &str,
+        arguments: &serde_json::Value,
+        result: &ToolResult,
+    ) -> ObjectiveVerification {
         let pid_opt = arguments
             .get("pid")
             .and_then(|p| p.as_u64())
             .map(|p| p as u32);
 
         if let Some(pid) = pid_opt {
-            // Check process table via platform adapter
-            let processes = pico_platform::PlatformApps::list_processes(200).unwrap_or_default();
+            let processes = pico_platform::PlatformApps::list_processes(300).unwrap_or_default();
             let is_still_running = processes.iter().any(|p| p.pid == pid);
 
-            ObjectiveVerification {
-                tool_name: "kill_process".into(),
+            return ObjectiveVerification {
+                tool_name: tool_name.into(),
                 verified: !is_still_running,
                 confidence: 1.0,
                 evidence: if !is_still_running {
-                    format!(
-                        "PID {} successfully verified terminated (absent from process list)",
-                        pid
-                    )
+                    format!("PID {} absent from process list", pid)
                 } else {
                     format!("PID {} is still running in active process table", pid)
                 },
@@ -286,34 +291,160 @@ impl ObjectiveVerifier {
                     "pid": pid,
                     "still_running": is_still_running
                 }),
-            }
-        } else {
-            ObjectiveVerification {
-                tool_name: "kill_process".into(),
-                verified: true,
-                confidence: 0.85,
-                evidence: "Process kill command reported success without numeric PID".into(),
-                details: serde_json::json!({}),
-            }
+            };
+        }
+
+        if let Some(name) = arguments
+            .get("application")
+            .or_else(|| arguments.get("name"))
+            .and_then(|v| v.as_str())
+        {
+            let norm = name.trim_end_matches(".exe").to_lowercase();
+            let processes = pico_platform::PlatformApps::list_processes(300).unwrap_or_default();
+            let remaining = processes
+                .iter()
+                .filter(|p| {
+                    let pname = p.name.trim_end_matches(".exe").to_lowercase();
+                    pname == norm || pname.contains(&norm)
+                })
+                .count();
+            let reported_count = result
+                .content
+                .get("terminated_count")
+                .and_then(|v| v.as_u64())
+                .unwrap_or(0);
+            let verified = remaining == 0 && reported_count > 0;
+            return ObjectiveVerification {
+                tool_name: tool_name.into(),
+                verified,
+                confidence: 0.95,
+                evidence: if verified {
+                    format!("Verified {} process(es) for '{}' closed", reported_count, name)
+                } else {
+                    format!("{} matching process(es) for '{}' still active", remaining, name)
+                },
+                details: serde_json::json!({
+                    "target": name,
+                    "remaining_processes": remaining,
+                    "terminated_count": reported_count
+                }),
+            };
+        }
+
+        ObjectiveVerification {
+            tool_name: tool_name.into(),
+            verified: false,
+            confidence: 0.9,
+            evidence: "Termination invoked without target PID or application name".into(),
+            details: serde_json::json!({}),
         }
     }
 
-    /// Verifies audio hardware command outcome.
+    fn verify_open_application(
+        arguments: &serde_json::Value,
+        result: &ToolResult,
+    ) -> ObjectiveVerification {
+        let status_ok = result
+            .content
+            .get("status")
+            .and_then(|v| v.as_str())
+            .map(|s| s == "success")
+            .unwrap_or(false);
+        let opened = result
+            .content
+            .get("opened")
+            .or_else(|| arguments.get("application"))
+            .and_then(|v| v.as_str())
+            .unwrap_or("");
+        let verified = result.success && status_ok && !opened.is_empty();
+        ObjectiveVerification {
+            tool_name: "open_application".into(),
+            verified,
+            confidence: if verified { 0.95 } else { 0.98 },
+            evidence: if verified {
+                format!("Validated launch dispatch for '{}'", opened)
+            } else {
+                format!("Launch verification failed for '{}'", opened)
+            },
+            details: serde_json::json!({ "opened": opened, "status_ok": status_ok }),
+        }
+    }
+
+    /// Verifies audio hardware command outcome using live endpoint readback when available.
     async fn verify_audio_operation(
         tool_name: &str,
         arguments: &serde_json::Value,
         result: &ToolResult,
     ) -> ObjectiveVerification {
         debug!(tool = tool_name, args = ?arguments, "Verifying audio hardware objective");
+        let hardware_state = pico_platform::PlatformAudio::get_state();
+        match hardware_state {
+            Ok(state) => {
+                let verified = if tool_name == "audio.set_volume" {
+                    if let Some(req_lvl) = arguments.get("level").and_then(|v| v.as_u64()) {
+                        (state.volume_percent as i64 - req_lvl as i64).abs() <= 2
+                    } else {
+                        result.success
+                    }
+                } else if tool_name == "audio.mute" {
+                    if let Some(req_mute) = arguments.get("mute").and_then(|v| v.as_bool()) {
+                        state.muted == req_mute
+                    } else {
+                        result.success
+                    }
+                } else {
+                    result.success
+                };
+                ObjectiveVerification {
+                    tool_name: tool_name.to_string(),
+                    verified,
+                    confidence: 1.0,
+                    evidence: format!(
+                        "Audio endpoint readback ({}): volume={}%, muted={}",
+                        state.backend, state.volume_percent, state.muted
+                    ),
+                    details: serde_json::json!({
+                        "volume_percent": state.volume_percent,
+                        "muted": state.muted,
+                        "backend": state.backend
+                    }),
+                }
+            }
+            Err(e) => ObjectiveVerification {
+                tool_name: tool_name.to_string(),
+                verified: false,
+                confidence: 0.95,
+                evidence: format!("Audio endpoint readback unavailable: {}", e),
+                details: serde_json::json!({ "error": e.to_string() }),
+            },
+        }
+    }
+
+    async fn verify_display_operation(
+        tool_name: &str,
+        arguments: &serde_json::Value,
+        result: &ToolResult,
+    ) -> ObjectiveVerification {
+        let reported_ok = result.success
+            && result
+                .content
+                .get("success")
+                .and_then(|v| v.as_bool())
+                .unwrap_or(false);
+        let level_opt = pico_platform::PlatformDisplay::get_brightness().ok();
+        let verified = match (reported_ok, level_opt, arguments.get("level").and_then(|v| v.as_u64())) {
+            (true, Some(actual), Some(target)) => (actual as i64 - target as i64).abs() <= 3,
+            (ok, _, _) => ok,
+        };
         ObjectiveVerification {
             tool_name: tool_name.to_string(),
-            verified: result.success,
-            confidence: 0.95,
-            evidence: format!("Audio hardware operation confirmed: {}", result.content),
-            details: serde_json::json!({
-                "status": "hardware_confirmed",
-                "content": result.content
-            }),
+            verified,
+            confidence: if level_opt.is_some() { 0.98 } else { 0.9 },
+            evidence: match level_opt {
+                Some(b) => format!("Display brightness readback: {}%", b),
+                None => format!("Display command result: {}", result.content),
+            },
+            details: serde_json::json!({ "brightness": level_opt }),
         }
     }
 

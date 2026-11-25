@@ -9,10 +9,12 @@ pub enum UserIntent {
     ProcessManagement,
     FilesystemOperation,
     MediaAudioControl,
+    DisplayControl,
     PowerManagement,
     NetworkUtility,
     ArithmeticComputation,
     ApplicationLaunch,
+    ApplicationClose,
     TimerReminder,
     ClipboardOperation,
     ServiceManagement,
@@ -28,10 +30,12 @@ impl UserIntent {
             UserIntent::ProcessManagement => "process_management",
             UserIntent::FilesystemOperation => "filesystem_operation",
             UserIntent::MediaAudioControl => "media_audio_control",
+            UserIntent::DisplayControl => "display_control",
             UserIntent::PowerManagement => "power_management",
             UserIntent::NetworkUtility => "network_utility",
             UserIntent::ArithmeticComputation => "arithmetic_computation",
             UserIntent::ApplicationLaunch => "application_launch",
+            UserIntent::ApplicationClose => "application_close",
             UserIntent::TimerReminder => "timer_reminder",
             UserIntent::ClipboardOperation => "clipboard_operation",
             UserIntent::ServiceManagement => "service_management",
@@ -46,10 +50,14 @@ impl UserIntent {
         let cat = tool_category.to_lowercase();
         match self {
             UserIntent::SystemDiagnostic => {
-                if cat.contains("system") || cat.contains("sys") || cat.contains("hardware") {
+                if cat.contains("system")
+                    || cat.contains("sys")
+                    || cat.contains("hardware")
+                    || cat.contains("diagnostic")
+                {
                     1.0
                 } else if cat.contains("process") {
-                    0.6
+                    0.5
                 } else {
                     0.1
                 }
@@ -57,8 +65,8 @@ impl UserIntent {
             UserIntent::ProcessManagement => {
                 if cat.contains("process") || cat.contains("task") {
                     1.0
-                } else if cat.contains("system") {
-                    0.5
+                } else if cat.contains("application") || cat.contains("system") {
+                    0.4
                 } else {
                     0.1
                 }
@@ -82,14 +90,23 @@ impl UserIntent {
                 {
                     1.0
                 } else {
-                    0.1
+                    0.05
+                }
+            }
+            UserIntent::DisplayControl => {
+                if cat.contains("display") || cat.contains("screen") || cat.contains("monitor") {
+                    1.0
+                } else {
+                    0.05
                 }
             }
             UserIntent::PowerManagement => {
-                if cat.contains("power") || cat.contains("battery") || cat.contains("system") {
+                if cat.contains("power") || cat.contains("battery") {
                     1.0
+                } else if cat.contains("system") {
+                    0.4
                 } else {
-                    0.1
+                    0.05
                 }
             }
             UserIntent::NetworkUtility => {
@@ -104,31 +121,40 @@ impl UserIntent {
                 }
             }
             UserIntent::ArithmeticComputation => {
-                if cat.contains("calc") || cat.contains("math") || cat.contains("util") {
+                if cat.contains("calc") || cat.contains("math") {
                     1.0
                 } else {
                     0.05
                 }
             }
             UserIntent::ApplicationLaunch => {
-                if cat.contains("app") || cat.contains("launch") || cat.contains("system") {
+                if cat.contains("app") || cat.contains("launch") {
+                    1.0
+                } else if cat.contains("system") {
+                    0.3
+                } else {
+                    0.05
+                }
+            }
+            UserIntent::ApplicationClose => {
+                if cat.contains("app") || cat.contains("process") {
                     1.0
                 } else {
-                    0.2
+                    0.05
                 }
             }
             UserIntent::TimerReminder => {
-                if cat.contains("timer") || cat.contains("time") || cat.contains("util") {
+                if cat.contains("timer") || cat.contains("time") || cat.contains("scheduler") {
                     1.0
                 } else {
-                    0.1
+                    0.05
                 }
             }
             UserIntent::ClipboardOperation => {
-                if cat.contains("clip") || cat.contains("clipboard") || cat.contains("util") {
+                if cat.contains("clip") || cat.contains("clipboard") {
                     1.0
                 } else {
-                    0.1
+                    0.05
                 }
             }
             UserIntent::ServiceManagement => {
@@ -139,14 +165,14 @@ impl UserIntent {
                 }
             }
             UserIntent::PackageManagement => {
-                if cat.contains("package") || cat.contains("winget") || cat.contains("scoop") {
+                if cat.contains("package") || cat.contains("winget") || cat.contains("apt") {
                     1.0
                 } else {
                     0.1
                 }
             }
             UserIntent::DirectConversation => 0.0,
-            UserIntent::Unknown => 0.3,
+            UserIntent::Unknown => 0.25,
         }
     }
 }
@@ -174,7 +200,7 @@ impl IntentClassifier {
         let trimmed = text.trim();
         let lower = trimmed.to_lowercase();
 
-        // 1. Conversational greetings / identity
+        // 1. Conversational greetings / identity / explicit non-task statements
         if is_direct_conversation(&lower) {
             return IntentClassification {
                 primary_intent: UserIntent::DirectConversation,
@@ -184,67 +210,17 @@ impl IntentClassifier {
             };
         }
 
-        // 2. Math & Arithmetic
-        if is_arithmetic(&lower) {
+        // 2. Display / Brightness Control
+        if is_display_intent(&lower) {
             return IntentClassification {
-                primary_intent: UserIntent::ArithmeticComputation,
-                confidence: 0.92,
-                requires_tool: true,
-                secondary_intent: None,
-            };
-        }
-
-        // 3. Process Management
-        if is_process_intent(&lower) {
-            return IntentClassification {
-                primary_intent: UserIntent::ProcessManagement,
-                confidence: 0.90,
-                requires_tool: true,
-                secondary_intent: Some(UserIntent::SystemDiagnostic),
-            };
-        }
-
-        // 4. System Diagnostics & Hardware
-        if is_system_intent(&lower) {
-            return IntentClassification {
-                primary_intent: UserIntent::SystemDiagnostic,
-                confidence: 0.88,
-                requires_tool: true,
-                secondary_intent: None,
-            };
-        }
-
-        // 5. Filesystem Operations
-        if is_filesystem_intent(&lower) {
-            return IntentClassification {
-                primary_intent: UserIntent::FilesystemOperation,
-                confidence: 0.89,
-                requires_tool: true,
-                secondary_intent: None,
-            };
-        }
-
-        // 6. Media & Audio
-        if is_audio_intent(&lower) {
-            return IntentClassification {
-                primary_intent: UserIntent::MediaAudioControl,
-                confidence: 0.90,
-                requires_tool: true,
-                secondary_intent: None,
-            };
-        }
-
-        // 7. Power Management
-        if is_power_intent(&lower) {
-            return IntentClassification {
-                primary_intent: UserIntent::PowerManagement,
+                primary_intent: UserIntent::DisplayControl,
                 confidence: 0.93,
                 requires_tool: true,
-                secondary_intent: Some(UserIntent::SystemDiagnostic),
+                secondary_intent: None,
             };
         }
 
-        // 8. Timers & Alarms
+        // 3. Timers & Alarms (check before arithmetic/audio so "30 seconds" stays timer)
         if is_timer_intent(&lower) {
             return IntentClassification {
                 primary_intent: UserIntent::TimerReminder,
@@ -254,7 +230,87 @@ impl IntentClassifier {
             };
         }
 
-        // 9. Clipboard
+        // 4. Math & Arithmetic
+        if is_arithmetic(&lower) {
+            return IntentClassification {
+                primary_intent: UserIntent::ArithmeticComputation,
+                confidence: 0.92,
+                requires_tool: true,
+                secondary_intent: None,
+            };
+        }
+
+        // 5. Application Close / Quit / Exit (must precede launch & generic process checks)
+        if is_app_close_intent(&lower) {
+            return IntentClassification {
+                primary_intent: UserIntent::ApplicationClose,
+                confidence: 0.93,
+                requires_tool: true,
+                secondary_intent: Some(UserIntent::ProcessManagement),
+            };
+        }
+
+        // 6. Process Management
+        if is_process_intent(&lower) {
+            return IntentClassification {
+                primary_intent: UserIntent::ProcessManagement,
+                confidence: 0.90,
+                requires_tool: true,
+                secondary_intent: Some(UserIntent::SystemDiagnostic),
+            };
+        }
+
+        // 7. System Diagnostics & Hardware
+        if is_system_intent(&lower) {
+            return IntentClassification {
+                primary_intent: UserIntent::SystemDiagnostic,
+                confidence: 0.88,
+                requires_tool: true,
+                secondary_intent: None,
+            };
+        }
+
+        // 8. Application Launch (Prioritize over filesystem for "open <app>" commands)
+        if is_app_launch_intent(&lower) {
+            return IntentClassification {
+                primary_intent: UserIntent::ApplicationLaunch,
+                confidence: 0.94,
+                requires_tool: true,
+                secondary_intent: None,
+            };
+        }
+
+        // 9. Filesystem Operations
+        if is_filesystem_intent(&lower) {
+            return IntentClassification {
+                primary_intent: UserIntent::FilesystemOperation,
+                confidence: 0.89,
+                requires_tool: true,
+                secondary_intent: None,
+            };
+        }
+
+        // 10. Media & Audio
+        if is_audio_intent(&lower) {
+            return IntentClassification {
+                primary_intent: UserIntent::MediaAudioControl,
+                confidence: 0.92,
+                requires_tool: true,
+                secondary_intent: None,
+            };
+        }
+
+        // 11. Power Management
+        if is_power_intent(&lower) {
+            return IntentClassification {
+                primary_intent: UserIntent::PowerManagement,
+                confidence: 0.93,
+                requires_tool: true,
+                secondary_intent: Some(UserIntent::SystemDiagnostic),
+            };
+        }
+
+        // 12. Clipboard
         if is_clipboard_intent(&lower) {
             return IntentClassification {
                 primary_intent: UserIntent::ClipboardOperation,
@@ -264,17 +320,7 @@ impl IntentClassifier {
             };
         }
 
-        // 10. Application Launch
-        if is_app_launch_intent(&lower) {
-            return IntentClassification {
-                primary_intent: UserIntent::ApplicationLaunch,
-                confidence: 0.85,
-                requires_tool: true,
-                secondary_intent: None,
-            };
-        }
-
-        // 11. Network & Web Fetch
+        // 13. Network & Web Fetch
         if is_network_intent(&lower) {
             return IntentClassification {
                 primary_intent: UserIntent::NetworkUtility,
@@ -296,10 +342,15 @@ impl IntentClassifier {
 
 fn is_direct_conversation(t: &str) -> bool {
     let lower = t.to_lowercase();
+    let trimmed = lower.trim_matches(|c: char| c.is_ascii_punctuation() || c.is_whitespace());
     let words: Vec<&str> = lower
         .split(|c: char| !c.is_alphanumeric())
         .filter(|w| !w.is_empty())
         .collect();
+
+    if words.is_empty() {
+        return true;
+    }
 
     let greetings = [
         "hello",
@@ -312,21 +363,15 @@ fn is_direct_conversation(t: &str) -> bool {
     ];
     if words.iter().any(|w| greetings.contains(w)) && words.len() <= 6 {
         let task_keywords = [
-            "process",
-            "calc",
-            "calculate",
-            "file",
-            "volume",
-            "kill",
-            "system",
-            "ram",
+            "process", "calc", "calculate", "file", "volume", "mute", "kill", "system", "ram",
+            "timer", "brightness", "open", "close",
         ];
         if !words.iter().any(|w| task_keywords.contains(w)) {
             return true;
         }
     }
 
-    let exact_phrases = [
+    let conversational_phrases = [
         "who are you",
         "what are you",
         "what can you do",
@@ -338,10 +383,43 @@ fn is_direct_conversation(t: &str) -> bool {
         "good evening",
         "tell me a joke",
         "tell a joke",
-        "joke",
+        "i'm not sure",
+        "im not sure",
+        "not sure",
+        "i don't know",
     ];
+    if conversational_phrases.iter().any(|p| trimmed.contains(p)) {
+        return true;
+    }
 
-    exact_phrases.iter().any(|phrase| lower.contains(phrase))
+    matches!(trimmed, "joke" | "cancel" | "nevermind" | "never mind")
+}
+
+fn is_display_intent(t: &str) -> bool {
+    t.contains("brightness")
+        || t.contains("backlight")
+        || t.contains("dim screen")
+        || t.contains("dim the screen")
+        || t.contains("brighter")
+        || t.contains("dimmer")
+}
+
+fn is_app_close_intent(t: &str) -> bool {
+    let words: Vec<&str> = t
+        .split_whitespace()
+        .map(|w| w.trim_matches(|c: char| !c.is_alphanumeric()))
+        .filter(|w| !w.is_empty())
+        .collect();
+    if words.len() >= 2 {
+        let first = words[0];
+        if matches!(first, "close" | "quit" | "exit") {
+            let file_terms = ["file", "files", "folder", "directory"];
+            if !words.iter().skip(1).any(|w| file_terms.contains(w)) {
+                return true;
+            }
+        }
+    }
+    false
 }
 
 fn is_arithmetic(t: &str) -> bool {
@@ -387,27 +465,34 @@ fn is_system_intent(t: &str) -> bool {
 }
 
 fn is_filesystem_intent(t: &str) -> bool {
-    t.contains("file")
-        || t.contains("directory")
-        || t.contains("folder")
-        || t.contains("read")
-        || t.contains("write")
-        || t.contains("search for")
-        || t.contains("disk space")
-        || t.contains(".txt")
-        || t.contains(".json")
-        || t.contains(".rs")
-        || t.contains(".toml")
+    let lower = t.to_lowercase();
+    if is_app_launch_intent(&lower) {
+        return false;
+    }
+    lower.contains("file")
+        || lower.contains("directory")
+        || lower.contains("folder")
+        || lower.contains("read file")
+        || lower.contains("write to")
+        || lower.contains("search for")
+        || lower.contains("disk space")
+        || lower.contains(".txt")
+        || lower.contains(".json")
+        || lower.contains(".rs")
+        || lower.contains(".toml")
 }
 
 fn is_audio_intent(t: &str) -> bool {
-    t.contains("volume")
-        || t.contains("mute")
-        || t.contains("unmute")
-        || t.contains("audio")
-        || t.contains("sound")
-        || t.contains("speaker")
-        || t.contains("microphone")
+    let words: Vec<&str> = t
+        .split(|c: char| !c.is_alphanumeric())
+        .filter(|w| !w.is_empty())
+        .collect();
+    words.iter().any(|w| {
+        matches!(
+            *w,
+            "volume" | "mute" | "unmute" | "audio" | "sound" | "sounds" | "speaker" | "speakers"
+        )
+    })
 }
 
 fn is_power_intent(t: &str) -> bool {
@@ -432,10 +517,46 @@ fn is_clipboard_intent(t: &str) -> bool {
 }
 
 fn is_app_launch_intent(t: &str) -> bool {
-    t.contains("open")
-        || t.contains("launch")
-        || t.contains("start notepad")
-        || t.contains("start calc")
+    let lower = t.to_lowercase();
+    let words: Vec<&str> = lower
+        .split_whitespace()
+        .map(|w| w.trim_matches(|c: char| !c.is_alphanumeric()))
+        .filter(|w| !w.is_empty())
+        .collect();
+
+    if words.is_empty() {
+        return false;
+    }
+
+    // Direct app launching commands: "open chrome", "launch brave", "start notepad"
+    let launch_verbs = ["open", "launch", "start", "run"];
+    if let Some(&first) = words.first() {
+        if launch_verbs.contains(&first) {
+            // Check if explicitly asking for file/folder/directory operations
+            let is_file_term = words.iter().skip(1).any(|&w| {
+                w == "file"
+                    || w == "files"
+                    || w == "folder"
+                    || w == "directory"
+                    || w.ends_with(".txt")
+                    || w.ends_with(".rs")
+                    || w.ends_with(".json")
+                    || w.ends_with(".log")
+            });
+            if !is_file_term {
+                return true;
+            }
+        }
+    }
+
+    lower.contains("open app")
+        || lower.contains("open browser")
+        || lower.contains("open program")
+        || lower.contains("launch app")
+        || lower.contains("open chrome")
+        || lower.contains("open brave")
+        || lower.contains("open notepad")
+        || lower.contains("open calc")
 }
 
 fn is_network_intent(t: &str) -> bool {
@@ -491,6 +612,33 @@ mod tests {
                 .classify("Set volume to 50 percent")
                 .primary_intent,
             UserIntent::MediaAudioControl
+        );
+
+        assert_eq!(
+            classifier
+                .classify("Set a timer for 30 seconds")
+                .primary_intent,
+            UserIntent::TimerReminder
+        );
+
+        assert_eq!(
+            classifier.classify("Close brave").primary_intent,
+            UserIntent::ApplicationClose
+        );
+
+        assert_eq!(
+            classifier.classify("increase brightness").primary_intent,
+            UserIntent::DisplayControl
+        );
+
+        assert_eq!(
+            classifier.classify("Mute sounds").primary_intent,
+            UserIntent::MediaAudioControl
+        );
+
+        assert_eq!(
+            classifier.classify("first").primary_intent,
+            UserIntent::Unknown
         );
     }
 }

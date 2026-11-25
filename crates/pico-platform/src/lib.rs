@@ -1,9 +1,13 @@
 pub mod apps;
+pub mod audio;
 pub mod clipboard;
+pub mod display;
 pub mod sysinfo;
 
 pub use apps::{PlatformApps, ProcessInfo};
+pub use audio::{AudioEndpointState, PlatformAudio};
 pub use clipboard::PlatformClipboard;
+pub use display::PlatformDisplay;
 pub use sysinfo::{PlatformSysInfo, SystemStats};
 
 #[cfg(test)]

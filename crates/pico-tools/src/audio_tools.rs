@@ -1,12 +1,48 @@
-//! Audio and sound control tools for Project Pico.
+//! Audio and sound control tools using native OS audio endpoints (WASAPI / wpctl / pactl).
 
 use async_trait::async_trait;
 use pico_core::error::{PicoError, Result};
 use pico_core::traits::{PermissionTier, Tool};
+use pico_platform::PlatformAudio;
 use serde_json::{json, Value};
-use std::process::Command;
 
-/// Tool to adjust master output volume.
+/// Tool to query current master output volume and mute status.
+pub struct GetMasterVolumeTool;
+
+#[async_trait]
+impl Tool for GetMasterVolumeTool {
+    fn name(&self) -> &str {
+        "audio.get_volume"
+    }
+
+    fn description(&self) -> &str {
+        "Gets the current master system audio output volume percentage and mute status."
+    }
+
+    fn parameters_schema(&self) -> Value {
+        json!({
+            "type": "object",
+            "properties": {},
+            "additionalProperties": false
+        })
+    }
+
+    fn permission_tier(&self) -> PermissionTier {
+        PermissionTier::ReadOnly
+    }
+
+    async fn execute(&self, _arguments: Value) -> Result<Value> {
+        let state = PlatformAudio::get_state()?;
+        Ok(json!({
+            "success": true,
+            "level": state.volume_percent,
+            "muted": state.muted,
+            "backend": state.backend
+        }))
+    }
+}
+
+/// Tool to adjust master output volume (absolute percentage 0..=100 or relative delta).
 pub struct SetMasterVolumeTool;
 
 #[async_trait]
@@ -16,7 +52,7 @@ impl Tool for SetMasterVolumeTool {
     }
 
     fn description(&self) -> &str {
-        "Adjusts, sets, increases, turns up, or turns down the master speaker output sound volume level (0-100 percentage)."
+        "Sets, increases, turns up, or turns down the master speaker output volume level (0 to 100 percent)."
     }
 
     fn parameters_schema(&self) -> Value {
@@ -28,9 +64,15 @@ impl Tool for SetMasterVolumeTool {
                     "minimum": 0,
                     "maximum": 100,
                     "description": "Target volume percentage from 0 to 100"
+                },
+                "delta": {
+                    "type": "integer",
+                    "minimum": -100,
+                    "maximum": 100,
+                    "description": "Relative volume change percentage when no absolute level is specified"
                 }
             },
-            "required": ["level"]
+            "additionalProperties": false
         })
     }
 
@@ -39,53 +81,30 @@ impl Tool for SetMasterVolumeTool {
     }
 
     async fn execute(&self, arguments: Value) -> Result<Value> {
-        let level = arguments
-            .get("level")
-            .and_then(|v| v.as_u64())
-            .ok_or_else(|| PicoError::ToolExecution {
+        let target = if let Some(lvl) = arguments.get("level").and_then(|v| v.as_u64()) {
+            lvl.min(100) as u32
+        } else if let Some(delta) = arguments.get("delta").and_then(|v| v.as_i64()) {
+            let current = PlatformAudio::get_state()?.volume_percent as i64;
+            (current + delta).clamp(0, 100) as u32
+        } else {
+            return Err(PicoError::ToolExecution {
                 tool: self.name().into(),
-                message: "Missing or invalid 'level' argument (0-100)".into(),
-            })?
-            .min(100) as u32;
+                message: "Missing 'level' (0-100) or 'delta' argument".into(),
+            });
+        };
 
-        #[cfg(target_os = "windows")]
-        {
-            // Set master volume using PowerShell Windows Audio Endpoint API safely parameterized
-            let ps_script = format!(
-                "$w=New-Object -ComObject WScript.Shell; $null=$w.SendKeys([char]174*50); $null=$w.SendKeys([char]175*{});",
-                level / 2
-            );
-            let status = Command::new("powershell")
-                .arg("-NoProfile")
-                .arg("-NonInteractive")
-                .arg("-Command")
-                .arg(&ps_script)
-                .status()
-                .map_err(|e| PicoError::Platform(format!("Failed to set volume: {}", e)))?;
-
-            if !status.success() {
-                return Err(PicoError::Platform(
-                    "Failed to adjust volume via system handler".into(),
-                ));
-            }
-        }
-
-        #[cfg(target_os = "linux")]
-        {
-            let _ = Command::new("pactl")
-                .args(["set-sink-volume", "@DEFAULT_SINK@", &format!("{}%", level)])
-                .status();
-        }
-
+        let state = PlatformAudio::set_volume(target)?;
         Ok(json!({
             "success": true,
-            "level": level,
-            "message": format!("Master volume adjusted to {}%", level)
+            "level": state.volume_percent,
+            "muted": state.muted,
+            "backend": state.backend,
+            "message": format!("Master volume set to {}%", state.volume_percent)
         }))
     }
 }
 
-/// Tool to toggle audio mute.
+/// Tool to mute or unmute system audio output cleanly.
 pub struct MuteAudioTool;
 
 #[async_trait]
@@ -95,7 +114,7 @@ impl Tool for MuteAudioTool {
     }
 
     fn description(&self) -> &str {
-        "Toggles audio output mute state."
+        "Mutes or unmutes the system master audio output. Pass mute=true to mute, mute=false to unmute."
     }
 
     fn parameters_schema(&self) -> Value {
@@ -104,9 +123,10 @@ impl Tool for MuteAudioTool {
             "properties": {
                 "mute": {
                     "type": "boolean",
-                    "description": "True to mute, false to unmute"
+                    "description": "True to mute audio, false to unmute audio"
                 }
-            }
+            },
+            "additionalProperties": false
         })
     }
 
@@ -114,28 +134,23 @@ impl Tool for MuteAudioTool {
         PermissionTier::LowRisk
     }
 
-    async fn execute(&self, _arguments: Value) -> Result<Value> {
-        #[cfg(target_os = "windows")]
-        {
-            let ps_script = "$w=New-Object -ComObject WScript.Shell; $null=$w.SendKeys([char]173);";
-            let _ = Command::new("powershell")
-                .arg("-NoProfile")
-                .arg("-NonInteractive")
-                .arg("-Command")
-                .arg(ps_script)
-                .status();
-        }
-
-        #[cfg(target_os = "linux")]
-        {
-            let _ = Command::new("pactl")
-                .args(["set-sink-mute", "@DEFAULT_SINK@", "toggle"])
-                .status();
-        }
+    async fn execute(&self, arguments: Value) -> Result<Value> {
+        let state = if let Some(explicit_mute) = arguments.get("mute").and_then(|v| v.as_bool()) {
+            PlatformAudio::set_mute(explicit_mute)?
+        } else {
+            PlatformAudio::toggle_mute()?
+        };
 
         Ok(json!({
             "success": true,
-            "message": "Master audio mute toggled"
+            "muted": state.muted,
+            "level": state.volume_percent,
+            "backend": state.backend,
+            "message": if state.muted {
+                "Audio output muted"
+            } else {
+                "Audio output unmuted"
+            }
         }))
     }
 }

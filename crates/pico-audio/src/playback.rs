@@ -1,59 +1,146 @@
+use crate::resampler::{decode_wav_bytes_to_f32, resample_and_map_channels};
+use crate::ringbuf::{spsc_ring_buffer, SpscConsumer, SpscProducer};
 use cpal::traits::{DeviceTrait, HostTrait, StreamTrait};
-use cpal::{SampleFormat, Stream};
 use pico_core::error::{PicoError, Result};
-use std::collections::VecDeque;
-use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::{mpsc, Arc, Mutex};
-use tracing::{error, info};
+use tracing::{debug, error, info, warn};
 
-/// Thread-safe handle for enqueueing and interrupting audio playback.
+/// Thread-safe handle to the hardware playback stream.
+/// Producer serialization stays strictly off the real-time audio callback thread;
+/// the OS audio thread reads from a bounded lock-free SPSC ring buffer with zero locks/allocs.
 #[derive(Clone)]
 pub struct PlaybackHandle {
-    buffer: Arc<Mutex<VecDeque<f32>>>,
+    producer: Arc<Mutex<SpscProducer<f32>>>,
     is_playing: Arc<AtomicBool>,
+    interrupt_epoch: Arc<AtomicU64>,
+    output_sample_rate: u32,
+    output_channels: u16,
 }
 
 impl PlaybackHandle {
+    /// Creates an offline testable handle configured for an explicit target hardware format.
+    pub fn headless(output_sample_rate: u32, output_channels: u16) -> (Self, SpscConsumer<f32>) {
+        let cap = (output_sample_rate.max(8000) as usize) * (output_channels.max(1) as usize) * 10;
+        let (prod, cons) = spsc_ring_buffer::<f32>(cap);
+        let handle = Self {
+            producer: Arc::new(Mutex::new(prod)),
+            is_playing: Arc::new(AtomicBool::new(false)),
+            interrupt_epoch: Arc::new(AtomicU64::new(0)),
+            output_sample_rate: output_sample_rate.max(8000),
+            output_channels: output_channels.max(1),
+        };
+        (handle, cons)
+    }
+
+    pub fn output_sample_rate(&self) -> u32 {
+        self.output_sample_rate
+    }
+
+    pub fn output_channels(&self) -> u16 {
+        self.output_channels
+    }
+
+    /// Resamples and maps an explicit `(source_rate, source_channels)` f32 waveform to the device
+    /// hardware format, streaming into the lock-free playback ring buffer until queued or interrupted.
+    pub fn play_audio(&self, samples: &[f32], source_rate: u32, source_channels: u16) {
+        if samples.is_empty() || source_rate == 0 || source_channels == 0 {
+            return;
+        }
+        let converted = resample_and_map_channels(
+            samples,
+            source_rate,
+            source_channels,
+            self.output_sample_rate,
+            self.output_channels,
+        );
+        if converted.is_empty() {
+            return;
+        }
+        self.push_resampled_interleaved(&converted);
+    }
+
+    /// Decodes a RIFF/WAVE container explicitly (honoring its header rate/channels/bit depth)
+    /// and resamples to the actual hardware device rate before playback.
+    pub fn play_wav_bytes(&self, wav_bytes: &[u8]) -> Result<()> {
+        let (samples, src_rate, src_ch) = decode_wav_bytes_to_f32(wav_bytes)?;
+        self.play_audio(&samples, src_rate, src_ch);
+        Ok(())
+    }
+
+    /// Enqueues 16kHz signed 16-bit mono PCM samples, converting to hardware output sample rate & channels.
     pub fn play_pcm_samples(&self, samples: &[i16]) {
-        let mut q = self.buffer.lock().unwrap_or_else(|p| p.into_inner());
-        for &s in samples {
-            q.push_back(s as f32 / 32768.0);
-        }
-        self.is_playing.store(true, Ordering::Relaxed);
+        let f32_samples: Vec<f32> = samples
+            .iter()
+            .map(|&s| (s as f32 / 32768.0).clamp(-1.0, 1.0))
+            .collect();
+        self.play_audio(&f32_samples, 16_000, 1);
     }
 
+    /// Enqueues raw 16kHz 16-bit LE mono PCM bytes, OR explicitly decodes RIFF WAV if framed with WAV headers.
     pub fn play_pcm_bytes(&self, bytes: &[u8]) {
-        let mut q = self.buffer.lock().unwrap_or_else(|p| p.into_inner());
-        for chunk in bytes.as_chunks::<2>().0 {
-            let sample = i16::from_le_bytes(*chunk);
-            q.push_back(sample as f32 / 32768.0);
+        if bytes.len() >= 12 && &bytes[0..4] == b"RIFF" && &bytes[8..12] == b"WAVE" {
+            if let Err(e) = self.play_wav_bytes(bytes) {
+                warn!(error = %e, "Failed decoding WAV payload for playback");
+            }
+            return;
         }
-        self.is_playing.store(true, Ordering::Relaxed);
+        let mut samples = Vec::with_capacity(bytes.len() / 2);
+        for chunk in bytes.as_chunks::<2>().0 {
+            samples.push(i16::from_le_bytes(*chunk));
+        }
+        self.play_pcm_samples(&samples);
     }
 
+    fn push_resampled_interleaved(&self, data: &[f32]) {
+        let my_epoch = self.interrupt_epoch.load(Ordering::Acquire);
+        self.is_playing.store(true, Ordering::Release);
+
+        let mut offset = 0usize;
+        while offset < data.len() {
+            if self.interrupt_epoch.load(Ordering::Acquire) != my_epoch {
+                return;
+            }
+            let written = {
+                let guard = self.producer.lock().unwrap();
+                guard.push_slice(&data[offset..])
+            };
+            offset += written;
+            if offset < data.len() {
+                std::thread::sleep(std::time::Duration::from_millis(8));
+            }
+        }
+    }
+
+    /// Halts playback immediately using lock-free SPSC clear signaling (barge-in).
     pub fn interrupt(&self) {
-        let mut q = self.buffer.lock().unwrap_or_else(|p| p.into_inner());
-        q.clear();
-        self.is_playing.store(false, Ordering::Relaxed);
-        info!("Audio playback interrupted");
+        self.interrupt_epoch.fetch_add(1, Ordering::AcqRel);
+        if let Ok(guard) = self.producer.lock() {
+            guard.request_clear();
+        }
+        self.is_playing.store(false, Ordering::Release);
+        debug!("Playback buffer cleared immediately via barge-in interrupt");
     }
 
+    /// Returns true if audio samples remain queued or active in the hardware stream.
     pub fn is_playing(&self) -> bool {
-        self.is_playing.load(Ordering::Relaxed)
+        if let Ok(guard) = self.producer.lock() {
+            if !guard.is_empty() {
+                return true;
+            }
+        }
+        self.is_playing.load(Ordering::Acquire)
     }
 }
 
-/// Safe audio playback runner whose OS audio stream is isolated on a dedicated thread.
 pub struct AudioPlayback {
     handle: PlaybackHandle,
     _shutdown_tx: Option<mpsc::Sender<()>>,
 }
 
-// Guarantee Send and Sync since AudioPlayback holds only a thread-safe handle and channel sender
-unsafe impl Send for AudioPlayback {}
-unsafe impl Sync for AudioPlayback {}
-
 impl AudioPlayback {
+    /// Starts audio output stream on the specified or default audio device,
+    /// using the device's actual negotiated sample rate and channel count cleanly.
     pub fn start(device_name: Option<&str>) -> Result<Self> {
         let dev_name_opt = device_name.map(|s| s.to_string());
         let (init_tx, init_rx) = mpsc::channel::<Result<PlaybackHandle>>();
@@ -61,144 +148,230 @@ impl AudioPlayback {
 
         std::thread::spawn(move || {
             let host = cpal::default_host();
-            let device_res = match dev_name_opt {
-                Some(name) => {
-                    let mut found = None;
-                    if let Ok(devices) = host.output_devices() {
-                        for d in devices {
-                            if d.name().map(|n| n == name).unwrap_or(false) {
-                                found = Some(d);
-                                break;
-                            }
-                        }
-                    }
-                    found.ok_or_else(|| {
-                        PicoError::Audio(format!("Output device '{}' not found", name))
-                    })
+            let device = if let Some(ref target_name) = dev_name_opt {
+                match host.output_devices() {
+                    Ok(mut devs) => devs
+                        .find(|d| d.name().map(|n| n.contains(target_name)).unwrap_or(false))
+                        .or_else(|| host.default_output_device()),
+                    Err(_) => host.default_output_device(),
                 }
-                None => host.default_output_device().ok_or_else(|| {
-                    PicoError::Audio("No default audio output device found".to_string())
-                }),
+            } else {
+                host.default_output_device()
             };
 
-            let device = match device_res {
-                Ok(d) => d,
-                Err(e) => {
-                    let _ = init_tx.send(Err(e));
-                    return;
-                }
+            let Some(device) = device else {
+                let _ = init_tx.send(Err(PicoError::Audio(
+                    "No default audio output device found".to_string(),
+                )));
+                return;
             };
 
+            let dev_name = device.name().unwrap_or_else(|_| "Unknown".into());
             let default_config = match device.default_output_config() {
                 Ok(c) => c,
                 Err(e) => {
-                    let _ =
-                        init_tx.send(Err(PicoError::Audio(format!("Failed query config: {}", e))));
+                    let _ = init_tx.send(Err(PicoError::Audio(format!(
+                        "Failed to get output config: {}",
+                        e
+                    ))));
                     return;
                 }
             };
 
-            let channels = default_config.channels() as usize;
             let sample_format = default_config.sample_format();
+            let output_sample_rate = default_config.sample_rate().0;
+            let output_channels = default_config.channels();
+            let config: cpal::StreamConfig = default_config.into();
 
-            let buffer = Arc::new(Mutex::new(VecDeque::<f32>::with_capacity(32768)));
+            // 16-second ring buffer at negotiated hardware rate prevents overflow and zero-allocates in RT callback
+            let ring_cap = (output_sample_rate as usize * output_channels as usize * 16).max(32768);
+            let (producer, consumer) = spsc_ring_buffer::<f32>(ring_cap);
             let is_playing = Arc::new(AtomicBool::new(false));
 
-            let buf_cb = buffer.clone();
-            let playing_flag = is_playing.clone();
+            let handle = PlaybackHandle {
+                producer: Arc::new(Mutex::new(producer)),
+                is_playing: is_playing.clone(),
+                interrupt_epoch: Arc::new(AtomicU64::new(0)),
+                output_sample_rate,
+                output_channels,
+            };
 
             let err_fn = |err| {
-                error!(error = %err, "Audio playback stream error");
+                error!("Audio output stream error: {}", err);
             };
 
-            let stream_res: Result<Stream> = match sample_format {
-                SampleFormat::F32 => device
-                    .build_output_stream(
-                        &default_config.into(),
-                        move |data: &mut [f32], _| {
-                            let mut q = buf_cb.lock().unwrap_or_else(|p| p.into_inner());
-                            for frame in data.chunks_mut(channels) {
-                                let sample = q.pop_front().unwrap_or(0.0);
-                                for ch in frame.iter_mut() {
-                                    *ch = sample;
-                                }
+            let playing_flag = is_playing;
+            let stream_res = match sample_format {
+                cpal::SampleFormat::F32 => device.build_output_stream(
+                    &config,
+                    move |data: &mut [f32], _: &cpal::OutputCallbackInfo| {
+                        let popped = consumer.pop_slice(data);
+                        for slot in &mut data[popped..] {
+                            *slot = 0.0;
+                        }
+                        playing_flag.store(popped > 0 && !consumer.is_empty(), Ordering::Release);
+                    },
+                    err_fn,
+                    None,
+                ),
+                cpal::SampleFormat::I16 => device.build_output_stream(
+                    &config,
+                    move |data: &mut [i16], _: &cpal::OutputCallbackInfo| {
+                        let mut active = false;
+                        for dst in data.iter_mut() {
+                            if let Some(sample) = consumer.pop_one() {
+                                *dst = (sample.clamp(-1.0, 1.0) * 32767.0) as i16;
+                                active = true;
+                            } else {
+                                *dst = 0;
                             }
-                            playing_flag.store(!q.is_empty(), Ordering::Relaxed);
-                        },
-                        err_fn,
-                        None,
-                    )
-                    .map_err(|e| PicoError::Audio(format!("Build stream failed: {}", e))),
-                SampleFormat::I16 => device
-                    .build_output_stream(
-                        &default_config.into(),
-                        move |data: &mut [i16], _| {
-                            let mut q = buf_cb.lock().unwrap_or_else(|p| p.into_inner());
-                            for frame in data.chunks_mut(channels) {
-                                let sample = q.pop_front().unwrap_or(0.0);
-                                let i16_sample = (sample.clamp(-1.0, 1.0) * 32767.0) as i16;
-                                for ch in frame.iter_mut() {
-                                    *ch = i16_sample;
-                                }
+                        }
+                        playing_flag.store(active && !consumer.is_empty(), Ordering::Release);
+                    },
+                    err_fn,
+                    None,
+                ),
+                cpal::SampleFormat::I32 => device.build_output_stream(
+                    &config,
+                    move |data: &mut [i32], _: &cpal::OutputCallbackInfo| {
+                        let mut active = false;
+                        for dst in data.iter_mut() {
+                            if let Some(sample) = consumer.pop_one() {
+                                *dst = (sample.clamp(-1.0, 1.0) * 2_147_483_647.0) as i32;
+                                active = true;
+                            } else {
+                                *dst = 0;
                             }
-                            playing_flag.store(!q.is_empty(), Ordering::Relaxed);
-                        },
-                        err_fn,
-                        None,
-                    )
-                    .map_err(|e| PicoError::Audio(format!("Build stream failed: {}", e))),
-                other => Err(PicoError::Audio(format!("Unsupported format: {:?}", other))),
-            };
-
-            let stream = match stream_res {
-                Ok(s) => s,
-                Err(e) => {
-                    let _ = init_tx.send(Err(e));
+                        }
+                        playing_flag.store(active && !consumer.is_empty(), Ordering::Release);
+                    },
+                    err_fn,
+                    None,
+                ),
+                cpal::SampleFormat::U8 => device.build_output_stream(
+                    &config,
+                    move |data: &mut [u8], _: &cpal::OutputCallbackInfo| {
+                        let mut active = false;
+                        for dst in data.iter_mut() {
+                            if let Some(sample) = consumer.pop_one() {
+                                *dst = ((sample.clamp(-1.0, 1.0) + 1.0) * 127.5).round() as u8;
+                                active = true;
+                            } else {
+                                *dst = 128;
+                            }
+                        }
+                        playing_flag.store(active && !consumer.is_empty(), Ordering::Release);
+                    },
+                    err_fn,
+                    None,
+                ),
+                cpal::SampleFormat::U16 => device.build_output_stream(
+                    &config,
+                    move |data: &mut [u16], _: &cpal::OutputCallbackInfo| {
+                        let mut active = false;
+                        for dst in data.iter_mut() {
+                            if let Some(sample) = consumer.pop_one() {
+                                *dst = ((sample.clamp(-1.0, 1.0) + 1.0) * 32767.5).round() as u16;
+                                active = true;
+                            } else {
+                                *dst = 32768;
+                            }
+                        }
+                        playing_flag.store(active && !consumer.is_empty(), Ordering::Release);
+                    },
+                    err_fn,
+                    None,
+                ),
+                other => {
+                    let _ = init_tx.send(Err(PicoError::Audio(format!(
+                        "Unsupported audio output sample format: {:?}",
+                        other
+                    ))));
                     return;
                 }
             };
 
-            if let Err(e) = stream.play() {
-                let _ = init_tx.send(Err(PicoError::Audio(format!("Failed play stream: {}", e))));
-                return;
+            match stream_res {
+                Ok(stream) => {
+                    if let Err(e) = stream.play() {
+                        let _ = init_tx.send(Err(PicoError::Audio(format!(
+                            "Failed to play audio output stream: {}",
+                            e
+                        ))));
+                        return;
+                    }
+                    info!(
+                        device = %dev_name,
+                        sample_rate = output_sample_rate,
+                        channels = output_channels,
+                        format = ?sample_format,
+                        "Hardware audio playback initialized"
+                    );
+                    let _ = init_tx.send(Ok(handle));
+                    let _ = shutdown_rx.recv();
+                    drop(stream);
+                }
+                Err(e) => {
+                    let _ = init_tx.send(Err(PicoError::Audio(format!(
+                        "Failed to build output stream: {}",
+                        e
+                    ))));
+                }
             }
-
-            let handle = PlaybackHandle { buffer, is_playing };
-            let _ = init_tx.send(Ok(handle));
-
-            // Keep stream alive until AudioPlayback drops
-            let _ = shutdown_rx.recv();
         });
 
-        let handle = match init_rx.recv() {
-            Ok(Ok(h)) => h,
-            Ok(Err(e)) => {
-                info!(
-                    "Hardware audio playback unavailable ({}); falling back to null audio sink",
-                    e
-                );
-                PlaybackHandle {
-                    buffer: Arc::new(Mutex::new(VecDeque::new())),
-                    is_playing: Arc::new(AtomicBool::new(false)),
-                }
-            }
-            Err(_) => {
-                info!("Playback worker thread terminated; falling back to null audio sink");
-                PlaybackHandle {
-                    buffer: Arc::new(Mutex::new(VecDeque::new())),
-                    is_playing: Arc::new(AtomicBool::new(false)),
-                }
-            }
-        };
+        match init_rx.recv() {
+            Ok(Ok(handle)) => Ok(Self {
+                handle,
+                _shutdown_tx: Some(shutdown_tx),
+            }),
+            Ok(Err(e)) => Err(e),
+            Err(e) => Err(PicoError::Audio(format!(
+                "Audio playback thread terminated prematurely: {}",
+                e
+            ))),
+        }
+    }
 
-        Ok(Self {
+    /// Gracefully returns a headless non-hardware fallback handle when audio output is disabled/unavailable in tests.
+    pub fn headless() -> Self {
+        let (handle, consumer) = PlaybackHandle::headless(48_000, 2);
+        let (shutdown_tx, shutdown_rx) = mpsc::channel::<()>();
+        let playing_flag = handle.is_playing.clone();
+
+        std::thread::Builder::new()
+            .name("pico-audio-headless-drain".into())
+            .spawn(move || {
+                let mut scratch = vec![0.0f32; 1920];
+                loop {
+                    match shutdown_rx.try_recv() {
+                        Ok(_) | Err(mpsc::TryRecvError::Disconnected) => break,
+                        Err(mpsc::TryRecvError::Empty) => {}
+                    }
+                    let popped = consumer.pop_slice(&mut scratch);
+                    playing_flag.store(!consumer.is_empty(), Ordering::Release);
+                    if popped == 0 {
+                        std::thread::sleep(std::time::Duration::from_millis(10));
+                    } else {
+                        // Drain 1920 interleaved 48kHz stereo frames (~20ms) cleanly.
+                        std::thread::sleep(std::time::Duration::from_millis(15));
+                    }
+                }
+            })
+            .ok();
+
+        Self {
             handle,
             _shutdown_tx: Some(shutdown_tx),
-        })
+        }
     }
 
     pub fn handle(&self) -> PlaybackHandle {
         self.handle.clone()
+    }
+
+    pub fn play_audio(&self, samples: &[f32], source_rate: u32, source_channels: u16) {
+        self.handle.play_audio(samples, source_rate, source_channels);
     }
 
     pub fn play_pcm_samples(&self, samples: &[i16]) {
@@ -220,8 +393,7 @@ impl AudioPlayback {
 
 impl Drop for AudioPlayback {
     fn drop(&mut self) {
-        if let Some(tx) = self._shutdown_tx.take() {
-            let _ = tx.send(());
-        }
+        self.handle.interrupt();
+        self._shutdown_tx.take();
     }
 }

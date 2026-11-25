@@ -85,6 +85,32 @@ pub struct ActionDef {
     pub adapter_args: &'static str,
 }
 
+impl ActionDef {
+    /// Builds a JSON Schema object strictly validating declared tool parameters.
+    pub fn build_schema(&self) -> serde_json::Value {
+        let mut props = serde_json::Map::new();
+        let mut required = Vec::new();
+        for p in self.params {
+            props.insert(
+                p.name.to_string(),
+                serde_json::json!({
+                    "type": p.param_type,
+                    "description": p.description
+                }),
+            );
+            if p.required {
+                required.push(serde_json::Value::String(p.name.to_string()));
+            }
+        }
+        serde_json::json!({
+            "type": "object",
+            "properties": serde_json::Value::Object(props),
+            "required": required,
+            "additionalProperties": false
+        })
+    }
+}
+
 /// Category definition containing domain actions.
 #[derive(Debug, Clone, Copy)]
 pub struct CategoryDef {

@@ -10,10 +10,13 @@ pub use config::{
 };
 pub use error::{PicoError, Result};
 pub use events::PicoEvent;
-pub use session::{Message, Role, SessionId, ToolCall, ToolResult};
+pub use session::{
+    ClarificationKind, ClarificationOption, ClarificationState, Message, Role, SessionId, ToolCall,
+    ToolResult,
+};
 pub use traits::{
-    CandidateAction, CandidateScore, DecisionModel, MemoryStore, PermissionTier, SpeechRecognizer,
-    SpeechSynthesizer, Tool,
+    AudioFormat, AudioSampleEncoding, CandidateAction, CandidateScore, DecisionModel, MemoryStore,
+    PermissionTier, SpeechRecognizer, SpeechSynthesizer, SynthesizedAudio, Tool, VoiceInfo,
 };
 
 #[cfg(test)]

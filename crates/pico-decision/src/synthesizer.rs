@@ -23,42 +23,63 @@ impl ResponseSynthesizer {
                     format!("Calculated: {}", result)
                 }
             }
-            "system_info" | "sys_diagnostic" => {
+            "get_system_info" | "system_info" | "sys_diagnostic" => {
                 let os = result
                     .get("os")
                     .and_then(|v| v.as_str())
-                    .unwrap_or("Windows");
-                let cpu = result
-                    .get("cpu_usage_pct")
-                    .and_then(|v| v.as_f64())
-                    .unwrap_or(0.0);
-                let mem = result
-                    .get("memory_used_mb")
+                    .unwrap_or("Unknown OS");
+                let cores = result
+                    .get("cpu_cores")
                     .and_then(|v| v.as_u64())
                     .unwrap_or(0);
-                let mem_total = result
-                    .get("memory_total_mb")
+                let avail_mb = result
+                    .get("available_memory_mb")
                     .and_then(|v| v.as_u64())
                     .unwrap_or(0);
+                let total_mb = result
+                    .get("total_memory_mb")
+                    .or_else(|| result.get("memory_total_mb"))
+                    .and_then(|v| v.as_u64())
+                    .unwrap_or(0);
+                let battery = result.get("battery_percent").and_then(|v| v.as_u64());
 
-                if mem_total > 0 {
+                if total_mb > 0 {
+                    let bat_str = match battery {
+                        Some(b) => format!(" Battery is at {}%.", b),
+                        None => String::new(),
+                    };
                     format!(
-                        "System is running {}. CPU utilization is {:.1}%, and memory usage is {} MB of {} MB.",
-                        os, cpu, mem, mem_total
+                        "System is running {} ({} CPU cores), with {} MB free of {} MB RAM.{}",
+                        os, cores, avail_mb, total_mb, bat_str
                     )
                 } else {
                     format!("System report: {}", result)
                 }
             }
             "list_processes" | "process_list" => {
-                if let Some(arr) = result.as_array() {
-                    let count = arr.len();
-                    format!(
-                        "Found {} active processes currently running on the system.",
-                        count
-                    )
-                } else if let Some(count) = result.get("count").and_then(|v| v.as_u64()) {
-                    format!("There are {} active processes running.", count)
+                if let Some(arr) = result.get("processes").and_then(|v| v.as_array()) {
+                    let top: Vec<String> = arr
+                        .iter()
+                        .take(5)
+                        .filter_map(|p| {
+                            Some(format!(
+                                "{} ({} MB)",
+                                p.get("name")?.as_str()?,
+                                p.get("memory_mb").and_then(|m| m.as_u64()).unwrap_or(0)
+                            ))
+                        })
+                        .collect();
+                    if top.is_empty() {
+                        format!("Found {} active processes.", arr.len())
+                    } else {
+                        format!(
+                            "Listed {} processes. Top items: {}.",
+                            arr.len(),
+                            top.join(", ")
+                        )
+                    }
+                } else if let Some(arr) = result.as_array() {
+                    format!("Found {} active processes.", arr.len())
                 } else {
                     "Retrieved active process list.".to_string()
                 }
@@ -66,23 +87,70 @@ impl ResponseSynthesizer {
             "kill_process" | "process_terminate" => {
                 let pid = arguments
                     .get("pid")
+                    .or_else(|| result.get("terminated_pid"))
                     .map(|p| p.to_string())
                     .unwrap_or_default();
                 let name = arguments.get("name").and_then(|n| n.as_str()).unwrap_or("");
                 if !name.is_empty() {
-                    format!("Successfully terminated process '{}'.", name)
+                    format!("Terminated process '{}'.", name)
                 } else {
-                    format!("Successfully terminated process with PID {}.", pid)
+                    format!("Terminated process with PID {}.", pid)
                 }
             }
-            "set_volume" | "audio_volume" => {
-                let level = arguments
+            "close_application" => {
+                if let Some(msg) = result.get("message").and_then(|m| m.as_str()) {
+                    msg.to_string()
+                } else {
+                    let target = arguments
+                        .get("application")
+                        .and_then(|v| v.as_str())
+                        .unwrap_or("application");
+                    format!("Closed {}.", target)
+                }
+            }
+            "audio.set_volume" | "set_volume" | "audio_volume" => {
+                let level = result
                     .get("level")
+                    .or_else(|| arguments.get("level"))
                     .map(|v| v.to_string())
-                    .unwrap_or_else(|| "desired".into());
+                    .unwrap_or_else(|| "requested".into());
                 format!("Master audio volume set to {}%.", level)
             }
-            "set_timer" | "timer_create" => {
+            "audio.get_volume" => {
+                let level = result.get("level").map(|v| v.to_string()).unwrap_or_default();
+                let muted = result.get("muted").and_then(|v| v.as_bool()).unwrap_or(false);
+                format!(
+                    "Master volume is {}% ({}).",
+                    level,
+                    if muted { "muted" } else { "unmuted" }
+                )
+            }
+            "audio.mute" => {
+                if let Some(muted) = result.get("muted").and_then(|v| v.as_bool()) {
+                    if muted {
+                        "Audio output muted.".to_string()
+                    } else {
+                        "Audio output unmuted.".to_string()
+                    }
+                } else if let Some(msg) = result.get("message").and_then(|v| v.as_str()) {
+                    msg.to_string()
+                } else {
+                    "Updated audio mute state.".to_string()
+                }
+            }
+            "display.set_brightness" | "display.get_brightness" => {
+                if let Some(level) = result.get("level").and_then(|v| v.as_u64()) {
+                    format!("Display brightness is {}%.", level)
+                } else if let Some(msg) = result.get("message").and_then(|m| m.as_str()) {
+                    msg.to_string()
+                } else {
+                    "Display brightness updated.".to_string()
+                }
+            }
+            "manage_timer" | "set_timer" | "timer_create" => {
+                if let Some(msg) = result.get("message").and_then(|m| m.as_str()) {
+                    return msg.to_string();
+                }
                 let secs = arguments
                     .get("seconds")
                     .and_then(|v| v.as_u64())
@@ -104,41 +172,51 @@ impl ResponseSynthesizer {
                     format!("Set a timer for {} seconds for '{}'.", secs, label)
                 }
             }
-            "file_read" => {
+            "read_file" | "file_read" => {
                 if let Some(content) = result.get("content").and_then(|v| v.as_str()) {
-                    let snippet: String = content.chars().take(200).collect();
-                    if content.len() > 200 {
-                        format!("File contents: {}...", snippet)
-                    } else {
-                        format!("File contents: {}", snippet)
-                    }
+                    let normalized_snippet: String = content
+                        .split_whitespace()
+                        .collect::<Vec<_>>()
+                        .join(" ")
+                        .chars()
+                        .take(200)
+                        .collect();
+                    format!("File contents: {}", normalized_snippet)
                 } else {
                     "Read file successfully.".to_string()
                 }
             }
-            "file_write" => "File written successfully.".to_string(),
+            "write_file" | "file_write" => "File written successfully.".to_string(),
+            "search_files" => {
+                let count = result.get("count").and_then(|v| v.as_u64()).unwrap_or(0);
+                format!("Found {} matching files.", count)
+            }
             "open_application" => {
                 let target = arguments
-                    .get("target")
+                    .get("application")
+                    .or_else(|| arguments.get("target"))
                     .and_then(|v| v.as_str())
                     .unwrap_or("application");
                 format!("Opened {}.", target)
             }
-            "clipboard_set" => "Text copied to clipboard.".to_string(),
-            "clipboard_get" => {
+            "clipboard" | "clipboard_set" | "clipboard_get" => {
                 if let Some(text) = result.get("text").and_then(|v| v.as_str()) {
                     format!("Clipboard contains: '{}'", text)
+                } else if let Some(msg) = result.get("message").and_then(|m| m.as_str()) {
+                    msg.to_string()
                 } else {
-                    "Retrieved clipboard content.".to_string()
+                    "Clipboard updated.".to_string()
                 }
             }
             _ => {
-                if let Some(msg) = result.get("message").and_then(|m| m.as_str()) {
+                if let Some(err) = result.get("error").and_then(|e| e.as_str()) {
+                    format!("Action {} failed: {}", tool_name, err)
+                } else if let Some(msg) = result.get("message").and_then(|m| m.as_str()) {
                     msg.to_string()
                 } else if let Some(s) = result.as_str() {
                     s.to_string()
                 } else {
-                    format!("Action {} completed successfully.", tool_name)
+                    format!("Action {} completed.", tool_name)
                 }
             }
         }
@@ -163,10 +241,20 @@ impl ResponseSynthesizer {
             return "Goodbye! Have a productive session.".to_string();
         }
         if lower.contains("how are you") {
-            return "All local subsystems are operational and performing optimally. How can I help?".to_string();
+            return "All local subsystems are ready. How can I help?".to_string();
         }
         if lower.contains("what can you do") || lower.contains("help") {
-            return "I can monitor system diagnostics, manage processes, control audio, inspect files, evaluate mathematical expressions, manage timers, launch applications, and continuously learn from your feedback—all locally.".to_string();
+            return "I can check system specs, list or stop processes, manage volume and display brightness, search or read files, calculate math expressions, manage timers, and open or close applications, all locally.".to_string();
+        }
+
+        if lower.contains("not sure") || lower.contains("don't know") {
+            return "No problem! Let me know whenever you would like to run a tool, check system specs, calculate math, or launch an app.".to_string();
+        }
+        if lower == "cancel" || lower == "stop" {
+            return "Operation cancelled.".to_string();
+        }
+        if lower == "first" || lower == "second" || lower == "neither" || lower == "none" {
+            return "Understood. Please let me know what command you would like me to execute.".to_string();
         }
 
         match intent {
@@ -179,7 +267,12 @@ impl ResponseSynthesizer {
         }
     }
 
-    /// Generates a clarification request when candidate actions are ambiguous.
+    /// Formats an explicit, honest failure report when a tool or its verification fails.
+    pub fn format_failure(tool_name: &str, reason: &str) -> String {
+        format!("Action '{}' did not succeed: {}", tool_name, reason)
+    }
+
+    /// Generates a numbered clarification request when candidate actions are ambiguous.
     pub fn format_clarification_prompt(
         candidate_a: &str,
         score_a: f32,
@@ -187,7 +280,7 @@ impl ResponseSynthesizer {
         score_b: f32,
     ) -> String {
         format!(
-            "I found two likely actions: '{}' ({:.0}% confidence) and '{}' ({:.0}% confidence). Which one would you like me to execute?",
+            "I found two possible actions:\n1. {} ({:.0}% confidence)\n2. {} ({:.0}% confidence)\nReply with 'first', 'second', 'option 1', 'option 2', the action name, or 'cancel'.",
             candidate_a,
             score_a * 100.0,
             candidate_b,

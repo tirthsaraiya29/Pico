@@ -16,4 +16,5 @@ async-trait = { workspace = true }
 tracing = { workspace = true }
 regex = { workspace = true }
 chrono = { workspace = true }
+uuid = { workspace = true }
 reqwest = { workspace = true }

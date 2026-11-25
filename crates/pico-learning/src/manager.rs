@@ -46,13 +46,15 @@ impl LearningManager {
             config,
         };
 
-        // Initialize baseline checkpoint if none exists
+        // Initialize baseline checkpoint if none exists, evaluated genuinely rather than hardcoded 1.0
         if manager.store.get_active_checkpoint()?.is_none() {
+            let baseline_weights = RankingWeights::default();
+            let baseline_metrics = manager.evaluator.evaluate(&baseline_weights, 0.0)?;
             let initial = ModelCheckpoint {
                 version: "pico-model-v1.0.0".to_string(),
-                weights: RankingWeights::default(),
-                top1_accuracy: 1.0,
-                top3_recall: 1.0,
+                weights: baseline_weights,
+                top1_accuracy: baseline_metrics.top1_accuracy,
+                top3_recall: baseline_metrics.top3_recall,
                 created_at: Utc::now(),
                 is_active: true,
             };
@@ -77,11 +79,13 @@ impl LearningManager {
             config,
         };
 
+        let baseline_weights = RankingWeights::default();
+        let baseline_metrics = manager.evaluator.evaluate(&baseline_weights, 0.0)?;
         let initial = ModelCheckpoint {
             version: "pico-model-v1.0.0".to_string(),
-            weights: RankingWeights::default(),
-            top1_accuracy: 1.0,
-            top3_recall: 1.0,
+            weights: baseline_weights,
+            top1_accuracy: baseline_metrics.top1_accuracy,
+            top3_recall: baseline_metrics.top3_recall,
             created_at: Utc::now(),
             is_active: true,
         };

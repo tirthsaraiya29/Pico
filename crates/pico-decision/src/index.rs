@@ -21,9 +21,11 @@ pub struct ToolEntry {
 #[derive(Debug, Clone, Default)]
 pub struct ToolIndex {
     tools: Vec<ToolEntry>,
+    name_to_idx: HashMap<String, usize>,
     inverted_index: HashMap<String, Vec<(usize, u32)>>,
     category_index: HashMap<String, Vec<usize>>,
     doc_lengths: Vec<usize>,
+    total_doc_length: usize,
     avg_doc_length: f32,
 }
 
@@ -55,13 +57,20 @@ impl ToolIndex {
         self.add_entry(entry);
     }
 
-    /// Adds a tool entry directly to the index.
+    /// Adds or updates a tool entry in O(tokens) time with incremental average doc length.
     pub fn add_entry(&mut self, entry: ToolEntry) {
+        if let Some(&existing_idx) = self.name_to_idx.get(&entry.name) {
+            self.tools[existing_idx] = entry;
+            return;
+        }
+
         let idx = self.tools.len();
         let full_text = format!("{} {} {}", entry.name, entry.description, entry.category);
         let tokens = tokenize(&full_text);
+        let token_len = tokens.len();
 
-        self.doc_lengths.push(tokens.len());
+        self.doc_lengths.push(token_len);
+        self.total_doc_length += token_len;
         self.category_index
             .entry(entry.category.to_lowercase())
             .or_default()
@@ -79,17 +88,9 @@ impl ToolIndex {
                 .push((idx, count));
         }
 
+        self.name_to_idx.insert(entry.name.clone(), idx);
         self.tools.push(entry);
-        self.recompute_avg_doc_length();
-    }
-
-    fn recompute_avg_doc_length(&mut self) {
-        if self.doc_lengths.is_empty() {
-            self.avg_doc_length = 0.0;
-        } else {
-            let total: usize = self.doc_lengths.iter().sum();
-            self.avg_doc_length = total as f32 / self.doc_lengths.len() as f32;
-        }
+        self.avg_doc_length = self.total_doc_length as f32 / self.doc_lengths.len() as f32;
     }
 
     /// Returns the total number of registered tools in the index.
@@ -139,12 +140,88 @@ impl ToolIndex {
         // 2. Category bias bonus if specified
         if let Some(pref_cat) = preferred_category {
             let pref_lower = pref_cat.to_lowercase();
-            if let Some(cat_tools) = self.category_index.get(&pref_lower) {
-                for &doc_idx in cat_tools {
-                    let tool = &self.tools[doc_idx];
-                    if tool.os == "all" || tool.os == target_os {
-                        *scores.entry(doc_idx).or_insert(0.0) += 2.0;
+            let mut check_cats = vec![pref_lower.clone()];
+            if pref_lower == "application_launch"
+                || pref_lower == "app_launch"
+                || pref_lower == "application_close"
+            {
+                check_cats.push("application".into());
+                check_cats.push("app".into());
+                if pref_lower == "application_close" {
+                    check_cats.push("process".into());
+                }
+            } else if pref_lower == "filesystem_operation" {
+                check_cats.push("filesystem".into());
+                check_cats.push("fs".into());
+                check_cats.push("storage".into());
+            } else if pref_lower == "process_management" {
+                check_cats.push("process".into());
+            } else if pref_lower == "media_audio_control" {
+                check_cats.push("audio".into());
+            } else if pref_lower == "display_control" {
+                check_cats.push("display".into());
+                check_cats.push("screen".into());
+            } else if pref_lower == "system_diagnostic" {
+                check_cats.push("system".into());
+                check_cats.push("diagnostics".into());
+            } else if pref_lower == "arithmetic_computation" {
+                check_cats.push("calculator".into());
+                check_cats.push("math".into());
+            } else if pref_lower == "timer_reminder" {
+                check_cats.push("timer".into());
+                check_cats.push("scheduler".into());
+            } else if pref_lower == "power_management" {
+                check_cats.push("power".into());
+            } else if pref_lower == "clipboard_operation" {
+                check_cats.push("clipboard".into());
+            } else if pref_lower == "network_utility" {
+                check_cats.push("network".into());
+            }
+
+            for cat in check_cats {
+                if let Some(cat_tools) = self.category_index.get(&cat) {
+                    for &doc_idx in cat_tools {
+                        let tool = &self.tools[doc_idx];
+                        if tool.os == "all" || tool.os == target_os {
+                            *scores.entry(doc_idx).or_insert(0.0) += 2.5;
+                        }
                     }
+                }
+            }
+        }
+
+        // Targeted disambiguation boosts aligned with primary intent & verbs
+        let pref = preferred_category.unwrap_or("");
+        if pref == "application_launch" {
+            for (doc_idx, tool) in self.tools.iter().enumerate() {
+                if tool.name == "open_application" {
+                    *scores.entry(doc_idx).or_insert(0.0) += 6.0;
+                }
+            }
+        } else if pref == "application_close" {
+            for (doc_idx, tool) in self.tools.iter().enumerate() {
+                if tool.name == "close_application" {
+                    *scores.entry(doc_idx).or_insert(0.0) += 6.0;
+                }
+            }
+        } else if pref == "display_control" {
+            for (doc_idx, tool) in self.tools.iter().enumerate() {
+                if tool.name == "display.set_brightness" || tool.name == "display.get_brightness" {
+                    *scores.entry(doc_idx).or_insert(0.0) += 6.0;
+                }
+            }
+        }
+
+        if query_tokens.iter().any(|t| t == "mute" || t == "unmute") {
+            for (doc_idx, tool) in self.tools.iter().enumerate() {
+                if tool.name == "audio.mute" || tool.name == "mute_audio" {
+                    *scores.entry(doc_idx).or_insert(0.0) += 6.0;
+                }
+            }
+        } else if query_tokens.iter().any(|t| t == "volume" || t == "sound" || t == "loud") {
+            for (doc_idx, tool) in self.tools.iter().enumerate() {
+                if tool.name == "audio.set_volume" || tool.name == "set_master_volume" {
+                    *scores.entry(doc_idx).or_insert(0.0) += 6.0;
                 }
             }
         }
@@ -195,9 +272,9 @@ impl ToolIndex {
         candidates
     }
 
-    /// Looks up a registered tool entry by name.
+    /// Looks up a registered tool entry by name in O(1).
     pub fn get_entry(&self, name: &str) -> Option<&ToolEntry> {
-        self.tools.iter().find(|t| t.name == name)
+        self.name_to_idx.get(name).and_then(|&i| self.tools.get(i))
     }
 }
 
@@ -243,7 +320,22 @@ fn stem(word: &str) -> &str {
     w
 }
 
-/// Tokenizer: lowercases, splits on non-alphanumeric chars, filters stop-words, and produces word and stem tokens.
+fn expand_index_synonym(word: &str) -> Option<&'static str> {
+    match word {
+        "mute" | "silence" | "quiet" => Some("mute"),
+        "volume" | "sound" | "loud" | "louder" | "quieter" => Some("volume"),
+        "brightness" | "backlight" | "brighter" | "dim" | "dimmer" => Some("brightness"),
+        "close" | "quit" | "exit" | "terminate" | "kill" | "stop" => Some("terminate"),
+        "open" | "launch" | "start" | "run" => Some("launch"),
+        "calc" | "calculate" | "compute" | "math" | "evaluate" => Some("calculate"),
+        "search" | "find" | "locate" => Some("search"),
+        "specs" | "stats" | "hardware" | "diagnostics" => Some("system"),
+        _ => None,
+    }
+}
+
+/// Tokenizer: splits dotted/underscored identifiers and camelCase words, filters stop-words,
+/// and produces word, stem, and synonym tokens.
 fn tokenize(text: &str) -> Vec<String> {
     let stop_words: HashSet<&str> = [
         "a", "an", "the", "and", "or", "in", "on", "at", "to", "for", "of", "with", "by", "is",
@@ -253,16 +345,31 @@ fn tokenize(text: &str) -> Vec<String> {
     .cloned()
     .collect();
 
+    // Split camelCase boundaries cleanly without altering all-lowercase or acronyms unnecessarily
+    let mut normalized = String::with_capacity(text.len() + 8);
+    let mut prev_lower = false;
+    for ch in text.chars() {
+        if ch.is_uppercase() && prev_lower {
+            normalized.push(' ');
+        }
+        prev_lower = ch.is_lowercase();
+        normalized.push(ch.to_ascii_lowercase());
+    }
+
     let mut tokens = Vec::new();
-    for t in text
-        .to_lowercase()
-        .split(|c: char| !c.is_alphanumeric() && c != '_' && c != '.')
+    for t in normalized
+        .split(|c: char| !c.is_alphanumeric())
         .filter(|t| t.len() >= 2 && !stop_words.contains(t))
     {
         tokens.push(t.to_string());
         let s = stem(t);
         if s != t && s.len() >= 3 {
             tokens.push(s.to_string());
+        }
+        if let Some(syn) = expand_index_synonym(t) {
+            if syn != t {
+                tokens.push(syn.to_string());
+            }
         }
     }
     tokens

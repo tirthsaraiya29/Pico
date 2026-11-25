@@ -1,8 +1,4 @@
-//! Non-generative semantic embedding and vector similarity engine.
-//! Optimized for local sub-millisecond execution on Intel Core Ultra 7 CPU.
-
-use std::collections::hash_map::DefaultHasher;
-use std::hash::{Hash, Hasher};
+//! Non-generative deterministic subword hash projection similarity engine.
 
 pub const EMBEDDING_DIM: usize = 128;
 
@@ -42,7 +38,37 @@ impl EmbeddingVector {
     }
 }
 
-/// Lightweight semantic embedding model using subword n-gram hashing and dimensional projection.
+/// Deterministic 64-bit FNV-1a hasher independent of Rust stdlib SipHash stability.
+fn fnv1a_bytes(bytes: &[u8]) -> u64 {
+    let mut hash: u64 = 0xcbf29ce484222325;
+    for &b in bytes {
+        hash ^= b as u64;
+        hash = hash.wrapping_mul(0x100000001b3);
+    }
+    hash
+}
+
+/// Maps closely related action/hardware terms to canonical domain tokens so
+/// lightweight subword projection preserves intent across common phrasing shifts.
+fn expand_synonym_token(token: &str) -> Option<&'static str> {
+    match token {
+        "terminate" | "kill" | "close" | "quit" | "exit" | "end" => Some("stop_proc"),
+        "launch" | "start" | "open" | "run" => Some("open_app"),
+        "mute" | "silence" | "quiet" => Some("audio_mute"),
+        "volume" | "sound" | "loud" | "louder" | "quieter" | "audio" | "speaker" => {
+            Some("audio_level")
+        }
+        "brightness" | "backlight" | "brighter" | "dim" | "dimmer" => Some("display_bright"),
+        "calc" | "calculate" | "compute" | "math" | "evaluate" => Some("math_calc"),
+        "find" | "search" | "locate" => Some("search_find"),
+        "stats" | "specs" | "hardware" | "diagnostic" | "diagnostics" => Some("sys_info"),
+        _ => None,
+    }
+}
+
+/// Lightweight deterministic lexical + subword n-gram hash projection embedder.
+/// Not a neural Transformer; projects words, dotted/underscored segments, character 3-grams,
+/// and canonical domain tokens into a fixed L2-normalized vector.
 #[derive(Debug, Clone)]
 pub struct SemanticEmbedder {
     dimension: usize,
@@ -59,45 +85,41 @@ impl SemanticEmbedder {
         Self { dimension }
     }
 
-    /// Computes dense embedding vector for a given text snippet.
+    fn project_token(&self, vec: &mut [f32], token: &str, weight: f32) {
+        let h = fnv1a_bytes(token.as_bytes());
+        let idx = (h as usize) % self.dimension;
+        let sign = if (h & 1) == 0 { 1.0 } else { -1.0 };
+        vec[idx] += sign * weight;
+    }
+
+    /// Computes normalized projection vector for a given text snippet.
     pub fn embed(&self, text: &str) -> EmbeddingVector {
         let mut vec = vec![0.0f32; self.dimension];
         let normalized = text.to_lowercase();
         let tokens: Vec<&str> = normalized
-            .split(|c: char| !c.is_alphanumeric() && c != '_')
-            .filter(|s| !s.is_empty())
+            .split(|c: char| !c.is_alphanumeric())
+            .filter(|s| s.len() >= 2)
             .collect();
 
         if tokens.is_empty() {
             return EmbeddingVector::new(vec);
         }
 
-        for token in &tokens {
-            // Word-level hash projection
-            let mut hasher = DefaultHasher::new();
-            token.hash(&mut hasher);
-            let h = hasher.finish();
-            let idx = (h as usize) % self.dimension;
-            let sign = if (h & 1) == 0 { 1.0 } else { -1.0 };
-            vec[idx] += sign * 1.5;
+        for &token in &tokens {
+            self.project_token(&mut vec, token, 1.5);
+            if let Some(canon) = expand_synonym_token(token) {
+                self.project_token(&mut vec, canon, 1.2);
+            }
 
-            // Character 3-gram subwords for morphological semantic match
             let chars: Vec<char> = token.chars().collect();
             if chars.len() >= 3 {
                 for window in chars.windows(3) {
-                    let mut sub_hasher = DefaultHasher::new();
-                    for c in window {
-                        c.hash(&mut sub_hasher);
-                    }
-                    let sub_h = sub_hasher.finish();
-                    let sub_idx = (sub_h as usize) % self.dimension;
-                    let sub_sign = if (sub_h & 1) == 0 { 0.7 } else { -0.7 };
-                    vec[sub_idx] += sub_sign;
+                    let sub: String = window.iter().collect();
+                    self.project_token(&mut vec, &sub, 0.65);
                 }
             }
         }
 
-        // L2 Normalization
         let norm: f32 = vec.iter().map(|v| v * v).sum::<f32>().sqrt();
         if norm > 1e-12 {
             for v in &mut vec {

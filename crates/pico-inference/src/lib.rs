@@ -1,5 +1,5 @@
-//! Non-generative machine learning & ranking inference crate for Pico.
-//! Focuses on dense semantic embeddings, multi-feature cross-encoder scoring, and probability calibration.
+//! Non-generative linear ranking & probability calibration inference crate for Pico.
+//! Focuses on deterministic subword hash projections, multi-feature ranking, and Platt + softmax calibration.
 
 pub mod calibration;
 pub mod embeddings;
@@ -7,7 +7,7 @@ pub mod ranking;
 
 pub use calibration::{CalibrationMetrics, Calibrator, PlattParameters};
 pub use embeddings::{EmbeddingVector, SemanticEmbedder, EMBEDDING_DIM};
-pub use ranking::{CrossEncoderRanker, RankingWeights};
+pub use ranking::{CrossEncoderRanker, MultiFeatureRanker, RankingWeights};
 
 #[cfg(test)]
 mod tests {

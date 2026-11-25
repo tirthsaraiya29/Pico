@@ -3,7 +3,7 @@
 
 use pico_core::error::Result;
 use pico_core::traits::{CandidateAction, PermissionTier};
-use pico_inference::ranking::{CrossEncoderRanker, RankingWeights};
+use pico_inference::ranking::{MultiFeatureRanker, RankingWeights};
 use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Clone)]
@@ -45,23 +45,30 @@ impl ModelEvaluator {
         self.benchmark_dataset.len()
     }
 
-    /// Evaluates candidate weights against the held-out benchmark suite.
+    /// Evaluates candidate weights against the held-out benchmark suite without oracle label leakage.
     pub fn evaluate(
         &self,
         weights: &RankingWeights,
         baseline_top1: f32,
     ) -> Result<EvaluationMetrics> {
-        let ranker = CrossEncoderRanker::new(weights.clone());
+        let ranker = MultiFeatureRanker::new(weights.clone());
         let mut top1_correct = 0usize;
         let mut top3_correct = 0usize;
         let total = self.benchmark_dataset.len();
 
         for item in &self.benchmark_dataset {
+            let inferred_affinities: Vec<f32> = item
+                .candidate_actions
+                .iter()
+                .map(|c| infer_query_category_affinity(item.query, &c.category))
+                .collect();
+            let neutral_history = vec![0.5f32; item.candidate_actions.len()];
+
             let ranked = ranker.rank_candidates(
                 item.query,
                 &item.candidate_actions,
-                &item.intent_affinities,
-                &item.historical_scores,
+                &inferred_affinities,
+                &neutral_history,
                 1.0,
             );
 
@@ -93,10 +100,6 @@ impl ModelEvaluator {
             0.0
         };
 
-        // Promotion criterion:
-        // 1. Top-1 accuracy must not regress from baseline (> -2%)
-        // 2. Top-3 recall must be at least 80%
-        // 3. Absolute Top-1 accuracy must meet standard threshold (>= 70%)
         let passed_promotion =
             top1_accuracy >= (baseline_top1 - 0.02) && top3_recall >= 0.80 && top1_accuracy >= 0.70;
 
@@ -106,6 +109,42 @@ impl ModelEvaluator {
             total_samples: total,
             passed_promotion,
         })
+    }
+}
+
+/// Computes position-invariant domain affinity directly from query tokens and candidate category.
+fn infer_query_category_affinity(query: &str, category: &str) -> f32 {
+    let q = query.to_lowercase();
+    let cat = category.to_lowercase();
+    let matches_category = match cat.as_str() {
+        "filesystem" | "storage" | "backup" => {
+            q.contains("file") || q.contains("disk") || q.contains("directory") || q.contains("folder") || q.contains("write") || q.contains("read") || q.contains("backup") || q.contains("snapshot") || q.contains("storage")
+        }
+        "process" => q.contains("process") || q.contains("kill") || q.contains("cpu") || q.contains("ram") || q.contains("task"),
+        "system" => q.contains("system") || q.contains("os ") || q.contains("hardware") || q.contains("uptime") || q.contains("battery") || q.contains("specs"),
+        "audio" => q.contains("volume") || q.contains("mute") || q.contains("sound") || q.contains("audio") || q.contains("speaker"),
+        "power" => q.contains("sleep") || q.contains("shutdown") || q.contains("restart") || q.contains("lock") || q.contains("power") || q.contains("hibernat"),
+        "network" => q.contains("ping") || q.contains("network") || q.contains("dns") || q.contains("wifi") || q.contains("port") || q.contains("http") || q.contains("ip"),
+        "calculator" => q.contains("calculate") || q.contains("sqrt") || q.contains('*') || q.contains('+'),
+        "timer" => q.contains("timer") || q.contains("alarm") || q.contains("remind"),
+        "clipboard" => q.contains("clipboard") || q.contains("copy") || q.contains("paste"),
+        "display" => q.contains("brightness") || q.contains("screen") || q.contains("monitor") || q.contains("display"),
+        "services" => q.contains("service") || q.contains("daemon"),
+        "packages" => q.contains("package") || q.contains("install") || q.contains("upgrade"),
+        "security" => q.contains("firewall") || q.contains("defender") || q.contains("security") || q.contains("scan"),
+        "environment" => q.contains("env") || q.contains("environment") || q.contains("path variable"),
+        "logs" => q.contains("log") || q.contains("journal") || q.contains("event"),
+        "device" | "usb" => q.contains("usb") || q.contains("device") || q.contains("driver") || q.contains("printer"),
+        "app" | "application" => q.contains("open ") || q.contains("launch ") || q.contains("close "),
+        "window_mgmt" => q.contains("window") || q.contains("focus") || q.contains("minimize"),
+        "bluetooth" => q.contains("bluetooth") || q.contains("paired") || q.contains("headphones"),
+        "notifications" => q.contains("notification") || q.contains("toast"),
+        _ => false,
+    };
+    if matches_category {
+        0.95
+    } else {
+        0.15
     }
 }
 
@@ -125,9 +164,10 @@ fn build_standard_benchmark() -> Vec<BenchmarkItem> {
                      dist2: CandidateAction| BenchmarkItem {
         query: q,
         expected_action: exp,
-        candidate_actions: vec![target, dist1, dist2],
-        intent_affinities: vec![1.0, 0.1, 0.05],
-        historical_scores: vec![0.9, 0.5, 0.5],
+        // Put target in the middle so positional bias cannot inflate top-1 accuracy
+        candidate_actions: vec![dist1, target, dist2],
+        intent_affinities: vec![],
+        historical_scores: vec![],
     };
 
     vec![

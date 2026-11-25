@@ -71,8 +71,68 @@ impl Tool for CalculatorTool {
     }
 }
 
-/// Tool to set countdown timers and voice reminders.
-pub struct ManageTimerTool;
+use chrono::{DateTime, Utc};
+use std::sync::{Arc, Mutex as StdMutex};
+
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+pub struct TimerEntry {
+    pub id: String,
+    pub label: String,
+    pub duration_seconds: u64,
+    pub remaining_seconds: u64,
+    pub paused: bool,
+    pub deadline_utc: Option<DateTime<Utc>>,
+    pub created_at: DateTime<Utc>,
+}
+
+/// Thread-safe, wall-clock-backed persistent timer manager (create, list, pause, resume, cancel).
+#[derive(Debug, Default)]
+pub struct ManageTimerTool {
+    timers: Arc<StdMutex<Vec<TimerEntry>>>,
+    persist_path: Option<std::path::PathBuf>,
+}
+
+impl ManageTimerTool {
+    pub fn with_persist_path(path: impl Into<std::path::PathBuf>) -> Self {
+        let p = path.into();
+        let loaded = std::fs::read_to_string(&p)
+            .ok()
+            .and_then(|s| serde_json::from_str::<Vec<TimerEntry>>(&s).ok())
+            .unwrap_or_default();
+        Self {
+            timers: Arc::new(StdMutex::new(loaded)),
+            persist_path: Some(p),
+        }
+    }
+
+    fn save_locked(&self, list: &[TimerEntry]) {
+        if let Some(ref p) = self.persist_path {
+            if let Some(parent) = p.parent() {
+                let _ = std::fs::create_dir_all(parent);
+            }
+            if let Ok(json) = serde_json::to_string_pretty(list) {
+                let tmp = p.with_extension("json.tmp");
+                if std::fs::write(&tmp, json).is_ok() {
+                    let _ = std::fs::rename(&tmp, p);
+                }
+            }
+        }
+    }
+
+    pub fn snapshot(&self) -> Vec<TimerEntry> {
+        let now = Utc::now();
+        let mut guard = self.timers.lock().unwrap();
+        for t in guard.iter_mut() {
+            if !t.paused {
+                if let Some(deadline) = t.deadline_utc {
+                    let rem = (deadline - now).num_seconds();
+                    t.remaining_seconds = rem.max(0) as u64;
+                }
+            }
+        }
+        guard.clone()
+    }
+}
 
 #[async_trait]
 impl Tool for ManageTimerTool {
@@ -81,24 +141,28 @@ impl Tool for ManageTimerTool {
     }
 
     fn description(&self) -> &str {
-        "Sets a countdown timer or reminder for a specified number of seconds with a label."
+        "Creates, lists, pauses, resumes, or cancels persistent countdown timers and reminders."
     }
 
     fn parameters_schema(&self) -> serde_json::Value {
         json!({
             "type": "object",
             "properties": {
+                "action": {
+                    "type": "string",
+                    "enum": ["create", "list", "pause", "resume", "cancel"],
+                    "description": "Timer action (defaults to 'create')"
+                },
                 "seconds": {
                     "type": "integer",
-                    "description": "Timer duration in seconds",
+                    "description": "Timer duration in seconds (required when creating)",
                     "minimum": 1
                 },
                 "label": {
                     "type": "string",
-                    "description": "Reminder label or description"
+                    "description": "Reminder label or timer identifier"
                 }
             },
-            "required": ["seconds"],
             "additionalProperties": false
         })
     }
@@ -108,31 +172,164 @@ impl Tool for ManageTimerTool {
     }
 
     async fn execute(&self, arguments: serde_json::Value) -> Result<serde_json::Value> {
-        let seconds = arguments
-            .get("seconds")
-            .and_then(|v| v.as_u64())
-            .ok_or_else(|| PicoError::ToolExecution {
-                tool: self.name().into(),
-                message: "Missing 'seconds' argument".into(),
-            })?;
-
+        let action = arguments
+            .get("action")
+            .and_then(|v| v.as_str())
+            .unwrap_or("create");
         let label = arguments
             .get("label")
             .and_then(|v| v.as_str())
             .unwrap_or("Timer")
+            .trim()
             .to_string();
 
-        let timer_label = label.clone();
-        tokio::spawn(async move {
-            tokio::time::sleep(Duration::from_secs(seconds)).await;
-            info!(timer = %timer_label, "Timer elapsed!");
-        });
+        match action {
+            "list" => {
+                let items = self.snapshot();
+                let count = items.len();
+                Ok(json!({
+                    "action": "list",
+                    "count": count,
+                    "timers": items,
+                    "message": format!("You have {} timer(s).", count)
+                }))
+            }
+            "pause" => {
+                let now = Utc::now();
+                let mut guard = self.timers.lock().unwrap();
+                let target = guard.iter_mut().find(|t| {
+                    !t.paused
+                        && (label == "Timer"
+                            || t.label.to_lowercase().contains(&label.to_lowercase()))
+                });
+                if let Some(t) = target {
+                    if let Some(deadline) = t.deadline_utc {
+                        t.remaining_seconds = (deadline - now).num_seconds().max(0) as u64;
+                    }
+                    t.paused = true;
+                    t.deadline_utc = None;
+                    let t_label = t.label.clone();
+                    let rem = t.remaining_seconds;
+                    self.save_locked(&guard);
+                    Ok(json!({
+                        "action": "pause",
+                        "label": t_label,
+                        "remaining_seconds": rem,
+                        "message": format!("Paused timer '{}' with {} seconds remaining.", t_label, rem)
+                    }))
+                } else {
+                    Err(PicoError::NotFound("No active matching timer to pause".into()))
+                }
+            }
+            "resume" => {
+                let now = Utc::now();
+                let mut guard = self.timers.lock().unwrap();
+                let target = guard.iter_mut().find(|t| {
+                    t.paused
+                        && (label == "Timer"
+                            || t.label.to_lowercase().contains(&label.to_lowercase()))
+                });
+                if let Some(t) = target {
+                    t.paused = false;
+                    t.deadline_utc =
+                        Some(now + chrono::Duration::seconds(t.remaining_seconds as i64));
+                    let t_label = t.label.clone();
+                    let rem = t.remaining_seconds;
+                    self.save_locked(&guard);
+                    Ok(json!({
+                        "action": "resume",
+                        "label": t_label,
+                        "remaining_seconds": rem,
+                        "message": format!("Resumed timer '{}' ({} seconds remaining).", t_label, rem)
+                    }))
+                } else {
+                    Err(PicoError::NotFound("No paused matching timer to resume".into()))
+                }
+            }
+            "cancel" => {
+                let mut guard = self.timers.lock().unwrap();
+                let before = guard.len();
+                if label == "Timer" {
+                    guard.pop();
+                } else {
+                    let needle = label.to_lowercase();
+                    guard.retain(|t| !t.label.to_lowercase().contains(&needle));
+                }
+                let removed = before.saturating_sub(guard.len());
+                self.save_locked(&guard);
+                if removed == 0 {
+                    return Err(PicoError::NotFound("No matching timer found to cancel".into()));
+                }
+                Ok(json!({
+                    "action": "cancel",
+                    "removed": removed,
+                    "message": format!("Cancelled {} timer(s).", removed)
+                }))
+            }
+            _ => {
+                let seconds = arguments
+                    .get("seconds")
+                    .and_then(|v| v.as_u64())
+                    .filter(|&s| s > 0)
+                    .ok_or_else(|| PicoError::ToolExecution {
+                        tool: self.name().into(),
+                        message: "Missing positive 'seconds' argument for timer creation".into(),
+                    })?;
 
-        Ok(json!({
-            "status": "timer_started",
-            "duration_seconds": seconds,
-            "label": label
-        }))
+                let now = Utc::now();
+                let id = uuid::Uuid::new_v4().to_string();
+                let deadline = now + chrono::Duration::seconds(seconds as i64);
+                let entry = TimerEntry {
+                    id: id.clone(),
+                    label: label.clone(),
+                    duration_seconds: seconds,
+                    remaining_seconds: seconds,
+                    paused: false,
+                    deadline_utc: Some(deadline),
+                    created_at: now,
+                };
+                {
+                    let mut guard = self.timers.lock().unwrap();
+                    guard.push(entry);
+                    self.save_locked(&guard);
+                }
+
+                let timers_ref = Arc::clone(&self.timers);
+                let id_for_task = id.clone();
+                let label_for_task = label.clone();
+                tokio::spawn(async move {
+                    tokio::time::sleep(Duration::from_secs(seconds)).await;
+                    let still_active = {
+                        let mut guard = timers_ref.lock().unwrap();
+                        if let Some(pos) = guard.iter().position(|t| {
+                            t.id == id_for_task
+                                && !t.paused
+                                && t.deadline_utc
+                                    .map(|d| Utc::now() >= d - chrono::Duration::seconds(1))
+                                    .unwrap_or(false)
+                        }) {
+                            guard.remove(pos);
+                            true
+                        } else {
+                            false
+                        }
+                    };
+                    if still_active {
+                        info!(timer = %label_for_task, "Timer elapsed");
+                    }
+                });
+
+                Ok(json!({
+                    "action": "create",
+                    "status": "timer_started",
+                    "id": id,
+                    "duration_seconds": seconds,
+                    "label": label,
+                    "deadline_utc": deadline.to_rfc3339(),
+                    "message": format!("Set a timer for {} seconds ({}).", seconds, label)
+                }))
+            }
+        }
     }
 }
 
