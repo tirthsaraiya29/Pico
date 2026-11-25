@@ -170,11 +170,8 @@ impl PlatformSysInfo {
         let mut os_name = "Linux".to_string();
         if let Ok(release) = std::fs::read_to_string("/etc/os-release") {
             for line in release.lines() {
-                if line.starts_with("PRETTY_NAME=") {
-                    os_name = line
-                        .trim_start_matches("PRETTY_NAME=")
-                        .trim_matches('"')
-                        .to_string();
+                if let Some(rest) = line.strip_prefix("PRETTY_NAME=") {
+                    os_name = rest.trim_matches('"').to_string();
                     break;
                 }
             }

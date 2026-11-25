@@ -71,8 +71,9 @@ pub async fn execute_tool_adapter(
     }
 
     let timeout = match meta.latency_class {
-        LatencyClass::SubMillisecond => Duration::from_millis(2000),
-        LatencyClass::FastSync => Duration::from_millis(8000),
+        // Subprocess launch (e.g. cold PowerShell CLR startup on Windows CI) needs headroom beyond raw 2s.
+        LatencyClass::SubMillisecond => Duration::from_millis(10000),
+        LatencyClass::FastSync => Duration::from_millis(15000),
         LatencyClass::AsyncLongRunning => Duration::from_millis(30000),
     };
 
@@ -250,7 +251,6 @@ async fn execute_windows_command(
 fn validate_proc_or_sys_token(key: &str, value: &str) -> Result<()> {
     if value.is_empty()
         || value == "."
-        || value == ".."
         || value.contains('/')
         || value.contains('\\')
         || value.contains("..")

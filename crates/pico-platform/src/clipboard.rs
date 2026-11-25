@@ -45,8 +45,6 @@ impl PlatformClipboard {
 
 #[cfg(target_os = "windows")]
 mod win_clip {
-    #[cfg(not(any(target_os = "windows", target_os = "linux")))]
-    use pico_core::error::PicoError;
     use pico_core::error::{PicoError, Result};
     use windows::Win32::Foundation::{HANDLE, HGLOBAL};
     use windows::Win32::System::DataExchange::{
@@ -163,13 +161,14 @@ mod linux_clip {
     }
 
     pub fn set_text(text: &str) -> Result<()> {
-        for (bin, args) in [
-            ("wl-copy", vec![]),
-            ("xclip", vec!["-selection", "clipboard"]),
-            ("xsel", vec!["--clipboard", "--input"]),
-        ] {
+        let providers: [(&str, &[&str]); 3] = [
+            ("wl-copy", &[]),
+            ("xclip", &["-selection", "clipboard"]),
+            ("xsel", &["--clipboard", "--input"]),
+        ];
+        for (bin, args) in providers {
             if let Ok(mut child) = Command::new(bin)
-                .args(&args)
+                .args(args)
                 .stdin(Stdio::piped())
                 .stdout(Stdio::null())
                 .stderr(Stdio::null())

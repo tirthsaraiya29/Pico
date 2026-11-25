@@ -259,11 +259,13 @@ mod linux_audio {
             .status()
         {
             if st.success() {
-                return get_state().or(Ok(AudioEndpointState {
-                    volume_percent: percent,
-                    muted: false,
-                    backend: "wpctl".into(),
-                }));
+                return get_state().or_else(|_| {
+                    Ok(AudioEndpointState {
+                        volume_percent: percent,
+                        muted: false,
+                        backend: "wpctl".into(),
+                    })
+                });
             }
         }
 
@@ -276,11 +278,13 @@ mod linux_audio {
             .status()
         {
             if st.success() {
-                return get_state().or(Ok(AudioEndpointState {
-                    volume_percent: percent,
-                    muted: false,
-                    backend: "pactl".into(),
-                }));
+                return get_state().or_else(|_| {
+                    Ok(AudioEndpointState {
+                        volume_percent: percent,
+                        muted: false,
+                        backend: "pactl".into(),
+                    })
+                });
             }
         }
 
@@ -296,11 +300,13 @@ mod linux_audio {
             .status()
         {
             if st.success() {
-                return get_state().or(Ok(AudioEndpointState {
-                    volume_percent: 50,
-                    muted,
-                    backend: "wpctl".into(),
-                }));
+                return get_state().or_else(|_| {
+                    Ok(AudioEndpointState {
+                        volume_percent: 50,
+                        muted,
+                        backend: "wpctl".into(),
+                    })
+                });
             }
         }
 
@@ -310,11 +316,13 @@ mod linux_audio {
             .status()
         {
             if st.success() {
-                return get_state().or(Ok(AudioEndpointState {
-                    volume_percent: 50,
-                    muted,
-                    backend: "pactl".into(),
-                }));
+                return get_state().or_else(|_| {
+                    Ok(AudioEndpointState {
+                        volume_percent: 50,
+                        muted,
+                        backend: "pactl".into(),
+                    })
+                });
             }
         }
 

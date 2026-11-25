@@ -6,10 +6,15 @@ use pico_core::traits::{
     AudioFormat, AudioSampleEncoding, SpeechSynthesizer, SynthesizedAudio, VoiceInfo,
 };
 use regex::Regex;
+#[cfg(target_os = "windows")]
 use serde::Serialize;
-use std::io::{BufRead, BufReader, Write};
+use std::io::Write;
+#[cfg(target_os = "windows")]
+use std::io::{BufRead, BufReader};
 use std::path::{Path, PathBuf};
-use std::process::{Child, ChildStdin, ChildStdout, Command, Stdio};
+#[cfg(target_os = "windows")]
+use std::process::{Child, ChildStdin, ChildStdout};
+use std::process::{Command, Stdio};
 use std::sync::{Arc, Mutex, OnceLock};
 use tracing::{debug, info, warn};
 
@@ -195,6 +200,7 @@ pub fn encode_synthesized_to_wav(audio: &SynthesizedAudio) -> Result<Vec<u8>> {
     Ok(cursor.into_inner())
 }
 
+#[cfg(target_os = "windows")]
 #[derive(Serialize)]
 struct WindowsTtsRequest<'a> {
     text: &'a str,
@@ -425,6 +431,7 @@ impl Drop for WindowsTtsWorker {
 
 /// Cross-platform Windows WinRT OneCore + SAPI5 Speech Synthesizer.
 #[derive(Clone)]
+#[cfg_attr(not(target_os = "windows"), allow(dead_code))]
 pub struct NativeWindowsSynthesizer {
     voice_name: Option<String>,
     speech_rate: f32,

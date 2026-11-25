@@ -80,14 +80,16 @@ fn test_benchmark_latency_profile() {
         .sum::<u128>() as f64
         / 100.0;
     let avg_resample_ms = avg_resample_us / 1000.0;
+    let resample_budget_ms = if cfg!(debug_assertions) { 4.0 } else { 1.0 };
     println!(
-        "Audio Resampling (48kHz->16kHz, 20ms frame): {:.3} ms (Budget: < 1.0 ms)",
-        avg_resample_ms
+        "Audio Resampling (48kHz->16kHz, 20ms frame): {:.3} ms (Budget: < {:.1} ms)",
+        avg_resample_ms, resample_budget_ms
     );
     assert!(
-        avg_resample_ms < 1.0,
-        "Audio resampling exceeded budget: {:.3} ms",
-        avg_resample_ms
+        avg_resample_ms < resample_budget_ms,
+        "Audio resampling exceeded budget: {:.3} ms (limit {:.1} ms)",
+        avg_resample_ms,
+        resample_budget_ms
     );
 
     // 2. VAD Chunk Processing Latency (512 samples @ 16kHz)
@@ -101,14 +103,16 @@ fn test_benchmark_latency_profile() {
     }
     let avg_vad_us = vad_durations.iter().map(|d| d.as_micros()).sum::<u128>() as f64 / 500.0;
     let avg_vad_ms = avg_vad_us / 1000.0;
+    let vad_budget_ms = if cfg!(debug_assertions) { 2.0 } else { 0.5 };
     println!(
-        "VAD Processing (512 samples chunk):           {:.3} ms (Budget: < 0.5 ms)",
-        avg_vad_ms
+        "VAD Processing (512 samples chunk):           {:.3} ms (Budget: < {:.1} ms)",
+        avg_vad_ms, vad_budget_ms
     );
     assert!(
-        avg_vad_ms < 0.5,
-        "VAD processing exceeded budget: {:.3} ms",
-        avg_vad_ms
+        avg_vad_ms < vad_budget_ms,
+        "VAD processing exceeded budget: {:.3} ms (limit {:.1} ms)",
+        avg_vad_ms,
+        vad_budget_ms
     );
 
     // 3. BM25 Retrieval across curated verified host OS tools
@@ -145,14 +149,16 @@ fn test_benchmark_latency_profile() {
     }
     let avg_bm25_us = bm25_durations.iter().map(|d| d.as_micros()).sum::<u128>() as f64 / 100.0;
     let avg_bm25_ms = avg_bm25_us / 1000.0;
+    let bm25_budget_ms = if cfg!(debug_assertions) { 4.0 } else { 1.0 };
     println!(
-        "BM25 Candidate Retrieval ({} tools):       {:.3} ms (Budget: < 1.0 ms)",
-        total_indexed_tools, avg_bm25_ms
+        "BM25 Candidate Retrieval ({} tools):       {:.3} ms (Budget: < {:.1} ms)",
+        total_indexed_tools, avg_bm25_ms, bm25_budget_ms
     );
     assert!(
-        avg_bm25_ms < 1.0,
-        "BM25 retrieval exceeded budget: {:.3} ms",
-        avg_bm25_ms
+        avg_bm25_ms < bm25_budget_ms,
+        "BM25 retrieval exceeded budget: {:.3} ms (limit {:.1} ms)",
+        avg_bm25_ms,
+        bm25_budget_ms
     );
     drop(idx_read);
 
@@ -199,14 +205,16 @@ fn test_benchmark_latency_profile() {
     }
     let avg_rank_us = rank_durations.iter().map(|d| d.as_micros()).sum::<u128>() as f64 / 100.0;
     let avg_rank_ms = avg_rank_us / 1000.0;
+    let rank_budget_ms = if cfg!(debug_assertions) { 6.0 } else { 2.0 };
     println!(
-        "MultiFeature Ranking & Calibration:           {:.3} ms (Budget: < 2.0 ms)",
-        avg_rank_ms
+        "MultiFeature Ranking & Calibration:           {:.3} ms (Budget: < {:.1} ms)",
+        avg_rank_ms, rank_budget_ms
     );
     assert!(
-        avg_rank_ms < 2.0,
-        "Ranking exceeded budget: {:.3} ms",
-        avg_rank_ms
+        avg_rank_ms < rank_budget_ms,
+        "Ranking exceeded budget: {:.3} ms (limit {:.1} ms)",
+        avg_rank_ms,
+        rank_budget_ms
     );
     println!("==================================================================\n");
 }
@@ -274,14 +282,16 @@ async fn test_benchmark_e2e_decision_and_tool_latency() {
     }
     let avg_calc_us = calc_durations.iter().map(|d| d.as_micros()).sum::<u128>() as f64 / 100.0;
     let avg_calc_ms = avg_calc_us / 1000.0;
+    let calc_budget_ms = if cfg!(debug_assertions) { 4.0 } else { 1.0 };
     println!(
-        "Tool Execution: calculator (AST parser):      {:.3} ms (Budget: < 1.0 ms)",
-        avg_calc_ms
+        "Tool Execution: calculator (AST parser):      {:.3} ms (Budget: < {:.1} ms)",
+        avg_calc_ms, calc_budget_ms
     );
     assert!(
-        avg_calc_ms < 1.0,
-        "Calculator execution exceeded budget: {:.3} ms",
-        avg_calc_ms
+        avg_calc_ms < calc_budget_ms,
+        "Calculator execution exceeded budget: {:.3} ms (limit {:.1} ms)",
+        avg_calc_ms,
+        calc_budget_ms
     );
 
     // 3. Tool Execution Latency: get_system_info
@@ -296,14 +306,16 @@ async fn test_benchmark_e2e_decision_and_tool_latency() {
     }
     let avg_sys_us = sys_durations.iter().map(|d| d.as_micros()).sum::<u128>() as f64 / 20.0;
     let avg_sys_ms = avg_sys_us / 1000.0;
+    let sys_budget_ms = if cfg!(debug_assertions) { 150.0 } else { 50.0 };
     println!(
-        "Tool Execution: get_system_info:              {:.3} ms (Budget: < 50.0 ms)",
-        avg_sys_ms
+        "Tool Execution: get_system_info:              {:.3} ms (Budget: < {:.1} ms)",
+        avg_sys_ms, sys_budget_ms
     );
     assert!(
-        avg_sys_ms < 50.0,
-        "get_system_info exceeded budget: {:.3} ms",
-        avg_sys_ms
+        avg_sys_ms < sys_budget_ms,
+        "get_system_info exceeded budget: {:.3} ms (limit {:.1} ms)",
+        avg_sys_ms,
+        sys_budget_ms
     );
 
     // 4. SQLite Memory Store Read/Write Latency
@@ -332,13 +344,17 @@ async fn test_benchmark_e2e_decision_and_tool_latency() {
         .sum::<u128>() as f64
         / 50.0
         / 1000.0;
+    let mem_budget_ms = if cfg!(debug_assertions) { 25.0 } else { 5.0 };
     println!(
-        "SQLite Memory Store (Write / Read):           {:.3} ms / {:.3} ms (Budget: < 5.0 ms)",
-        avg_write_ms, avg_read_ms
+        "SQLite Memory Store (Write / Read):           {:.3} ms / {:.3} ms (Budget: < {:.1} ms)",
+        avg_write_ms, avg_read_ms, mem_budget_ms
     );
     assert!(
-        avg_write_ms < 5.0 && avg_read_ms < 5.0,
-        "SQLite memory latency exceeded budget"
+        avg_write_ms < mem_budget_ms && avg_read_ms < mem_budget_ms,
+        "SQLite memory latency exceeded budget ({:.3} ms / {:.3} ms, limit {:.1} ms)",
+        avg_write_ms,
+        avg_read_ms,
+        mem_budget_ms
     );
     println!("==================================================================\n");
 }
@@ -669,7 +685,13 @@ async fn test_benchmark_resource_profile() {
     );
 
     // Assert high throughput and modest memory bounds
-    assert!(qps > 100.0, "Throughput below target: {:.1} QPS", qps);
+    let min_qps = if cfg!(debug_assertions) { 25.0 } else { 100.0 };
+    assert!(
+        qps > min_qps,
+        "Throughput below target: {:.1} QPS (min {:.1})",
+        qps,
+        min_qps
+    );
     if final_mem > 0.0 {
         assert!(
             final_mem < 250.0,

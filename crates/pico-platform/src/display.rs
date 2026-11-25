@@ -52,8 +52,6 @@ impl PlatformDisplay {
 
 #[cfg(target_os = "windows")]
 mod win_display {
-    #[cfg(not(any(target_os = "windows", target_os = "linux")))]
-    use pico_core::error::PicoError;
     use pico_core::error::{PicoError, Result};
     use std::process::Command;
     use windows::Win32::Devices::Display::{
