@@ -94,7 +94,56 @@ pub struct StashEntry {
     pub label: String,
     pub payload: String,
     pub missing_on_disk: bool,
+    #[serde(default)]
+    pub size_bytes: Option<u64>,
+    #[serde(default)]
+    pub is_dir: bool,
     pub added_at: DateTime<Utc>,
+}
+
+impl StashEntry {
+    /// Returns a concise human-readable preview line for the companion UI.
+    pub fn preview(&self) -> String {
+        match self.kind {
+            StashKind::File => {
+                if self.missing_on_disk {
+                    "Missing on disk".into()
+                } else if self.is_dir {
+                    "Directory".into()
+                } else if let Some(bytes) = self.size_bytes {
+                    if bytes < 1024 {
+                        format!("{} B", bytes)
+                    } else if bytes < 1024 * 1024 {
+                        format!("{:.1} KB", bytes as f64 / 1024.0)
+                    } else {
+                        format!("{:.1} MB", bytes as f64 / (1024.0 * 1024.0))
+                    }
+                } else {
+                    "File".into()
+                }
+            }
+            StashKind::Url => self
+                .payload
+                .trim_start_matches("https://")
+                .trim_start_matches("http://")
+                .chars()
+                .take(44)
+                .collect(),
+            StashKind::Text => {
+                let first_line = self.payload.lines().next().unwrap_or("").trim();
+                let chars = self.payload.chars().count();
+                let snippet: String = first_line.chars().take(28).collect();
+                format!("{} chars · {}", chars, snippet)
+            }
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct StashAddOutcome {
+    pub id: String,
+    pub duplicate: bool,
+    pub truncated: bool,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -119,7 +168,7 @@ impl Default for CompanionState {
     fn default() -> Self {
         Self {
             active_tab: ActiveTab::Media,
-            compact_mode: false,
+            compact_mode: true,
             timers: Vec::new(),
             pomodoro: PomodoroState::default(),
             notes: Vec::new(),
@@ -395,10 +444,23 @@ impl CompanionState {
         });
     }
 
+    #[cfg(test)]
     pub fn add_stash_path(&mut self, path: &Path) -> String {
+        self.add_stash_path_checked(path).id
+    }
+
+    pub fn add_stash_path_checked(&mut self, path: &Path) -> StashAddOutcome {
         let payload = path.to_string_lossy().into_owned();
-        if let Some(existing) = self.stash.iter().find(|s| s.payload == payload) {
-            return existing.id.clone();
+        if let Some(pos) = self.stash.iter().position(|s| s.payload == payload) {
+            let mut item = self.stash.remove(pos);
+            item.missing_on_disk = !path.exists();
+            let id = item.id.clone();
+            self.stash.insert(0, item);
+            return StashAddOutcome {
+                id,
+                duplicate: true,
+                truncated: false,
+            };
         }
         let label = path
             .file_name()
@@ -407,7 +469,10 @@ impl CompanionState {
             .unwrap_or(&payload)
             .to_string();
         let id = self.alloc_id("stash");
-        let missing = !path.exists();
+        let meta = std::fs::metadata(path).ok();
+        let missing = meta.is_none() && !path.exists();
+        let size_bytes = meta.as_ref().filter(|m| m.is_file()).map(|m| m.len());
+        let is_dir = meta.as_ref().is_some_and(|m| m.is_dir());
         self.stash.insert(
             0,
             StashEntry {
@@ -416,30 +481,52 @@ impl CompanionState {
                 label,
                 payload,
                 missing_on_disk: missing,
+                size_bytes,
+                is_dir,
                 added_at: Utc::now(),
             },
         );
-        id
+        StashAddOutcome {
+            id,
+            duplicate: false,
+            truncated: false,
+        }
     }
 
-    pub fn add_stash_text_or_url(&mut self, raw: &str) -> Option<String> {
+    pub fn add_stash_text_or_url_checked(&mut self, raw: &str) -> Option<StashAddOutcome> {
+        const MAX_STASH_CHARS: usize = 65_536;
         let trimmed = raw.trim();
         if trimmed.is_empty() {
             return None;
         }
-        if let Some(existing) = self.stash.iter().find(|s| s.payload == trimmed) {
-            return Some(existing.id.clone());
+        let mut truncated = false;
+        let bounded: String = if trimmed.chars().count() > MAX_STASH_CHARS {
+            truncated = true;
+            trimmed.chars().take(MAX_STASH_CHARS).collect()
+        } else {
+            trimmed.to_string()
+        };
+
+        if let Some(pos) = self.stash.iter().position(|s| s.payload == bounded) {
+            let item = self.stash.remove(pos);
+            let id = item.id.clone();
+            self.stash.insert(0, item);
+            return Some(StashAddOutcome {
+                id,
+                duplicate: true,
+                truncated,
+            });
         }
-        let kind = if trimmed.starts_with("http://") || trimmed.starts_with("https://") {
+        let kind = if bounded.starts_with("http://") || bounded.starts_with("https://") {
             StashKind::Url
         } else {
-            let p = Path::new(trimmed);
+            let p = Path::new(&bounded);
             if p.exists() {
-                return Some(self.add_stash_path(p));
+                return Some(self.add_stash_path_checked(p));
             }
             StashKind::Text
         };
-        let label: String = trimmed.chars().take(48).collect();
+        let label: String = bounded.chars().take(48).collect();
         let id = self.alloc_id("stash");
         self.stash.insert(
             0,
@@ -447,12 +534,18 @@ impl CompanionState {
                 id: id.clone(),
                 kind,
                 label,
-                payload: trimmed.to_string(),
+                payload: bounded,
                 missing_on_disk: false,
+                size_bytes: None,
+                is_dir: false,
                 added_at: Utc::now(),
             },
         );
-        Some(id)
+        Some(StashAddOutcome {
+            id,
+            duplicate: false,
+            truncated,
+        })
     }
 
     /// Unlinks an entry from the Stash view ONLY (never modifies or deletes underlying disk files).
@@ -536,5 +629,32 @@ mod tests {
         );
 
         let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn test_compact_default_and_stash_dedup_and_truncation() {
+        let mut st = CompanionState::default();
+        assert!(
+            st.compact_mode,
+            "Compact mode must be the default launch state"
+        );
+
+        let out1 = st
+            .add_stash_text_or_url_checked("https://example.com/pico")
+            .unwrap();
+        assert!(!out1.duplicate);
+        assert_eq!(st.stash[0].kind, StashKind::Url);
+
+        let _ = st.add_stash_text_or_url_checked("some snippet").unwrap();
+        let dup = st
+            .add_stash_text_or_url_checked("https://example.com/pico")
+            .unwrap();
+        assert!(dup.duplicate);
+        assert_eq!(st.stash[0].id, out1.id);
+
+        let huge = "a".repeat(70_000);
+        let trunc = st.add_stash_text_or_url_checked(&huge).unwrap();
+        assert!(trunc.truncated);
+        assert!(st.stash[0].payload.chars().count() <= 65_536);
     }
 }

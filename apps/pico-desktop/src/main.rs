@@ -38,7 +38,7 @@ use winit::window::{Window, WindowAttributes, WindowId, WindowLevel};
 
 const WIN_W: i32 = 368;
 const WIN_H_FULL: i32 = 540;
-const WIN_H_COMPACT: i32 = 80;
+const WIN_H_COMPACT: i32 = 102;
 
 const C_BG: Rgb = Rgb::new(16, 19, 26);
 const C_CARD: Rgb = Rgb::new(24, 28, 38);
@@ -54,9 +54,12 @@ const C_DANGER: Rgb = Rgb::new(232, 92, 102);
 #[derive(Parser, Debug)]
 #[command(name = "pico-desktop", about = "Lightweight Pico Desktop Companion")]
 struct Args {
-    /// Launch in compact single-pill mode
+    /// Launch in compact single-pill mode (default)
     #[arg(long)]
     compact: bool,
+    /// Launch in expanded dashboard mode
+    #[arg(long)]
+    expanded: bool,
     /// Measure actual idle RSS/CPU over 2.5 seconds and exit with JSON metrics
     #[arg(long)]
     benchmark_self: bool,
@@ -73,6 +76,14 @@ enum CompanionEvent {
         stats: Option<SystemStats>,
         battery: Option<BatteryStatus>,
     },
+    PlatformActionResult {
+        message: Option<String>,
+        error: Option<String>,
+        volume: Option<u8>,
+        muted: Option<bool>,
+        clipboard_stash: Option<String>,
+        refresh_media: bool,
+    },
     DaemonSnapshotUpdated(Option<DaemonSnapshot>),
     DaemonReply {
         reply: Option<String>,
@@ -87,6 +98,7 @@ enum FocusField {
     TimerMins,
     NoteInput,
     NoteSearch,
+    StashSearch,
     AskInput,
 }
 
@@ -146,6 +158,18 @@ struct TelemetryState {
     battery: Option<BatteryStatus>,
 }
 
+enum PlatformCommand {
+    MediaPrev,
+    MediaPlayPause,
+    MediaNext,
+    SetMute(bool),
+    SetVolume(u8),
+    CopyText(String),
+    PasteClipboardToStash,
+    OpenStashPayload(String),
+    RefreshMedia,
+}
+
 enum DaemonCommand {
     Refresh,
     SubmitPrompt(String),
@@ -172,6 +196,9 @@ struct CompanionApp {
     visible: bool,
     hovered_idx: Option<usize>,
     dragging_slider: bool,
+    drag_hover_count: usize,
+    anim_height: f32,
+    anim_target_height: f32,
     cursor_pos: PhysicalPosition<f64>,
     scale_factor: f32,
     focus: FocusField,
@@ -180,6 +207,7 @@ struct CompanionApp {
     timer_mins_input: String,
     note_input: String,
     note_search: String,
+    stash_search: String,
     editing_note_id: Option<String>,
     editing_note_buf: String,
     ask_input: String,
@@ -187,6 +215,7 @@ struct CompanionApp {
     hit_boxes: Vec<HitBox>,
     visible_flag: Arc<AtomicBool>,
     daemon_tx: mpsc::Sender<DaemonCommand>,
+    platform_tx: mpsc::Sender<PlatformCommand>,
     tray_handle: Option<TrayHandle>,
     bench_started: Option<Instant>,
 }
@@ -196,13 +225,21 @@ impl CompanionApp {
         args: Args,
         visible_flag: Arc<AtomicBool>,
         daemon_tx: mpsc::Sender<DaemonCommand>,
+        platform_tx: mpsc::Sender<PlatformCommand>,
         tray_handle: Option<TrayHandle>,
     ) -> Self {
         let state_path = CompanionState::default_storage_path();
         let mut state = CompanionState::load_or_default(&state_path);
-        if args.compact {
+        if args.expanded {
+            state.compact_mode = false;
+        } else if args.compact {
             state.compact_mode = true;
         }
+        let initial_h = if state.compact_mode {
+            WIN_H_COMPACT as f32
+        } else {
+            WIN_H_FULL as f32
+        };
         let audio_state = PlatformAudio::get_state().ok();
         Self {
             args,
@@ -228,6 +265,9 @@ impl CompanionApp {
             visible: true,
             hovered_idx: None,
             dragging_slider: false,
+            drag_hover_count: 0,
+            anim_height: initial_h,
+            anim_target_height: initial_h,
             cursor_pos: PhysicalPosition::new(0.0, 0.0),
             scale_factor: 1.0,
             focus: FocusField::None,
@@ -236,6 +276,7 @@ impl CompanionApp {
             timer_mins_input: "10".into(),
             note_input: String::new(),
             note_search: String::new(),
+            stash_search: String::new(),
             editing_note_id: None,
             editing_note_buf: String::new(),
             ask_input: String::new(),
@@ -243,6 +284,7 @@ impl CompanionApp {
             hit_boxes: Vec::with_capacity(48),
             visible_flag,
             daemon_tx,
+            platform_tx,
             tray_handle,
             bench_started: None,
         }
@@ -264,9 +306,11 @@ impl CompanionApp {
         }
     }
 
-    fn sync_window_size(&self) {
+    fn sync_window_size(&mut self) {
+        self.anim_target_height = self.desired_height() as f32;
         if let Some(ref win) = self.window {
-            let _ = win.request_inner_size(LogicalSize::new(WIN_W, self.desired_height()));
+            let h = self.anim_height.round() as i32;
+            let _ = win.request_inner_size(LogicalSize::new(WIN_W, h));
             win.request_redraw();
         }
     }
@@ -285,6 +329,7 @@ impl CompanionApp {
             if self.visible {
                 win.focus_window();
                 let _ = self.daemon_tx.send(DaemonCommand::Refresh);
+                let _ = self.platform_tx.send(PlatformCommand::RefreshMedia);
                 win.request_redraw();
             }
         }
@@ -299,6 +344,7 @@ impl CompanionApp {
             FocusField::TimerMins => Some(&mut self.timer_mins_input),
             FocusField::NoteInput => Some(&mut self.note_input),
             FocusField::NoteSearch => Some(&mut self.note_search),
+            FocusField::StashSearch => Some(&mut self.stash_search),
             FocusField::AskInput => Some(&mut self.ask_input),
             FocusField::None => None,
         }
@@ -355,29 +401,46 @@ impl CompanionApp {
                 self.request_redraw();
             }
             UiAction::MediaPrev => {
-                let _ = PlatformMedia::previous_track();
+                if self.platform_tx.send(PlatformCommand::MediaPrev).is_err() {
+                    self.set_toast("Media worker unavailable");
+                    self.request_redraw();
+                }
             }
             UiAction::MediaPlayPause => {
-                let _ = PlatformMedia::toggle_play_pause();
+                if self
+                    .platform_tx
+                    .send(PlatformCommand::MediaPlayPause)
+                    .is_err()
+                {
+                    self.set_toast("Media worker unavailable");
+                    self.request_redraw();
+                }
             }
             UiAction::MediaNext => {
-                let _ = PlatformMedia::next_track();
+                if self.platform_tx.send(PlatformCommand::MediaNext).is_err() {
+                    self.set_toast("Media worker unavailable");
+                    self.request_redraw();
+                }
             }
             UiAction::ToggleMute => {
                 let next_muted = !self.telemetry.muted.unwrap_or(false);
-                if PlatformAudio::set_mute(next_muted).is_ok() {
-                    self.telemetry.muted = Some(next_muted);
+                if self
+                    .platform_tx
+                    .send(PlatformCommand::SetMute(next_muted))
+                    .is_err()
+                {
+                    self.set_toast("Audio worker unavailable");
                     self.request_redraw();
                 }
             }
             UiAction::SetVolumeRatio(r) => {
                 let vol = (r.clamp(0.0, 1.0) * 100.0).round() as u8;
-                if PlatformAudio::set_volume(vol as u32).is_ok() {
-                    self.telemetry.volume = Some(vol);
-                    if vol > 0 && self.telemetry.muted == Some(true) {
-                        let _ = PlatformAudio::set_mute(false);
-                        self.telemetry.muted = Some(false);
-                    }
+                if self
+                    .platform_tx
+                    .send(PlatformCommand::SetVolume(vol))
+                    .is_err()
+                {
+                    self.set_toast("Audio worker unavailable");
                     self.request_redraw();
                 }
             }
@@ -459,10 +522,14 @@ impl CompanionApp {
                 self.request_redraw();
             }
             UiAction::CopyText(txt) => {
-                if PlatformClipboard::set_text(&txt).is_ok() {
-                    self.set_toast("Copied to clipboard");
+                if self
+                    .platform_tx
+                    .send(PlatformCommand::CopyText(txt))
+                    .is_err()
+                {
+                    self.set_toast("Clipboard worker unavailable");
+                    self.request_redraw();
                 }
-                self.request_redraw();
             }
             UiAction::DeleteNote(id) => {
                 self.state.remove_note(&id);
@@ -494,28 +561,33 @@ impl CompanionApp {
                 self.request_redraw();
             }
             UiAction::PasteClipboardToStash => {
-                match PlatformClipboard::get_text() {
-                    Ok(txt) if !txt.trim().is_empty() => {
-                        self.state.add_stash_text_or_url(&txt);
-                        self.save_state();
-                        self.set_toast("Stashed from clipboard");
-                    }
-                    _ => self.set_toast("Clipboard has no text"),
+                if self
+                    .platform_tx
+                    .send(PlatformCommand::PasteClipboardToStash)
+                    .is_err()
+                {
+                    self.set_toast("Clipboard worker unavailable");
+                    self.request_redraw();
                 }
-                self.request_redraw();
             }
             UiAction::OpenStashPayload(payload) => {
                 if payload.starts_with("http://")
                     || payload.starts_with("https://")
                     || std::path::Path::new(&payload).exists()
                 {
-                    if let Err(e) = PlatformApps::open_application(&payload) {
-                        self.set_toast(format!("Open failed: {}", e));
+                    if self
+                        .platform_tx
+                        .send(PlatformCommand::OpenStashPayload(payload))
+                        .is_err()
+                    {
+                        self.set_toast("Launch worker unavailable");
+                        self.request_redraw();
                     }
                 } else {
+                    self.state.refresh_stash_existence();
                     self.set_toast("Item missing on disk");
+                    self.request_redraw();
                 }
-                self.request_redraw();
             }
             UiAction::DeleteStash(id) => {
                 self.state.remove_stash(&id);
@@ -688,58 +760,217 @@ impl CompanionApp {
         }
 
         if self.state.compact_mode {
-            // Compact capsule: track/timer summary + Play/Pause
-            let summary = if let Some(ref m) = self.telemetry.media {
-                format!("{} - {}", m.title, m.artist)
-            } else if self.state.pomodoro.running {
-                format!(
-                    "{}: {}",
-                    self.state.pomodoro.phase.label(),
-                    fmt_mm_ss(self.state.pomodoro.remaining_secs)
-                )
-            } else {
-                "Alt+Space to toggle  |  Expand with [+]".into()
-            };
-            let card = Rect::new(10, 42, log_w - 60, 28);
+            // Compact Nusa-style floating pill/card: prominent artwork + track/progress + media/vol/timer controls
+            let card = Rect::new(10, 40, log_w - 20, 54);
             cv.fill_rounded_gradient(
                 card,
-                8.0,
+                11.0,
                 self.active_palette.bg_left,
                 self.active_palette.bg_right,
                 1.0,
             );
-            cv.draw_text_clipped(
-                fonts,
-                &summary,
-                18,
-                49,
-                log_w - 76,
-                12.0,
-                false,
-                self.active_palette.text_primary,
-            );
-            let play_btn = Rect::new(log_w - 44, 42, 34, 28);
-            cv.fill_rounded_rect(play_btn, 8.0, C_CARD_ALT, 1.0);
-            let lbl = if self.telemetry.media.as_ref().is_some_and(|m| m.is_playing) {
-                "||"
+            let border_col = if self.drag_hover_count > 0 {
+                C_ACCENT
             } else {
-                ">"
+                C_BORDER
             };
+            cv.stroke_rounded_rect(card, 11.0, border_col, 1.0);
+
+            let has_media = self.telemetry.media.as_ref().is_some_and(|m| m.has_session);
+            let mut text_x = 18;
+            if let Some(m) = self.telemetry.media.as_ref().filter(|m| m.has_session) {
+                let art_rect = Rect::new(16, 46, 42, 42);
+                if let Some(ref bytes) = m.thumbnail_bytes {
+                    if let Some(art) = self.artwork_cache.get_or_decode(bytes) {
+                        cv.blit_rounded_rgba(art_rect, 8.0, art.width, art.height, &art.rgba);
+                    } else {
+                        cv.fill_rounded_rect(art_rect, 8.0, C_CARD_ALT, 1.0);
+                    }
+                } else {
+                    cv.fill_rounded_rect(art_rect, 8.0, C_CARD_ALT, 1.0);
+                    cv.draw_text_clipped(
+                        fonts,
+                        "♫",
+                        30,
+                        58,
+                        16,
+                        15.0,
+                        true,
+                        self.active_palette.accent,
+                    );
+                }
+                text_x = 66;
+            }
+
+            // Active timer / Pomodoro badge or track metadata
+            let primary_line = if self.drag_hover_count > 0 {
+                "Drop files to add to Stash".to_string()
+            } else if let Some(m) = self.telemetry.media.as_ref().filter(|m| m.has_session) {
+                if m.title.is_empty() {
+                    m.source_app.clone()
+                } else {
+                    m.title.clone()
+                }
+            } else if self.state.pomodoro.running {
+                format!(
+                    "{} · {}",
+                    self.state.pomodoro.phase.label(),
+                    fmt_mm_ss(self.state.pomodoro.remaining_secs)
+                )
+            } else if let Some(t) = self.state.timers.first() {
+                format!("{} · {}", t.label, fmt_mm_ss(t.remaining_secs))
+            } else {
+                "Pico Companion".to_string()
+            };
+
+            let secondary_line = if let Some(ref toast) = self.status_toast {
+                toast.0.clone()
+            } else if let Some(m) = self.telemetry.media.as_ref().filter(|m| m.has_session) {
+                if m.artist.is_empty() {
+                    m.source_app.clone()
+                } else {
+                    m.artist.clone()
+                }
+            } else if self.state.pomodoro.running || !self.state.timers.is_empty() {
+                format!("Vol {}% · Alt+Space", self.telemetry.volume.unwrap_or(50))
+            } else {
+                "Alt+Space toggle · [+] expand".to_string()
+            };
+
+            let ctrl_start_x = if has_media { log_w - 132 } else { log_w - 88 };
+            let text_w = (ctrl_start_x - text_x - 6).max(60);
             cv.draw_text_clipped(
                 fonts,
-                lbl,
-                play_btn.x + 12,
-                play_btn.y + 7,
-                16,
+                &primary_line,
+                text_x,
+                47,
+                text_w,
                 12.0,
                 true,
-                C_ACCENT,
+                self.active_palette.text_primary,
             );
-            self.hit_boxes.push(HitBox {
-                rect: play_btn,
-                action: UiAction::MediaPlayPause,
-                is_slider: false,
-            });
+            cv.draw_text_clipped(
+                fonts,
+                &secondary_line,
+                text_x,
+                63,
+                text_w,
+                10.5,
+                false,
+                if self.status_toast.is_some() {
+                    C_WARN
+                } else {
+                    self.active_palette.text_secondary
+                },
+            );
+
+            // Media progress bar (or timer progress) at bottom of compact card
+            if let Some(m) = self
+                .telemetry
+                .media
+                .as_ref()
+                .filter(|m| m.has_session && m.duration_secs > 0)
+            {
+                let prog = (m.position_secs as f32 / m.duration_secs as f32).clamp(0.0, 1.0);
+                let bar_bg = Rect::new(text_x, 82, text_w, 3);
+                let bar_fg = Rect::new(text_x, 82, ((text_w as f32) * prog).round() as i32, 3);
+                cv.fill_rounded_rect(bar_bg, 1.5, C_CARD_ALT, 0.8);
+                cv.fill_rounded_rect(bar_fg, 1.5, self.active_palette.accent, 1.0);
+            }
+
+            // Compact controls: Prev / Play-Pause / Next (when media) + Mute toggle
+            if has_media {
+                let is_playing = self.telemetry.media.as_ref().is_some_and(|m| m.is_playing);
+                for (i, (lbl, act)) in [
+                    ("<", UiAction::MediaPrev),
+                    (
+                        if is_playing { "||" } else { ">" },
+                        UiAction::MediaPlayPause,
+                    ),
+                    (">>", UiAction::MediaNext),
+                ]
+                .into_iter()
+                .enumerate()
+                {
+                    let br = Rect::new(ctrl_start_x + i as i32 * 28, 54, 24, 26);
+                    cv.fill_rounded_rect(br, 6.0, C_CARD_ALT, 0.9);
+                    cv.draw_text_clipped(
+                        fonts,
+                        lbl,
+                        br.x + if lbl.len() > 1 { 5 } else { 8 },
+                        br.y + 6,
+                        18,
+                        10.5,
+                        true,
+                        if i == 1 {
+                            self.active_palette.accent
+                        } else {
+                            C_FG
+                        },
+                    );
+                    self.hit_boxes.push(HitBox {
+                        rect: br,
+                        action: act,
+                        is_slider: false,
+                    });
+                }
+                let mute_r = Rect::new(log_w - 44, 54, 28, 26);
+                let muted = self.telemetry.muted.unwrap_or(false);
+                cv.fill_rounded_rect(mute_r, 6.0, if muted { C_WARN } else { C_CARD_ALT }, 0.9);
+                cv.draw_text_clipped(
+                    fonts,
+                    if muted { "M" } else { "V" },
+                    mute_r.x + 9,
+                    mute_r.y + 6,
+                    14,
+                    10.5,
+                    true,
+                    if muted { C_BG } else { C_MUTED },
+                );
+                self.hit_boxes.push(HitBox {
+                    rect: mute_r,
+                    action: UiAction::ToggleMute,
+                    is_slider: false,
+                });
+            } else {
+                let mute_r = Rect::new(log_w - 82, 54, 34, 26);
+                let muted = self.telemetry.muted.unwrap_or(false);
+                cv.fill_rounded_rect(mute_r, 6.0, if muted { C_WARN } else { C_CARD_ALT }, 0.9);
+                cv.draw_text_clipped(
+                    fonts,
+                    if muted { "Mute" } else { "Vol" },
+                    mute_r.x + 5,
+                    mute_r.y + 7,
+                    26,
+                    10.0,
+                    true,
+                    if muted { C_BG } else { C_MUTED },
+                );
+                self.hit_boxes.push(HitBox {
+                    rect: mute_r,
+                    action: UiAction::ToggleMute,
+                    is_slider: false,
+                });
+
+                let play_btn = Rect::new(log_w - 44, 54, 28, 26);
+                cv.fill_rounded_rect(play_btn, 6.0, C_CARD_ALT, 0.9);
+                cv.draw_text_clipped(
+                    fonts,
+                    ">",
+                    play_btn.x + 10,
+                    play_btn.y + 6,
+                    14,
+                    11.0,
+                    true,
+                    C_ACCENT,
+                );
+                self.hit_boxes.push(HitBox {
+                    rect: play_btn,
+                    action: UiAction::MediaPlayPause,
+                    is_slider: false,
+                });
+            }
+
             let _ = buffer.present();
             return;
         }
@@ -1557,25 +1788,43 @@ impl CompanionApp {
                 }
             }
             ActiveTab::Stash => {
-                let top_bar = Rect::new(10, 78, log_w - 20, 34);
-                cv.fill_rounded_rect(top_bar, 9.0, C_CARD, 1.0);
+                let search_rect = Rect::new(10, 78, log_w - 134, 32);
+                cv.fill_rounded_rect(search_rect, 8.0, C_CARD, 1.0);
+                if self.focus == FocusField::StashSearch {
+                    cv.stroke_rounded_rect(search_rect, 8.0, C_ACCENT, 1.2);
+                }
+                let search_txt = if self.stash_search.is_empty() {
+                    "Search stash or drop files..."
+                } else {
+                    self.stash_search.as_str()
+                };
                 cv.draw_text_clipped(
                     fonts,
-                    "Drop files here or paste URLs/snippets",
-                    20,
-                    88,
-                    218,
+                    search_txt,
+                    18,
+                    87,
+                    search_rect.w - 14,
                     11.5,
                     false,
-                    C_MUTED,
+                    if self.stash_search.is_empty() {
+                        C_MUTED
+                    } else {
+                        C_FG
+                    },
                 );
-                let paste_btn = Rect::new(log_w - 118, 82, 100, 26);
+                self.hit_boxes.push(HitBox {
+                    rect: search_rect,
+                    action: UiAction::Focus(FocusField::StashSearch),
+                    is_slider: false,
+                });
+
+                let paste_btn = Rect::new(log_w - 118, 81, 100, 26);
                 cv.fill_rounded_rect(paste_btn, 7.0, C_ACCENT, 1.0);
                 cv.draw_text_clipped(
                     fonts,
                     "+ Clipboard",
                     paste_btn.x + 12,
-                    89,
+                    88,
                     82,
                     11.5,
                     true,
@@ -1587,21 +1836,47 @@ impl CompanionApp {
                     is_slider: false,
                 });
 
-                if self.state.stash.is_empty() {
+                let q = self.stash_search.trim().to_lowercase();
+                let filtered: Vec<&state::StashEntry> = self
+                    .state
+                    .stash
+                    .iter()
+                    .filter(|item| {
+                        q.is_empty()
+                            || item.label.to_lowercase().contains(&q)
+                            || item.payload.to_lowercase().contains(&q)
+                    })
+                    .collect();
+
+                if filtered.is_empty() {
                     let emp = Rect::new(10, 120, log_w - 20, 370);
                     cv.fill_rounded_rect(emp, 12.0, C_CARD, 1.0);
+                    if self.drag_hover_count > 0 {
+                        cv.stroke_rounded_rect(emp, 12.0, C_ACCENT, 2.0);
+                    }
+                    let msg = if self.drag_hover_count > 0 {
+                        "Release to add dropped files to Stash"
+                    } else if self.state.stash.is_empty() {
+                        "Stash is empty. Drag files onto Pico or click '+ Clipboard'."
+                    } else {
+                        "No stash items match your search."
+                    };
                     cv.draw_text_clipped(
                         fonts,
-                        "Stash is empty. Drag files onto Pico or click '+ Clipboard'.",
+                        msg,
                         24,
                         250,
                         log_w - 48,
                         12.0,
                         false,
-                        C_MUTED,
+                        if self.drag_hover_count > 0 {
+                            C_ACCENT
+                        } else {
+                            C_MUTED
+                        },
                     );
                 } else {
-                    for (idx, item) in self.state.stash.iter().take(7).enumerate() {
+                    for (idx, item) in filtered.iter().take(7).enumerate() {
                         let y = 120 + idx as i32 * 52;
                         let r = Rect::new(10, y, log_w - 20, 46);
                         cv.fill_rounded_rect(r, 9.0, C_CARD, 1.0);
@@ -1630,15 +1905,16 @@ impl CompanionApp {
                                 C_ACCENT
                             },
                         );
+                        cv.draw_text_clipped(fonts, &item.label, 58, y + 8, 160, 11.5, true, C_FG);
                         cv.draw_text_clipped(
                             fonts,
-                            &item.label,
+                            &item.preview(),
                             58,
-                            y + 15,
+                            y + 25,
                             160,
-                            12.0,
+                            9.5,
                             false,
-                            C_FG,
+                            C_MUTED,
                         );
 
                         for (bi, (lbl, act)) in [
@@ -2021,6 +2297,43 @@ impl ApplicationHandler<CompanionEvent> for CompanionApp {
                 };
                 self.request_redraw();
             }
+            CompanionEvent::PlatformActionResult {
+                message,
+                error,
+                volume,
+                muted,
+                clipboard_stash,
+                refresh_media,
+            } => {
+                if let Some(v) = volume {
+                    self.telemetry.volume = Some(v);
+                }
+                if let Some(m) = muted {
+                    self.telemetry.muted = Some(m);
+                }
+                if let Some(txt) = clipboard_stash {
+                    if let Some(out) = self.state.add_stash_text_or_url_checked(&txt) {
+                        self.save_state();
+                        let msg = if out.duplicate {
+                            "Already in Stash (moved to top)"
+                        } else if out.truncated {
+                            "Stashed from clipboard (truncated to 64 KB)"
+                        } else {
+                            "Stashed from clipboard"
+                        };
+                        self.set_toast(msg);
+                    }
+                }
+                if let Some(err) = error {
+                    self.set_toast(err);
+                } else if let Some(msg) = message {
+                    self.set_toast(msg);
+                }
+                if refresh_media {
+                    let _ = self.platform_tx.send(PlatformCommand::RefreshMedia);
+                }
+                self.request_redraw();
+            }
             CompanionEvent::DaemonSnapshotUpdated(snap) => {
                 self.daemon_snapshot = snap;
                 self.request_redraw();
@@ -2049,15 +2362,26 @@ impl ApplicationHandler<CompanionEvent> for CompanionApp {
     ) {
         match event {
             WindowEvent::CloseRequested => self.execute_action(UiAction::CloseOrHide, event_loop),
+            WindowEvent::HoveredFile(_) => {
+                self.drag_hover_count = self.drag_hover_count.saturating_add(1);
+                self.request_redraw();
+            }
+            WindowEvent::HoveredFileCancelled => {
+                self.drag_hover_count = 0;
+                self.request_redraw();
+            }
             WindowEvent::DroppedFile(path) => {
-                self.state.add_stash_path(&path);
+                self.drag_hover_count = 0;
+                let out = self.state.add_stash_path_checked(&path);
                 self.state.active_tab = ActiveTab::Stash;
                 self.state.compact_mode = false;
                 self.save_state();
-                self.set_toast(format!(
-                    "Stashed {}",
-                    path.file_name().and_then(|n| n.to_str()).unwrap_or("file")
-                ));
+                let name = path.file_name().and_then(|n| n.to_str()).unwrap_or("file");
+                if out.duplicate {
+                    self.set_toast(format!("Already in Stash: {}", name));
+                } else {
+                    self.set_toast(format!("Stashed {}", name));
+                }
                 self.sync_window_size();
             }
             WindowEvent::CursorMoved { position, .. } => {
@@ -2248,9 +2572,22 @@ impl ApplicationHandler<CompanionEvent> for CompanionApp {
             self.request_redraw();
         }
 
-        if self.active_palette != self.target_palette {
+        let mut animating = false;
+        if (self.anim_height - self.anim_target_height).abs() > 0.5 {
+            self.anim_height += (self.anim_target_height - self.anim_height) * 0.35;
+            if (self.anim_height - self.anim_target_height).abs() <= 1.0 {
+                self.anim_height = self.anim_target_height;
+            }
+            if let Some(ref win) = self.window {
+                let _ = win
+                    .request_inner_size(LogicalSize::new(WIN_W, self.anim_height.round() as i32));
+            }
+            animating = true;
+        }
+
+        if animating || self.active_palette != self.target_palette {
             event_loop.set_control_flow(ControlFlow::WaitUntil(
-                Instant::now() + Duration::from_millis(24),
+                Instant::now() + Duration::from_millis(20),
             ));
             self.request_redraw();
         } else if self.state.has_running_clocks()
@@ -2483,6 +2820,198 @@ fn spawn_background_workers(
         .ok();
 }
 
+fn spawn_platform_action_worker(
+    proxy: EventLoopProxy<CompanionEvent>,
+    platform_rx: mpsc::Receiver<PlatformCommand>,
+) {
+    std::thread::Builder::new()
+        .name("pico-platform-actions".into())
+        .spawn(move || {
+            while let Ok(cmd) = platform_rx.recv() {
+                let ev = match cmd {
+                    PlatformCommand::MediaPrev => match PlatformMedia::previous_track() {
+                        Ok(()) => CompanionEvent::PlatformActionResult {
+                            message: None,
+                            error: None,
+                            volume: None,
+                            muted: None,
+                            clipboard_stash: None,
+                            refresh_media: true,
+                        },
+                        Err(e) => CompanionEvent::PlatformActionResult {
+                            message: None,
+                            error: Some(format!("Media prev failed: {}", e)),
+                            volume: None,
+                            muted: None,
+                            clipboard_stash: None,
+                            refresh_media: false,
+                        },
+                    },
+                    PlatformCommand::MediaPlayPause => match PlatformMedia::toggle_play_pause() {
+                        Ok(()) => CompanionEvent::PlatformActionResult {
+                            message: None,
+                            error: None,
+                            volume: None,
+                            muted: None,
+                            clipboard_stash: None,
+                            refresh_media: true,
+                        },
+                        Err(e) => CompanionEvent::PlatformActionResult {
+                            message: None,
+                            error: Some(format!("Media play/pause failed: {}", e)),
+                            volume: None,
+                            muted: None,
+                            clipboard_stash: None,
+                            refresh_media: false,
+                        },
+                    },
+                    PlatformCommand::MediaNext => match PlatformMedia::next_track() {
+                        Ok(()) => CompanionEvent::PlatformActionResult {
+                            message: None,
+                            error: None,
+                            volume: None,
+                            muted: None,
+                            clipboard_stash: None,
+                            refresh_media: true,
+                        },
+                        Err(e) => CompanionEvent::PlatformActionResult {
+                            message: None,
+                            error: Some(format!("Media next failed: {}", e)),
+                            volume: None,
+                            muted: None,
+                            clipboard_stash: None,
+                            refresh_media: false,
+                        },
+                    },
+                    PlatformCommand::SetMute(next_muted) => {
+                        match PlatformAudio::set_mute(next_muted) {
+                            Ok(state) => CompanionEvent::PlatformActionResult {
+                                message: None,
+                                error: None,
+                                volume: Some(state.volume_percent as u8),
+                                muted: Some(state.muted),
+                                clipboard_stash: None,
+                                refresh_media: false,
+                            },
+                            Err(e) => CompanionEvent::PlatformActionResult {
+                                message: None,
+                                error: Some(format!("Mute failed: {}", e)),
+                                volume: None,
+                                muted: None,
+                                clipboard_stash: None,
+                                refresh_media: false,
+                            },
+                        }
+                    }
+                    PlatformCommand::SetVolume(vol) => {
+                        match PlatformAudio::set_volume(vol as u32) {
+                            Ok(mut state) => {
+                                if vol > 0 && state.muted {
+                                    if let Ok(unmuted) = PlatformAudio::set_mute(false) {
+                                        state = unmuted;
+                                    }
+                                }
+                                CompanionEvent::PlatformActionResult {
+                                    message: None,
+                                    error: None,
+                                    volume: Some(state.volume_percent as u8),
+                                    muted: Some(state.muted),
+                                    clipboard_stash: None,
+                                    refresh_media: false,
+                                }
+                            }
+                            Err(e) => CompanionEvent::PlatformActionResult {
+                                message: None,
+                                error: Some(format!("Volume failed: {}", e)),
+                                volume: None,
+                                muted: None,
+                                clipboard_stash: None,
+                                refresh_media: false,
+                            },
+                        }
+                    }
+                    PlatformCommand::CopyText(txt) => match PlatformClipboard::set_text(&txt) {
+                        Ok(()) => CompanionEvent::PlatformActionResult {
+                            message: Some("Copied to clipboard".into()),
+                            error: None,
+                            volume: None,
+                            muted: None,
+                            clipboard_stash: None,
+                            refresh_media: false,
+                        },
+                        Err(e) => CompanionEvent::PlatformActionResult {
+                            message: None,
+                            error: Some(format!("Copy failed: {}", e)),
+                            volume: None,
+                            muted: None,
+                            clipboard_stash: None,
+                            refresh_media: false,
+                        },
+                    },
+                    PlatformCommand::PasteClipboardToStash => match PlatformClipboard::get_text() {
+                        Ok(txt) if !txt.trim().is_empty() => CompanionEvent::PlatformActionResult {
+                            message: None,
+                            error: None,
+                            volume: None,
+                            muted: None,
+                            clipboard_stash: Some(txt),
+                            refresh_media: false,
+                        },
+                        Ok(_) => CompanionEvent::PlatformActionResult {
+                            message: Some("Clipboard has no text".into()),
+                            error: None,
+                            volume: None,
+                            muted: None,
+                            clipboard_stash: None,
+                            refresh_media: false,
+                        },
+                        Err(e) => CompanionEvent::PlatformActionResult {
+                            message: None,
+                            error: Some(format!("Clipboard read failed: {}", e)),
+                            volume: None,
+                            muted: None,
+                            clipboard_stash: None,
+                            refresh_media: false,
+                        },
+                    },
+                    PlatformCommand::OpenStashPayload(payload) => {
+                        match PlatformApps::open_application(&payload) {
+                            Ok(()) => CompanionEvent::PlatformActionResult {
+                                message: None,
+                                error: None,
+                                volume: None,
+                                muted: None,
+                                clipboard_stash: None,
+                                refresh_media: false,
+                            },
+                            Err(e) => CompanionEvent::PlatformActionResult {
+                                message: None,
+                                error: Some(format!("Open failed: {}", e)),
+                                volume: None,
+                                muted: None,
+                                clipboard_stash: None,
+                                refresh_media: false,
+                            },
+                        }
+                    }
+                    PlatformCommand::RefreshMedia => {
+                        let media = PlatformMedia::current_track_cached(None);
+                        let audio = PlatformAudio::get_state().ok();
+                        CompanionEvent::TelemetryUpdated {
+                            media,
+                            volume: audio.as_ref().map(|a| a.volume_percent as u8),
+                            muted: audio.as_ref().map(|a| a.muted),
+                            stats: None,
+                            battery: None,
+                        }
+                    }
+                };
+                let _ = proxy.send_event(ev);
+            }
+        })
+        .ok();
+}
+
 fn main() -> std::result::Result<(), Box<dyn std::error::Error>> {
     let args = Args::parse();
     let event_loop = EventLoop::<CompanionEvent>::with_user_event().build()?;
@@ -2512,11 +3041,13 @@ fn main() -> std::result::Result<(), Box<dyn std::error::Error>> {
 
     let visible_flag = Arc::new(AtomicBool::new(true));
     let (daemon_tx, daemon_rx) = mpsc::channel();
+    let (platform_tx, platform_rx) = mpsc::channel();
     if !args.benchmark_self {
         spawn_background_workers(proxy.clone(), visible_flag.clone(), daemon_rx);
+        spawn_platform_action_worker(proxy.clone(), platform_rx);
     }
 
-    let mut app = CompanionApp::new(args, visible_flag, daemon_tx, tray_handle);
+    let mut app = CompanionApp::new(args, visible_flag, daemon_tx, platform_tx, tray_handle);
     event_loop.run_app(&mut app)?;
     Ok(())
 }

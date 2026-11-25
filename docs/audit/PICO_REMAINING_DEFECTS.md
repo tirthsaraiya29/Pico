@@ -45,8 +45,8 @@
 
 ## Newly Discovered / Unfinished Product Defects (Goals 3, 4, 5, 9)
 
-| ID | Location | Baseline Status | Summary |
-|---|---|---|---|
-| `NEW-001` | `apps/pico-desktop/src/state.rs:122` | Confirmed and reproduced | `CompanionState::default()` sets `compact_mode: false`, launching into the 368x540 full window instead of the intended compact Nusa-style floating companion. |
-| `NEW-002` | `apps/pico-desktop/src/main.rs:357-383` | Confirmed from source, runtime reproduction pending | `UiAction::MediaPrev`, `MediaPlayPause`, `MediaNext`, `ToggleMute`, and `SetVolumeRatio` ignore `Result` errors or swallow failures, and execute synchronous OS/WinRT/WASAPI/subprocess calls directly on the winit event/render thread. |
-| `NEW-003` | `apps/pico-desktop/src/main.rs` | Confirmed from source, runtime reproduction pending | Drag-and-drop & Stash interaction model needs verification/completion for multi-file drop, text/URL drop or documented OS limitation, drag-hover feedback, previews, search, duplicate detection, and safe handling of large/inaccessible payloads. |
+| ID | Location | Baseline Status | Current Status | Summary of Resolution |
+|---|---|---|---|---|
+| `NEW-001` | `apps/pico-desktop/src/state.rs`, `apps/pico-desktop/src/main.rs` | Confirmed and reproduced | **Fixed and regression-tested** | Set `compact_mode: true` as default launch experience (`--expanded` flag added); redesigned compact floating card (`368x102`) with prominent album art, dynamic gradient, track progress, Prev/Play-Pause/Next, mute toggle, active timer/Pomodoro badge, and smooth height animation. |
+| `NEW-002` | `apps/pico-desktop/src/main.rs` | Confirmed from source, runtime reproduction pending | **Fixed and regression-tested** | Moved all `PlatformMedia`, `PlatformAudio`, `PlatformClipboard`, and `PlatformApps` calls off the winit event thread onto `spawn_platform_action_worker`; eliminated ignored `Result` values, reporting errors via toasts and updating UI state only from actual OS readbacks. |
+| `NEW-003` | `apps/pico-desktop/src/main.rs`, `apps/pico-desktop/src/state.rs` | Confirmed from source, runtime reproduction pending | **Fixed and regression-tested** | Added `HoveredFile`/`HoveredFileCancelled` drag-hover visual feedback, multi-file drop support, stash search, size/URL/text previews, duplicate promotion, 64 KB clipboard cap, and missing-file detection. (Note: winit 0.30 `WindowEvent` exposes file drops only; plain-text/URL capture uses clipboard import.) |
