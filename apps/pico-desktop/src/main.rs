@@ -199,6 +199,8 @@ struct CompanionApp {
     drag_hover_count: usize,
     anim_height: f32,
     anim_target_height: f32,
+    last_anim_redraw: Instant,
+    last_tick_redraw: Instant,
     cursor_pos: PhysicalPosition<f64>,
     scale_factor: f32,
     focus: FocusField,
@@ -268,6 +270,8 @@ impl CompanionApp {
             drag_hover_count: 0,
             anim_height: initial_h,
             anim_target_height: initial_h,
+            last_anim_redraw: Instant::now(),
+            last_tick_redraw: Instant::now(),
             cursor_pos: PhysicalPosition::new(0.0, 0.0),
             scale_factor: 1.0,
             focus: FocusField::None,
@@ -674,24 +678,35 @@ impl CompanionApp {
             return;
         };
 
-        // Step smooth palette transition if artwork changed.
+        // Step smooth palette transition if artwork changed; snap when within 2 units per channel
+        // to avoid u8 rounding fixed-point loops that would keep animating forever.
         if self.active_palette != self.target_palette {
-            self.active_palette = ArtPalette {
-                bg_left: self
-                    .active_palette
-                    .bg_left
-                    .lerp(self.target_palette.bg_left, 0.35),
-                bg_right: self
-                    .active_palette
-                    .bg_right
-                    .lerp(self.target_palette.bg_right, 0.35),
-                accent: self
-                    .active_palette
-                    .accent
-                    .lerp(self.target_palette.accent, 0.35),
-                text_primary: self.target_palette.text_primary,
-                text_secondary: self.target_palette.text_secondary,
-            };
+            let next_left = self
+                .active_palette
+                .bg_left
+                .lerp(self.target_palette.bg_left, 0.35);
+            let next_right = self
+                .active_palette
+                .bg_right
+                .lerp(self.target_palette.bg_right, 0.35);
+            let next_accent = self
+                .active_palette
+                .accent
+                .lerp(self.target_palette.accent, 0.35);
+            let stalled = next_left == self.active_palette.bg_left
+                && next_right == self.active_palette.bg_right
+                && next_accent == self.active_palette.accent;
+            if stalled {
+                self.active_palette = self.target_palette;
+            } else {
+                self.active_palette = ArtPalette {
+                    bg_left: next_left,
+                    bg_right: next_right,
+                    accent: next_accent,
+                    text_primary: self.target_palette.text_primary,
+                    text_secondary: self.target_palette.text_secondary,
+                };
+            }
         }
 
         // Prune expired status toast cleanly.
@@ -2574,29 +2589,43 @@ impl ApplicationHandler<CompanionEvent> for CompanionApp {
 
         let mut animating = false;
         if (self.anim_height - self.anim_target_height).abs() > 0.5 {
-            self.anim_height += (self.anim_target_height - self.anim_height) * 0.35;
-            if (self.anim_height - self.anim_target_height).abs() <= 1.0 {
-                self.anim_height = self.anim_target_height;
-            }
-            if let Some(ref win) = self.window {
-                let _ = win
-                    .request_inner_size(LogicalSize::new(WIN_W, self.anim_height.round() as i32));
-            }
             animating = true;
+            if self.last_anim_redraw.elapsed() >= Duration::from_millis(20) {
+                self.anim_height += (self.anim_target_height - self.anim_height) * 0.35;
+                if (self.anim_height - self.anim_target_height).abs() <= 1.0 {
+                    self.anim_height = self.anim_target_height;
+                }
+                if let Some(ref win) = self.window {
+                    let _ = win.request_inner_size(LogicalSize::new(
+                        WIN_W,
+                        self.anim_height.round() as i32,
+                    ));
+                }
+                self.last_anim_redraw = Instant::now();
+                self.request_redraw();
+            }
         }
 
         if animating || self.active_palette != self.target_palette {
+            if self.active_palette != self.target_palette
+                && self.last_anim_redraw.elapsed() >= Duration::from_millis(20)
+            {
+                self.last_anim_redraw = Instant::now();
+                self.request_redraw();
+            }
             event_loop.set_control_flow(ControlFlow::WaitUntil(
                 Instant::now() + Duration::from_millis(20),
             ));
-            self.request_redraw();
         } else if self.state.has_running_clocks()
             || self.telemetry.media.as_ref().is_some_and(|m| m.is_playing)
         {
+            if self.last_tick_redraw.elapsed() >= Duration::from_secs(1) {
+                self.last_tick_redraw = Instant::now();
+                self.request_redraw();
+            }
             event_loop.set_control_flow(ControlFlow::WaitUntil(
-                Instant::now() + Duration::from_secs(1),
+                self.last_tick_redraw + Duration::from_secs(1),
             ));
-            self.request_redraw();
         } else if let Some((_, exp)) = self.status_toast {
             event_loop.set_control_flow(ControlFlow::WaitUntil(exp));
         } else {

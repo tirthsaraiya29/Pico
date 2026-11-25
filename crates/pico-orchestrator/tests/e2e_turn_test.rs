@@ -495,3 +495,247 @@ async fn test_e2e_session_scoped_clarification_all_paths() {
     );
     assert!(!runtime.has_pending_clarification(sid_e).await);
 }
+
+#[tokio::test]
+async fn test_e2e_clarification_edge_cases_and_failures() {
+    use pico_core::session::{
+        ClarificationKind, ClarificationOption, ClarificationState, SessionId,
+    };
+    use serde_json::json;
+
+    let mut config = PicoConfig::default();
+    config.security.allowed_directories = vec![std::path::PathBuf::from(".")];
+    config.security.audit_log_path = std::path::PathBuf::new();
+    config.memory.database_path = std::env::temp_dir().join(format!(
+        "pico_e2e_c2_{}.sqlite",
+        uuid::Uuid::new_v4().simple()
+    ));
+    config.learning.database_path = std::env::temp_dir().join(format!(
+        "pico_e2e_c2l_{}.sqlite",
+        uuid::Uuid::new_v4().simple()
+    ));
+
+    let runtime = PicoRuntime::new(config).expect("Runtime initialization failed");
+
+    let make_calc_or_sys = |sid: SessionId| {
+        ClarificationState::new(
+            sid,
+            "run quick math or specs check",
+            ClarificationKind::CandidateChoice,
+            vec![
+                ClarificationOption {
+                    action_name: "calculator".into(),
+                    description: "Evaluate mathematical expression 8 * 8".into(),
+                    probability: 0.48,
+                    selection_probability: 0.51,
+                    parameters_schema: json!({
+                        "type": "object",
+                        "properties": { "expression": { "type": "string" } },
+                        "required": ["expression"]
+                    }),
+                    pre_extracted_args: json!({ "expression": "8 * 8" }),
+                    missing_required: vec![],
+                },
+                ClarificationOption {
+                    action_name: "get_system_info".into(),
+                    description: "Read current system hardware specs".into(),
+                    probability: 0.46,
+                    selection_probability: 0.49,
+                    parameters_schema: json!({ "type": "object", "properties": {} }),
+                    pre_extracted_args: json!({}),
+                    missing_required: vec![],
+                },
+            ],
+            120,
+        )
+    };
+
+    // 1. "First", "Second", "The first one", "Option one", rephrased selection
+    for (phrase, expect_substr) in [
+        ("First", "64"),
+        ("Second", "CPU"),
+        ("The first one", "64"),
+        ("Option one", "64"),
+        ("use calculator", "64"),
+    ] {
+        let sid = SessionId::new();
+        runtime
+            .set_session_clarification(sid, Some(make_calc_or_sys(sid)))
+            .await;
+        let reply = runtime
+            .process_turn_in_session(sid, phrase, false)
+            .await
+            .unwrap();
+        assert!(
+            reply.contains(expect_substr),
+            "Phrase '{}' expected '{}', got '{}'",
+            phrase,
+            expect_substr,
+            reply
+        );
+        assert!(!runtime.has_pending_clarification(sid).await);
+    }
+
+    // 2. Selection followed by missing arguments
+    let sid_missing = SessionId::new();
+    let state_missing = ClarificationState::new(
+        sid_missing,
+        "calculate or check specs",
+        ClarificationKind::CandidateChoice,
+        vec![
+            ClarificationOption {
+                action_name: "calculator".into(),
+                description: "Evaluate math expression".into(),
+                probability: 0.48,
+                selection_probability: 0.51,
+                parameters_schema: json!({
+                    "type": "object",
+                    "properties": { "expression": { "type": "string" } },
+                    "required": ["expression"]
+                }),
+                pre_extracted_args: json!({}),
+                missing_required: vec!["expression".into()],
+            },
+            ClarificationOption {
+                action_name: "get_system_info".into(),
+                description: "Read specs".into(),
+                probability: 0.46,
+                selection_probability: 0.49,
+                parameters_schema: json!({ "type": "object", "properties": {} }),
+                pre_extracted_args: json!({}),
+                missing_required: vec![],
+            },
+        ],
+        120,
+    );
+    runtime
+        .set_session_clarification(sid_missing, Some(state_missing))
+        .await;
+    let prompt_missing = runtime
+        .process_turn_in_session(sid_missing, "the first one", false)
+        .await
+        .unwrap();
+    assert!(
+        prompt_missing.to_lowercase().contains("expression")
+            || prompt_missing.to_lowercase().contains("provide"),
+        "Expected missing-arg prompt, got: {}",
+        prompt_missing
+    );
+    let exec_missing = runtime
+        .process_turn_in_session(sid_missing, "9 * 9", false)
+        .await
+        .unwrap();
+    assert!(
+        exec_missing.contains("81"),
+        "Expected 81, got: {}",
+        exec_missing
+    );
+
+    // 3. Cancellation
+    let sid_cancel = SessionId::new();
+    runtime
+        .set_session_clarification(sid_cancel, Some(make_calc_or_sys(sid_cancel)))
+        .await;
+    let cancel_reply = runtime
+        .process_turn_in_session(sid_cancel, "cancel", false)
+        .await
+        .unwrap();
+    assert!(
+        cancel_reply.to_lowercase().contains("cancel"),
+        "Expected cancel acknowledgement, got: {}",
+        cancel_reply
+    );
+    assert!(!runtime.has_pending_clarification(sid_cancel).await);
+
+    // 4. Timeout / expired clarification
+    let sid_exp = SessionId::new();
+    let mut expired = make_calc_or_sys(sid_exp);
+    expired.expires_at = chrono::Utc::now() - chrono::Duration::seconds(5);
+    runtime
+        .set_session_clarification(sid_exp, Some(expired))
+        .await;
+    let exp_reply = runtime
+        .process_turn_in_session(sid_exp, "the first one", false)
+        .await
+        .unwrap();
+    assert!(
+        !exp_reply.contains("64"),
+        "Expired clarification must not execute"
+    );
+
+    // 5. Session reset isolation
+    let sid_old = runtime.current_session_id().await;
+    runtime
+        .set_session_clarification(sid_old, Some(make_calc_or_sys(sid_old)))
+        .await;
+    let sid_new = runtime.reset_session().await;
+    assert!(!runtime.has_pending_clarification(sid_new).await);
+
+    // 6. Candidate becoming unavailable -> must NOT report false success
+    let sid_unavail = SessionId::new();
+    let unavail_state = ClarificationState::new(
+        sid_unavail,
+        "run missing tool",
+        ClarificationKind::CandidateChoice,
+        vec![ClarificationOption {
+            action_name: "nonexistent_tool_xyz".into(),
+            description: "Removed tool".into(),
+            probability: 0.50,
+            selection_probability: 1.0,
+            parameters_schema: json!({ "type": "object", "properties": {} }),
+            pre_extracted_args: json!({}),
+            missing_required: vec![],
+        }],
+        120,
+    );
+    runtime
+        .set_session_clarification(sid_unavail, Some(unavail_state))
+        .await;
+    let unavail_reply = runtime
+        .process_turn_in_session(sid_unavail, "first", false)
+        .await
+        .unwrap();
+    assert!(
+        unavail_reply.to_lowercase().contains("not registered")
+            || unavail_reply.to_lowercase().contains("failed")
+            || unavail_reply.to_lowercase().contains("could not"),
+        "Unavailable tool must report failure, got: {}",
+        unavail_reply
+    );
+
+    // 7. Tool failing after selection (division by zero) -> no false success
+    let sid_fail = SessionId::new();
+    let fail_state = ClarificationState::new(
+        sid_fail,
+        "divide by zero",
+        ClarificationKind::CandidateChoice,
+        vec![ClarificationOption {
+            action_name: "calculator".into(),
+            description: "Divide 10 by 0".into(),
+            probability: 0.50,
+            selection_probability: 1.0,
+            parameters_schema: json!({
+                "type": "object",
+                "properties": { "expression": { "type": "string" } },
+                "required": ["expression"]
+            }),
+            pre_extracted_args: json!({ "expression": "10 / 0" }),
+            missing_required: vec![],
+        }],
+        120,
+    );
+    runtime
+        .set_session_clarification(sid_fail, Some(fail_state))
+        .await;
+    let fail_reply = runtime
+        .process_turn_in_session(sid_fail, "first", false)
+        .await
+        .unwrap();
+    assert!(
+        fail_reply.to_lowercase().contains("zero")
+            || fail_reply.to_lowercase().contains("failed")
+            || fail_reply.to_lowercase().contains("error"),
+        "Failed tool must report error, got: {}",
+        fail_reply
+    );
+}

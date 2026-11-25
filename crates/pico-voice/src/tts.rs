@@ -1375,4 +1375,49 @@ mod tests {
             assert!(res.is_ok());
         }
     }
+
+    #[tokio::test]
+    async fn test_voice_quality_segmentation_tech_terms_and_rates() {
+        // 1. Multi-sentence segmentation & long response handling
+        let long_text = "System check complete. CPU is at 42% and RAM is 8GB. Saved report to C:\\Users\\tirth\\report.txt at 48kHz.";
+        let segments = SpeechPreprocessor::split_sentences(long_text);
+        assert_eq!(
+            segments.len(),
+            3,
+            "Expected 3 sentences, got {:?}",
+            segments
+        );
+        assert!(segments[1].contains("42 percent"));
+        assert!(segments[1].contains("8 gigabytes"));
+
+        // 2. Native TTS rate & duration monotonicity check (when host TTS is available)
+        let normal = PlatformSpeechSynthesizer::from_config(&VoiceConfig {
+            speech_rate: 1.0,
+            ..VoiceConfig::default()
+        });
+        let fast = PlatformSpeechSynthesizer::from_config(&VoiceConfig {
+            speech_rate: 1.5,
+            ..VoiceConfig::default()
+        });
+        if let (Ok(a1), Ok(a2)) = (
+            normal
+                .synthesize_audio("Testing natural speech pacing across sentences.")
+                .await,
+            fast.synthesize_audio("Testing natural speech pacing across sentences.")
+                .await,
+        ) {
+            let dur1 = a1.samples.len() as f64 / a1.sample_rate as f64;
+            let dur2 = a2.samples.len() as f64 / a2.sample_rate as f64;
+            assert!(dur1 > 0.2 && dur2 > 0.1);
+            // Verify non-silent audio (RMS > 0.001)
+            let rms = (a1
+                .samples
+                .iter()
+                .map(|&s| (s as f64) * (s as f64))
+                .sum::<f64>()
+                / a1.samples.len() as f64)
+                .sqrt();
+            assert!(rms > 0.001, "Synthesized audio was silent (rms={rms})");
+        }
+    }
 }

@@ -58,7 +58,9 @@ pub fn resolve_arguments(query: &str, tool_name: &str, schema: &Value) -> Argume
     // Domain-specific extraction heuristics based on tool name and schema
     if tool_name == "calculator" || tool_name == "math_eval" || tool_name.contains("math") {
         let expr = extract_math_expression(query_clean);
-        args.insert("expression".to_string(), json!(expr));
+        if !expr.is_empty() && expr.chars().any(|c| c.is_ascii_digit()) {
+            args.insert("expression".to_string(), json!(expr));
+        }
     } else if tool_name.contains("filesystem")
         || tool_name == "read_file"
         || tool_name == "write_file"
@@ -274,7 +276,9 @@ pub fn resolve_arguments(query: &str, tool_name: &str, schema: &Value) -> Argume
                         }
                     } else if prop_name.contains("expression") {
                         let expr = extract_math_expression(query_clean);
-                        args.insert(prop_name.clone(), json!(expr));
+                        if !expr.is_empty() && expr.chars().any(|c| c.is_ascii_digit()) {
+                            args.insert(prop_name.clone(), json!(expr));
+                        }
                     } else if prop_name.contains("name") {
                         if let Some(proc_name) = extract_target_process_name(query_clean) {
                             args.insert(prop_name.clone(), json!(proc_name));
