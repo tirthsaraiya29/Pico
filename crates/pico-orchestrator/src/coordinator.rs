@@ -770,6 +770,17 @@ impl PicoRuntime {
         info!("PicoRuntime turn cancelled");
     }
 
+    /// Gracefully shuts down active turns, voice playback, and pending session clarifications.
+    pub async fn shutdown(&self) {
+        self.cancel();
+        self.clarifications.lock().await.clear();
+        let _ = self.event_tx.send(PicoEvent::StatusUpdate {
+            session_id: None,
+            status: "Runtime shutting down".into(),
+        });
+        info!("PicoRuntime shut down cleanly");
+    }
+
     pub fn voice(&self) -> &Arc<VoicePipeline> {
         &self.voice
     }

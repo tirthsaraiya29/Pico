@@ -514,11 +514,11 @@ Memory search returns unsorted concatenation or newest-first without relevance r
 
 ### BUG-084 | P3 | Confirmed | `crates/pico-core/src/error.rs`
 `PicoError` maps diverse failures (`ToolExecution`, `Security`, `Audio`, `Voice`) to string payloads without machine-readable error codes for IPC or retry classification.
+- **Status**: `Deferred` (remediated in subsequent pass; see [PICO_REMAINING_DEFECTS.md](PICO_REMAINING_DEFECTS.md))
 
 ---
 
 ## P4: Optional Improvements & Optimizations
-- **Status**: `Deferred`
 
 ### BUG-085 | P4 | Confirmed | `crates/pico-audio/src/resampler.rs`
 No fast SSE/polyphase windowed-sinc resampling filter table for 1:3 (`16k <-> 48k`) and 147:320 (`22.05k <-> 48k`) common rates.

@@ -91,7 +91,7 @@ Exhaustive prioritized backlog of genuine architectural, audio/voice, decision, 
 | IMP-051 | Bound stdout/stderr capture & surface shell wrapper warning in `ExecuteShellCommandTool` (`SEC-008`) | Prevents memory DoS & invisible shell wrapper bypass | Predictable bounded shell execution | P2 | S | - | Oversized-output command test caps output cleanly | Done (`6637207`) |
 | IMP-052 | Escape SQLite `LIKE` wildcards & offload blocking DB calls via `spawn_blocking` (`BUG-056`) | Prevents wildcard DoS and async executor stalls | Non-blocking responsive memory retrieval | P2 | S | - | Search with `%`/`_` returns literal matches only | Done (`6637207`) |
 | IMP-053 | Remove dead `unsafe impl Send / Sync` from `AudioCapture` & `AudioPlayback` | Eliminates unnecessary `unsafe` blocks cleanly | Cleaner safe Rust surface | P2 | S | - | Zero `unsafe` in `pico-audio` | Done (`4e79282`) |
-| IMP-054 | Persist `AntiPoisoningGuard` rate window cleanly & restrict `api/submit.js` CORS/IP parsing | Prevents restart rate-limit bypass & browser-origin spam | Stronger operational resilience | P3 | S | - | Rate limit verified; CORS configurable | Partial (`api/submit.js` Done in `6637207`; guard persistence Deferred) |
+| IMP-054 | Persist `AntiPoisoningGuard` rate window cleanly & restrict `api/submit.js` CORS/IP parsing | Prevents restart rate-limit bypass & browser-origin spam | Stronger operational resilience | P3 | S | - | Rate limit verified; CORS configurable | Done (`6637207`, persisted guard in `b7f1595`) |
 
 ---
 
@@ -129,18 +129,18 @@ Exhaustive prioritized backlog of genuine architectural, audio/voice, decision, 
 
 ## H. Additional Tracked Refinements (IMP-073 to IMP-100)
 
-- **IMP-073** (`P3`, `S`) [`Deferred`]: Machine-readable `PicoError::code()` enum values for clean IPC error display (`pico-core/src/error.rs`).
-- **IMP-074** (`P3`, `S`) [`Deferred`]: Truncate oversized `ToolResult` JSON before inserting into `pico_memory.sqlite` (`session.rs:130`).
-- **IMP-075** (`P3`, `S`) [`Deferred`]: Support UTF-8 aware token estimation & relevance decay weighting in `ContextBudgeter` / `MemoryManager` (`budget.rs:7`).
-- **IMP-076** (`P3`, `S`) [`Partial`]: Bound `calculator_parser` lexer token length to guard against extreme multi-megabyte arithmetic strings (`calculator_parser.rs:32`; `Parser` depth cap implemented).
+- **IMP-073** (`P3`, `S`) [`Done` (`b7f1595`)]: Machine-readable `PicoError::code()` enum values for clean IPC error display (`pico-core/src/error.rs`).
+- **IMP-074** (`P3`, `S`) [`Done` (`b7f1595`)]: Truncate oversized `ToolResult` JSON before inserting into `pico_memory.sqlite` (`session.rs`).
+- **IMP-075** (`P3`, `S`) [`Done` (`b7f1595`)]: Support UTF-8 aware token estimation & relevance decay weighting in `ContextBudgeter` / `MemoryManager` (`budget.rs`, `sqlite.rs`).
+- **IMP-076** (`P3`, `S`) [`Done` (`b7f1595`)]: Bound `calculator_parser` lexer token length to guard against extreme multi-megabyte arithmetic strings (`calculator_parser.rs`).
 - **IMP-077** (`P3`, `S`) [`Done` (`4e79282`)]: Normalize spoken arithmetic phrases (`"twenty five times four"`, `"10 percent of 250"`) before `calculator` execution (`argument.rs`).
-- **IMP-078** (`P3`, `S`) [`Partial` (`events.rs`)]: Emit `session_id` on session-bound `PicoEvent` variants (`events.rs:9-123`).
-- **IMP-079** (`P3`, `S`) [`Partial` (`registry.rs`)]: Enforce JSON Schema self-consistency check (`type == "object"`, `properties` map, valid `required`) in `ToolRegistry::register` (`registry.rs`).
-- **IMP-080** (`P3`, `S`) [`Deferred`]: Add `--json` output flag and exit-code diagnostics to `pico-cli doctor` (`apps/pico-cli/src/main.rs`).
-- **IMP-081** (`P3`, `S`) [`Deferred`]: Add multi-file batch/search depth and entry count configurability cleanly in `SearchFilesTool` (`filesystem_tools.rs`).
+- **IMP-078** (`P3`, `S`) [`Done` (`b7f1595`)]: Emit `session_id` on session-bound `PicoEvent` variants (`events.rs`).
+- **IMP-079** (`P3`, `S`) [`Done` (`b7f1595`)]: Enforce JSON Schema self-consistency check (`type == "object"`, `properties` map, valid `required`) in `ToolRegistry::register` (`registry.rs`).
+- **IMP-080** (`P3`, `S`) [`Done` (`b7f1595`)]: Add `--json` output flag and exit-code diagnostics to `pico-cli doctor` (`apps/pico-cli/src/main.rs`).
+- **IMP-081** (`P3`, `S`) [`Done` (`b7f1595`)]: Add multi-file batch/search depth and entry count configurability cleanly in `SearchFilesTool` (`filesystem_tools.rs`).
 - **IMP-082** (`P3`, `S`) [`Done` (`6637207`)]: Add explicit HTTP `User-Agent`, safe TLS defaults, and configurable request timeout on `FetchWebContentTool` (`utility_tools.rs`).
 - **IMP-083** (`P3`, `S`) [`Done` (`4e79282`)]: Guard against acoustic echo/self-transcription in `VoicePipeline` while TTS playback window closes (`pipeline.rs`).
-- **IMP-084** (`P3`, `S`) [`Partial` (`coordinator.rs`)]: Add `PicoRuntime` clean graceful shutdown method cancelling active tasks & closing voice/IPC handles (`coordinator.rs`).
+- **IMP-084** (`P3`, `S`) [`Done`]: Add `PicoRuntime` clean graceful shutdown method cancelling active tasks & closing voice/IPC handles (`coordinator.rs`).
 - **IMP-085** (`P3`, `S`) [`Done` (`4e79282`)]: Detect Windows `App Paths` registry and Start Menu `.lnk` shortcuts cleanly in native Rust (`pico-platform/src/apps.rs`).
 - **IMP-086** (`P3`, `S`) [`Done` (`4e79282`)]: Add Linux XDG `.desktop` entry parser (`Name=` / `Exec=` field stripping `%u`/`%f`) for reliable Linux app launching (`pico-platform/src/apps.rs`).
 - **IMP-087** (`P3`, `S`) [`Done` (`6637207`)]: Inspect `PingHostTool` structured metrics (`transmitted`, `received`, `avg_ms`) and fail properly on 100% loss (`network_tools.rs`).
@@ -150,7 +150,7 @@ Exhaustive prioritized backlog of genuine architectural, audio/voice, decision, 
 - **IMP-091** (`P4`, `M`) [`Done` (`4e79282`)]: Add Piper TTS auto-model discovery in `%LOCALAPPDATA%\Pico\voices` & `~/.local/share/pico/voices` (`tts.rs`).
 - **IMP-092** (`P4`, `M`) [`Done` (`4e79282`)]: Add Windows WinRT `Windows.Media.SpeechSynthesis.SpeechSynthesizer` (OneCore natural neural/modern voices like David/Zira/Mark/Heera) as primary Windows TTS before Win32 SAPI (`tts.rs`).
 - **IMP-093** (`P4`, `M`) [`Done` (`4e79282`)]: Add optional Speech Dispatcher (`spd-say` / socket) discovery alongside `espeak-ng` & `piper` on Linux (`tts.rs`).
-- **IMP-094** (`P4`, `M`) [`Deferred`]: Add multi-word stutter deduplication (`"set the set the"`) carefully bounded in `SpeechNormalizer` (`stt.rs`).
+- **IMP-094** (`P4`, `M`) [`Done` (`b7f1595`)]: Add multi-word stutter deduplication (`"set the set the"`) carefully bounded in `SpeechNormalizer` (`stt.rs`).
 - **IMP-095** (`P4`, `S`) [`Done` (`ad71cbb`)]: Deduplicate synced `site/index.html` and `docs/index.html` via check script so GitHub Pages never drifts from `site/`.
 - **IMP-096** (`P4`, `M`) [`Deferred`]: Add IPC push event streaming for live voice status (`Listening`, `Thinking`, `Clarifying`, `ConfirmationNeeded`) to the desktop companion HUD (`pico-desktop`).
 - **IMP-097** (`P4`, `S`) [`Done` (`99634e2`)]: Add companion keyboard navigation map (`Tab`, `Ctrl+1..5` tabs, `Space` media play/pause, `Esc` hide to tray).

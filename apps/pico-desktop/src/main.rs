@@ -633,21 +633,45 @@ impl CompanionApp {
                 self.request_redraw();
             }
             UiAction::ConfirmTool(req_id, approved) => {
-                let _ = self
+                if self
                     .daemon_tx
-                    .send(DaemonCommand::RespondConfirmation(req_id, approved));
-                self.request_redraw();
+                    .send(DaemonCommand::RespondConfirmation(req_id, approved))
+                    .is_err()
+                {
+                    self.set_toast("Daemon worker unavailable");
+                    self.request_redraw();
+                }
             }
             UiAction::ToggleDaemonMute => {
+                if self.daemon_snapshot.is_none() {
+                    self.set_toast("Daemon offline: run 'pico daemon'");
+                    self.request_redraw();
+                    return;
+                }
                 let cur = self
                     .daemon_snapshot
                     .as_ref()
                     .map(|s| s.voice_paused)
                     .unwrap_or(false);
-                let _ = self.daemon_tx.send(DaemonCommand::SetVoicePaused(!cur));
+                if self
+                    .daemon_tx
+                    .send(DaemonCommand::SetVoicePaused(!cur))
+                    .is_err()
+                {
+                    self.set_toast("Daemon worker unavailable");
+                    self.request_redraw();
+                }
             }
             UiAction::InterruptDaemonSpeech => {
-                let _ = self.daemon_tx.send(DaemonCommand::InterruptSpeech);
+                if self.daemon_snapshot.is_none() {
+                    self.set_toast("Daemon offline: run 'pico daemon'");
+                    self.request_redraw();
+                    return;
+                }
+                if self.daemon_tx.send(DaemonCommand::InterruptSpeech).is_err() {
+                    self.set_toast("Daemon worker unavailable");
+                    self.request_redraw();
+                }
             }
             UiAction::ClearAskHistory => {
                 self.ask_messages.clear();
@@ -2813,34 +2837,61 @@ fn spawn_background_workers(
                     }
                     Ok(DaemonCommand::RespondConfirmation(req_id, approved)) => {
                         let tok = read_ipc_token(&token_path);
-                        let _ = send_ipc_request_sync(
+                        if let Err(e) = send_ipc_request_sync(
                             &endpoint,
                             tok.as_deref(),
                             IpcRequest::RespondConfirmation {
                                 request_id: req_id,
                                 approved,
                             },
-                        );
+                        ) {
+                            let _ = proxy.send_event(CompanionEvent::PlatformActionResult {
+                                message: None,
+                                error: Some(format!("Confirmation failed: {}", e)),
+                                volume: None,
+                                muted: None,
+                                clipboard_stash: None,
+                                refresh_media: false,
+                            });
+                        }
                         let _ =
                             proxy.send_event(CompanionEvent::DaemonSnapshotUpdated(poll_refresh()));
                     }
                     Ok(DaemonCommand::SetVoicePaused(paused)) => {
                         let tok = read_ipc_token(&token_path);
-                        let _ = send_ipc_request_sync(
+                        if let Err(e) = send_ipc_request_sync(
                             &endpoint,
                             tok.as_deref(),
                             IpcRequest::SetVoicePaused { paused },
-                        );
+                        ) {
+                            let _ = proxy.send_event(CompanionEvent::PlatformActionResult {
+                                message: None,
+                                error: Some(format!("Mic toggle failed: {}", e)),
+                                volume: None,
+                                muted: None,
+                                clipboard_stash: None,
+                                refresh_media: false,
+                            });
+                        }
                         let _ =
                             proxy.send_event(CompanionEvent::DaemonSnapshotUpdated(poll_refresh()));
                     }
                     Ok(DaemonCommand::InterruptSpeech) => {
                         let tok = read_ipc_token(&token_path);
-                        let _ = send_ipc_request_sync(
+                        if let Err(e) = send_ipc_request_sync(
                             &endpoint,
                             tok.as_deref(),
                             IpcRequest::InterruptSpeech,
-                        );
+                        ) {
+                            let _ = proxy.send_event(CompanionEvent::PlatformActionResult {
+                                message: None,
+                                error: Some(format!("Stop speech failed: {}", e)),
+                                volume: None,
+                                muted: None,
+                                clipboard_stash: None,
+                                refresh_media: false,
+                            });
+                        }
                     }
                     Err(mpsc::RecvTimeoutError::Disconnected) => break,
                 }
