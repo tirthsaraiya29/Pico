@@ -1861,11 +1861,11 @@ impl CompanionApp {
                 cv.fill_rounded_rect(paste_btn, 7.0, C_ACCENT, 1.0);
                 cv.draw_text_clipped(
                     fonts,
-                    "+ Clipboard",
-                    paste_btn.x + 12,
+                    "+ Paste Text",
+                    paste_btn.x + 10,
                     88,
-                    82,
-                    11.5,
+                    84,
+                    11.0,
                     true,
                     C_BG,
                 );
@@ -1896,7 +1896,7 @@ impl CompanionApp {
                     let msg = if self.drag_hover_count > 0 {
                         "Release to add dropped files to Stash"
                     } else if self.state.stash.is_empty() {
-                        "Stash is empty. Drag files onto Pico or click '+ Clipboard'."
+                        "Drop files here, or press Ctrl+V / '+ Paste Text' for URLs & text."
                     } else {
                         "No stash items match your search."
                     };

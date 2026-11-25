@@ -18,7 +18,7 @@
 | ID | Location | Baseline Status | Current Status | Summary of Resolution |
 |---|---|---|---|---|
 | `BUG-055` | `crates/pico-memory/src/budget.rs` | Confirmed and reproduced | **Fixed and regression-tested** | Replaced byte-length estimator with Unicode/CJK/emoji/camelCase-aware `estimate_tokens`; added `budget_messages_with_report` preserving `Role::System` instructions and reporting `truncated_count` & `dropped_tokens`. |
-| `BUG-062` | `crates/pico-core/src/events.rs`, `crates/pico-orchestrator/src/coordinator.rs`, `crates/pico-voice/src/pipeline.rs` | Partially fixed | **Fixed and regression-tested** | Added `session_id: Option<SessionId>` across all session-attributable `PicoEvent` variants and `PicoEvent::session_id()` helper; wired `Some(sid)` in `PicoRuntime`. |
+| `BUG-062` | `crates/pico-core/src/events.rs`, `crates/pico-orchestrator/src/coordinator.rs`, `crates/pico-voice/src/pipeline.rs` | Partially fixed | **Fixed and regression-tested** | Added `session_id: Option<SessionId>` across all session-attributable `PicoEvent` variants and `PicoEvent::session_id()` helper; wired `Some(sid)` in `PicoRuntime` and added `speak_in_session`, `transcribe_in_session`, `interrupt_playback_in_session`, and `start_listening_in_session` in `VoicePipeline` with concurrent-session regression test. |
 
 ## Remaining P3 Defects
 

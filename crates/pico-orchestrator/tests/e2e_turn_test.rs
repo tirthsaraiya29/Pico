@@ -739,3 +739,54 @@ async fn test_e2e_clarification_edge_cases_and_failures() {
         fail_reply
     );
 }
+
+#[tokio::test]
+async fn test_e2e_runtime_shutdown_idempotent_and_clears_active_state() {
+    use pico_core::session::{
+        ClarificationKind, ClarificationOption, ClarificationState, SessionId,
+    };
+    use serde_json::json;
+
+    let mut config = PicoConfig::default();
+    config.security.audit_log_path = std::path::PathBuf::new();
+    config.memory.database_path = std::env::temp_dir().join(format!(
+        "pico_e2e_shut_{}.sqlite",
+        uuid::Uuid::new_v4().simple()
+    ));
+    config.learning.database_path = std::env::temp_dir().join(format!(
+        "pico_e2e_shut_l_{}.sqlite",
+        uuid::Uuid::new_v4().simple()
+    ));
+
+    let runtime = Arc::new(PicoRuntime::new(config).expect("Runtime initialization failed"));
+    let sid = SessionId::new();
+    runtime
+        .set_session_clarification(
+            sid,
+            Some(ClarificationState::new(
+                sid,
+                "pending",
+                ClarificationKind::CandidateChoice,
+                vec![ClarificationOption {
+                    action_name: "calculator".into(),
+                    description: "calc".into(),
+                    probability: 0.5,
+                    selection_probability: 1.0,
+                    parameters_schema: json!({ "type": "object", "properties": {} }),
+                    pre_extracted_args: json!({}),
+                    missing_required: vec![],
+                }],
+                120,
+            )),
+        )
+        .await;
+    assert!(runtime.has_pending_clarification(sid).await);
+
+    // Shutdown during active clarification & repeated shutdown must both succeed cleanly.
+    runtime.shutdown().await;
+    assert!(!runtime.has_pending_clarification(sid).await);
+    assert!(!runtime.voice().is_playing());
+
+    runtime.shutdown().await;
+    assert!(!runtime.has_pending_clarification(sid).await);
+}

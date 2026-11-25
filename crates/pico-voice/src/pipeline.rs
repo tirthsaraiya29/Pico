@@ -6,11 +6,12 @@ use pico_audio::{AudioCapture, AudioPlayback, PlaybackHandle};
 use pico_core::config::VoiceConfig;
 use pico_core::error::{PicoError, Result};
 use pico_core::events::PicoEvent;
+use pico_core::session::SessionId;
 use pico_core::traits::{SpeechRecognizer, SpeechSynthesizer, VoiceInfo};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 use std::time::{Duration, Instant};
-use tokio::sync::{broadcast, mpsc};
+use tokio::sync::{broadcast, mpsc, Notify};
 use tracing::{debug, info, warn};
 
 /// End-to-End Voice Pipeline coordinating hardware audio capture, sample-counted VAD with pre-roll,
@@ -23,6 +24,8 @@ pub struct VoicePipeline {
     recognizer: Arc<PlatformSpeechRecognizer>,
     event_tx: broadcast::Sender<PicoEvent>,
     speak_cancelled: Arc<AtomicBool>,
+    shutdown_flag: Arc<AtomicBool>,
+    shutdown_notify: Arc<Notify>,
     echo_guard_until_ms: Arc<std::sync::atomic::AtomicU64>,
 }
 
@@ -71,6 +74,8 @@ impl VoicePipeline {
             recognizer,
             event_tx,
             speak_cancelled: Arc::new(AtomicBool::new(false)),
+            shutdown_flag: Arc::new(AtomicBool::new(false)),
+            shutdown_notify: Arc::new(Notify::new()),
             echo_guard_until_ms: Arc::new(std::sync::atomic::AtomicU64::new(0)),
         }
     }
@@ -85,20 +90,41 @@ impl VoicePipeline {
     /// Starts asynchronous microphone capture wired into the sample-counted VAD, barge-in monitor,
     /// and local speech recognition engine, emitting finalized transcribed utterances.
     pub fn start_listening(&self, speech_tx: mpsc::Sender<String>) -> Result<AudioCapture> {
+        self.start_listening_in_session(None, speech_tx)
+    }
+
+    /// Session-attributed variant of [`Self::start_listening`].
+    pub fn start_listening_in_session(
+        &self,
+        session_id: Option<SessionId>,
+        speech_tx: mpsc::Sender<String>,
+    ) -> Result<AudioCapture> {
         let (pcm_tx, mut pcm_rx) = mpsc::channel::<Vec<i16>>(16);
-        let capture = self.start_listening_pcm(pcm_tx)?;
+        let capture = self.start_listening_pcm_in_session(session_id, pcm_tx)?;
         let recognizer = Arc::clone(&self.recognizer);
         let event_tx = self.event_tx.clone();
+        let shutdown_flag = Arc::clone(&self.shutdown_flag);
+        let shutdown_notify = Arc::clone(&self.shutdown_notify);
 
         tokio::spawn(async move {
-            while let Some(utterance_pcm) = pcm_rx.recv().await {
+            loop {
+                if shutdown_flag.load(Ordering::Relaxed) {
+                    break;
+                }
+                let utterance_pcm = tokio::select! {
+                    _ = shutdown_notify.notified() => break,
+                    maybe_pcm = pcm_rx.recv() => match maybe_pcm {
+                        Some(pcm) => pcm,
+                        None => break,
+                    }
+                };
                 let t0 = Instant::now();
                 match recognizer.transcribe(&utterance_pcm).await {
                     Ok(text) => {
                         let clean = text.trim();
                         if !clean.is_empty() {
                             let _ = event_tx.send(PicoEvent::TranscriptionFinalized {
-                                session_id: None,
+                                session_id,
                                 text: clean.to_string(),
                                 latency_ms: t0.elapsed().as_millis() as u64,
                             });
@@ -110,7 +136,7 @@ impl VoicePipeline {
                     Err(e) => {
                         warn!(error = %e, "ASR transcription failed for captured utterance");
                         let _ = event_tx.send(PicoEvent::Error {
-                            session_id: None,
+                            session_id,
                             component: "stt".into(),
                             message: e.to_string(),
                         });
@@ -125,6 +151,15 @@ impl VoicePipeline {
     /// Starts asynchronous microphone capture wired into sample-counted VAD & barge-in monitor,
     /// emitting segmented 16 kHz mono PCM utterances.
     pub fn start_listening_pcm(&self, speech_tx: mpsc::Sender<Vec<i16>>) -> Result<AudioCapture> {
+        self.start_listening_pcm_in_session(None, speech_tx)
+    }
+
+    /// Session-attributed variant of [`Self::start_listening_pcm`].
+    pub fn start_listening_pcm_in_session(
+        &self,
+        session_id: Option<SessionId>,
+        speech_tx: mpsc::Sender<Vec<i16>>,
+    ) -> Result<AudioCapture> {
         let (raw_tx, mut raw_rx) = mpsc::channel::<Vec<i16>>(128);
         let capture = AudioCapture::start(None, raw_tx)?;
 
@@ -135,12 +170,24 @@ impl VoicePipeline {
         let speak_cancelled = self.speak_cancelled.clone();
         let echo_guard_until_ms = self.echo_guard_until_ms.clone();
         let event_tx = self.event_tx.clone();
+        let shutdown_flag = Arc::clone(&self.shutdown_flag);
+        let shutdown_notify = Arc::clone(&self.shutdown_notify);
 
         tokio::spawn(async move {
             let mut speech_started_at: Option<Instant> = None;
             let mut barge_in_frames: usize = 0;
 
-            while let Some(chunk) = raw_rx.recv().await {
+            loop {
+                if shutdown_flag.load(Ordering::Relaxed) {
+                    break;
+                }
+                let chunk = tokio::select! {
+                    _ = shutdown_notify.notified() => break,
+                    maybe_chunk = raw_rx.recv() => match maybe_chunk {
+                        Some(c) => c,
+                        None => break,
+                    }
+                };
                 let rms = VadProcessor::compute_rms(&chunk);
                 let playing = playback_handle.is_playing();
                 let in_echo_tail =
@@ -157,7 +204,7 @@ impl VoicePipeline {
                             speak_cancelled.store(true, Ordering::SeqCst);
                             playback_handle.interrupt();
                             let _ = event_tx.send(PicoEvent::PlaybackInterrupted {
-                                session_id: None,
+                                session_id,
                                 reason: "User barge-in".into(),
                             });
                             vad.reset();
@@ -178,7 +225,7 @@ impl VoicePipeline {
                 if prev_state == VadState::Silence && new_state == VadState::Speaking {
                     speech_started_at = Some(Instant::now());
                     let _ = event_tx.send(PicoEvent::VoiceActivityStarted {
-                        session_id: None,
+                        session_id,
                         timestamp: Utc::now(),
                     });
                 }
@@ -189,7 +236,7 @@ impl VoicePipeline {
                         .map(|s| s.elapsed().as_millis() as u64)
                         .unwrap_or_else(|| (utterance_pcm.len() as u64 * 1000) / 16_000);
                     let _ = event_tx.send(PicoEvent::VoiceActivityStopped {
-                        session_id: None,
+                        session_id,
                         timestamp: Utc::now(),
                         duration_ms,
                     });
@@ -206,6 +253,11 @@ impl VoicePipeline {
     /// Synthesizes and streams spoken text sentence-by-sentence with proper sample-rate conversion
     /// and immediate cancellation support.
     pub async fn speak(&self, text: &str) -> Result<()> {
+        self.speak_in_session(None, text).await
+    }
+
+    /// Session-attributed variant of [`Self::speak`].
+    pub async fn speak_in_session(&self, session_id: Option<SessionId>, text: &str) -> Result<()> {
         let sentences = SpeechPreprocessor::split_sentences(text);
         if sentences.is_empty() {
             return Ok(());
@@ -214,7 +266,7 @@ impl VoicePipeline {
         self.speak_cancelled.store(false, Ordering::SeqCst);
         let t0 = Instant::now();
         let _ = self.event_tx.send(PicoEvent::SpeechSynthesisStarted {
-            session_id: None,
+            session_id,
             text_length: text.len(),
         });
 
@@ -222,7 +274,9 @@ impl VoicePipeline {
         let mut playback_started_sent = false;
 
         for (idx, sentence) in sentences.iter().enumerate() {
-            if self.speak_cancelled.load(Ordering::SeqCst) {
+            if self.speak_cancelled.load(Ordering::SeqCst)
+                || self.shutdown_flag.load(Ordering::Relaxed)
+            {
                 debug!(
                     "TTS halted before sentence {} due to cancellation/barge-in",
                     idx
@@ -234,11 +288,18 @@ impl VoicePipeline {
                 Ok(a) => a,
                 Err(e) => {
                     warn!(sentence = %sentence, error = %e, "TTS synthesis failed for sentence");
+                    let _ = self.event_tx.send(PicoEvent::Error {
+                        session_id,
+                        component: "tts".into(),
+                        message: e.to_string(),
+                    });
                     return Err(e);
                 }
             };
 
-            if self.speak_cancelled.load(Ordering::SeqCst) {
+            if self.speak_cancelled.load(Ordering::SeqCst)
+                || self.shutdown_flag.load(Ordering::Relaxed)
+            {
                 break;
             }
 
@@ -253,7 +314,7 @@ impl VoicePipeline {
             if !playback_started_sent {
                 let _ = self
                     .event_tx
-                    .send(PicoEvent::PlaybackStarted { session_id: None });
+                    .send(PicoEvent::PlaybackStarted { session_id });
                 playback_started_sent = true;
             }
 
@@ -271,14 +332,16 @@ impl VoicePipeline {
         }
 
         let _ = self.event_tx.send(PicoEvent::SpeechSynthesisFinished {
-            session_id: None,
+            session_id,
             audio_duration_ms: total_audio_ms,
             latency_ms: t0.elapsed().as_millis() as u64,
         });
 
         // Wait cleanly until audio finishes draining or caller interrupts playback.
         while self.playback_handle.is_playing() {
-            if self.speak_cancelled.load(Ordering::SeqCst) {
+            if self.speak_cancelled.load(Ordering::SeqCst)
+                || self.shutdown_flag.load(Ordering::Relaxed)
+            {
                 self.playback_handle.interrupt();
                 break;
             }
@@ -292,7 +355,7 @@ impl VoicePipeline {
         if playback_started_sent {
             let _ = self
                 .event_tx
-                .send(PicoEvent::PlaybackFinished { session_id: None });
+                .send(PicoEvent::PlaybackFinished { session_id });
         }
 
         Ok(())
@@ -300,12 +363,31 @@ impl VoicePipeline {
 
     /// Transcribes 16kHz mono PCM audio using the active speech recognizer.
     pub async fn transcribe(&self, pcm_samples: &[i16]) -> Result<String> {
+        self.transcribe_in_session(None, pcm_samples).await
+    }
+
+    /// Session-attributed variant of [`Self::transcribe`].
+    pub async fn transcribe_in_session(
+        &self,
+        session_id: Option<SessionId>,
+        pcm_samples: &[i16],
+    ) -> Result<String> {
         let t0 = Instant::now();
-        let text = self.recognizer.transcribe(pcm_samples).await?;
+        let text = match self.recognizer.transcribe(pcm_samples).await {
+            Ok(t) => t,
+            Err(e) => {
+                let _ = self.event_tx.send(PicoEvent::Error {
+                    session_id,
+                    component: "stt".into(),
+                    message: e.to_string(),
+                });
+                return Err(e);
+            }
+        };
         let latency_ms = t0.elapsed().as_millis() as u64;
         if !text.is_empty() {
             let _ = self.event_tx.send(PicoEvent::TranscriptionFinalized {
-                session_id: None,
+                session_id,
                 text: text.clone(),
                 latency_ms,
             });
@@ -315,12 +397,24 @@ impl VoicePipeline {
 
     /// Immediately halts active audio synthesis & clears pending playback samples in O(1).
     pub fn interrupt_playback(&self) {
+        self.interrupt_playback_in_session(None);
+    }
+
+    /// Session-attributed variant of [`Self::interrupt_playback`].
+    pub fn interrupt_playback_in_session(&self, session_id: Option<SessionId>) {
         self.speak_cancelled.store(true, Ordering::SeqCst);
         self.playback_handle.interrupt();
         let _ = self.event_tx.send(PicoEvent::PlaybackInterrupted {
-            session_id: None,
+            session_id,
             reason: "Explicit interruption".into(),
         });
+    }
+
+    /// Signals any active voice listener workers to exit and interrupts active playback.
+    pub fn shutdown(&self) {
+        self.shutdown_flag.store(true, Ordering::SeqCst);
+        self.shutdown_notify.notify_waiters();
+        self.interrupt_playback();
     }
 
     /// Returns whether audio samples remain queued for output.
@@ -408,5 +502,59 @@ mod tests {
 
         pipeline.interrupt_playback();
         assert!(!pipeline.is_playing());
+    }
+
+    #[tokio::test]
+    async fn test_concurrent_session_voice_event_attribution() {
+        let (tx, mut rx) = broadcast::channel(64);
+        let cfg = VoiceConfig {
+            stt_engine: "mock".into(),
+            tts_engine: "mock".into(),
+            speech_rate: 1.0,
+            ..VoiceConfig::default()
+        };
+        let pipeline = Arc::new(VoicePipeline::new_headless(cfg, tx).unwrap());
+        let sid_a = SessionId::new();
+        let sid_b = SessionId::new();
+
+        let p1 = Arc::clone(&pipeline);
+        let p2 = Arc::clone(&pipeline);
+        let (r1, r2) = tokio::join!(
+            p1.speak_in_session(Some(sid_a), "Session A speaking."),
+            p2.speak_in_session(Some(sid_b), "Session B speaking."),
+        );
+        r1.unwrap();
+        r2.unwrap();
+        pipeline.interrupt_playback_in_session(Some(sid_a));
+
+        let mut saw_a_synth = false;
+        let mut saw_b_synth = false;
+        let mut saw_a_interrupt = false;
+        while let Ok(ev) = rx.try_recv() {
+            match ev {
+                PicoEvent::SpeechSynthesisStarted { session_id, .. }
+                | PicoEvent::SpeechSynthesisFinished { session_id, .. }
+                | PicoEvent::PlaybackStarted { session_id }
+                | PicoEvent::PlaybackFinished { session_id } => {
+                    assert!(
+                        session_id == Some(sid_a) || session_id == Some(sid_b),
+                        "Unexpected session attribution: {:?}",
+                        session_id
+                    );
+                    if session_id == Some(sid_a) {
+                        saw_a_synth = true;
+                    }
+                    if session_id == Some(sid_b) {
+                        saw_b_synth = true;
+                    }
+                }
+                PicoEvent::PlaybackInterrupted { session_id, .. } => {
+                    assert_eq!(session_id, Some(sid_a));
+                    saw_a_interrupt = true;
+                }
+                _ => {}
+            }
+        }
+        assert!(saw_a_synth && saw_b_synth && saw_a_interrupt);
     }
 }

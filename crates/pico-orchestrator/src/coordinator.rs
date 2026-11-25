@@ -691,7 +691,7 @@ impl PicoRuntime {
         self.memory.save_message(&asst_msg).await?;
 
         if speak_response && !reply.is_empty() {
-            if let Err(e) = self.voice.speak(reply).await {
+            if let Err(e) = self.voice.speak_in_session(Some(sid), reply).await {
                 warn!(error = %e, "Voice synthesis skipped or failed");
             }
         }
@@ -770,9 +770,11 @@ impl PicoRuntime {
         info!("PicoRuntime turn cancelled");
     }
 
-    /// Gracefully shuts down active turns, voice playback, and pending session clarifications.
+    /// Gracefully shuts down active turns, voice listener workers, playback, and pending session
+    /// clarifications. Callers hosting an external `IpcServerHandle` must stop/drop that handle separately.
     pub async fn shutdown(&self) {
         self.cancel();
+        self.voice.shutdown();
         self.clarifications.lock().await.clear();
         let _ = self.event_tx.send(PicoEvent::StatusUpdate {
             session_id: None,
