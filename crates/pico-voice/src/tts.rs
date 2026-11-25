@@ -15,8 +15,12 @@ use std::path::{Path, PathBuf};
 #[cfg(target_os = "windows")]
 use std::process::{Child, ChildStdin, ChildStdout};
 use std::process::{Command, Stdio};
-use std::sync::{Arc, Mutex, OnceLock};
-use tracing::{debug, info, warn};
+use std::sync::OnceLock;
+#[cfg(target_os = "windows")]
+use std::sync::{Arc, Mutex};
+use tracing::info;
+#[cfg(target_os = "windows")]
+use tracing::{debug, warn};
 
 /// Cleans assistant responses for natural spoken delivery and splits them into balanced clauses.
 pub struct SpeechPreprocessor;

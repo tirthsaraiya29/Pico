@@ -501,8 +501,9 @@ fn spawn_unix_socket_loop(
             let tok = expected_token.clone();
             let st = Arc::clone(&shared);
             tokio::spawn(async move {
+                use tokio::io::AsyncReadExt;
                 let (rx, mut tx) = tokio::io::split(stream);
-                let mut reader = BufReader::new(rx);
+                let mut reader = BufReader::new(rx.take((MAX_IPC_FRAME_BYTES as u64) + 1));
                 let mut line = String::new();
                 if let Ok(n) = reader.read_line(&mut line).await {
                     if n > 0 {

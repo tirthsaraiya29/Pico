@@ -60,10 +60,22 @@ jobs:
         run: cargo fmt --all -- --check
 
       - name: Clippy Linter
-        run: cargo clippy --workspace --all-targets --all-features -- -D warnings
+        shell: bash
+        run: |
+          set -o pipefail
+          if ! cargo clippy --workspace --all-targets --all-features -- -D warnings 2>&1 | tee "$RUNNER_TEMP/clippy_ci.log"; then
+            grep -E "error(\[|:)|warning:|-->" "$RUNNER_TEMP/clippy_ci.log" | head -n 30 | while IFS= read -r line; do echo "::error::$line"; done
+            exit 1
+          fi
 
       - name: Run All Workspace Tests
-        run: cargo test --workspace --all-features
+        shell: bash
+        run: |
+          set -o pipefail
+          if ! cargo test --workspace --all-features 2>&1 | tee "$RUNNER_TEMP/test_ci.log"; then
+            grep -E "FAILED|panicked at|assertion|error(\[|:)|timed out|Process completed" "$RUNNER_TEMP/test_ci.log" | head -n 30 | while IFS= read -r line; do echo "::error::$line"; done
+            exit 1
+          fi
 
       - name: Build Release
         run: cargo build --workspace --release
