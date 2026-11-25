@@ -7,20 +7,22 @@ license.workspace = true
 
 [dependencies]
 pico-core = { workspace = true }
-pico-orchestrator = { workspace = true }
-pico-voice = { workspace = true }
-pico-audio = { workspace = true }
-pico-tools = { workspace = true }
-pico-security = { workspace = true }
-pico-learning = { workspace = true }
 pico-platform = { workspace = true }
-async-trait = { workspace = true }
-tokio = { workspace = true }
-tracing = { workspace = true }
-tracing-subscriber = { workspace = true }
 clap = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }
-uuid = { workspace = true }
 chrono = { workspace = true }
-eframe = { version = "0.29", default-features = false, features = ["default_fonts", "glow"] }
+winit = "0.30"
+softbuffer = "0.4"
+ab_glyph = "0.2"
+image = { version = "0.25", default-features = false, features = ["png", "jpeg", "webp"] }
+
+[target.'cfg(target_os = "windows")'.dependencies]
+windows = { version = "0.54", features = [
+    "Win32_Foundation",
+    "Win32_Graphics_Gdi",
+    "Win32_System_LibraryLoader",
+    "Win32_UI_Input_KeyboardAndMouse",
+    "Win32_UI_Shell",
+    "Win32_UI_WindowsAndMessaging",
+] }

@@ -1,6 +1,7 @@
 pub mod config;
 pub mod error;
 pub mod events;
+pub mod ipc;
 pub mod session;
 pub mod traits;
 
@@ -10,6 +11,11 @@ pub use config::{
 };
 pub use error::{PicoError, Result};
 pub use events::PicoEvent;
+pub use ipc::{
+    decode_ipc_envelope, default_ipc_endpoint, default_ipc_token_path, encode_ipc_line,
+    read_ipc_token, send_ipc_request_sync, ClarificationView, DaemonSnapshot, IpcEnvelope,
+    IpcRequest, IpcResponse, PendingConfirmationView, IPC_PROTOCOL_VERSION, MAX_IPC_FRAME_BYTES,
+};
 pub use session::{
     ClarificationKind, ClarificationOption, ClarificationState, Message, Role, SessionId, ToolCall,
     ToolResult,

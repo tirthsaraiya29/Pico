@@ -1,13 +1,17 @@
 pub mod apps;
 pub mod audio;
+pub mod battery;
 pub mod clipboard;
 pub mod display;
+pub mod media;
 pub mod sysinfo;
 
 pub use apps::{PlatformApps, ProcessInfo};
 pub use audio::{AudioEndpointState, PlatformAudio};
+pub use battery::{get_battery_status, BatteryStatus};
 pub use clipboard::PlatformClipboard;
 pub use display::PlatformDisplay;
+pub use media::{MediaTrackInfo, PlatformMedia};
 pub use sysinfo::{PlatformSysInfo, SystemStats};
 
 #[cfg(test)]

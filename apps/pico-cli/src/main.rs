@@ -33,6 +33,12 @@ struct Cli {
 enum Commands {
     /// Start real-time hands-free voice assistant mode (Default)
     Voice,
+    /// Run headless assistant runtime with authenticated local IPC server for companion UI
+    Daemon {
+        /// Disable microphone voice capture (IPC text prompts only)
+        #[arg(long)]
+        no_voice: bool,
+    },
     /// List all registered tools and their schemas
     Tools,
     /// Enumerate audio input and output devices
@@ -303,7 +309,7 @@ async fn main() -> std::result::Result<(), Box<dyn std::error::Error>> {
 
             // 4. Decision Engine
             println!(
-                "  [OK] Decision Core:   Non-generative BM25 + Cross-Encoder Ranking + Platt Calibration"
+                "  [OK] Decision Core:   BM25 Retrieval + Multi-Feature Ranking + Calibrated Selection"
             );
 
             println!("{:-<60}", "");
@@ -313,7 +319,10 @@ async fn main() -> std::result::Result<(), Box<dyn std::error::Error>> {
             );
         }
         Commands::Voice => {
-            run_voice_loop(&cli.config).await?;
+            run_voice_loop(&cli.config, true, false).await?;
+        }
+        Commands::Daemon { no_voice } => {
+            run_voice_loop(&cli.config, !no_voice, true).await?;
         }
     }
 
@@ -322,6 +331,8 @@ async fn main() -> std::result::Result<(), Box<dyn std::error::Error>> {
 
 async fn run_voice_loop(
     config_path: &PathBuf,
+    enable_voice: bool,
+    enable_ipc: bool,
 ) -> std::result::Result<(), Box<dyn std::error::Error>> {
     let config = load_or_default_config(config_path);
     let runtime = Arc::new(PicoRuntime::new(config)?);
@@ -332,60 +343,70 @@ async fn run_voice_loop(
         .set_confirmation_provider(Arc::new(confirmation_provider))
         .await;
 
+    let ipc_handle = if enable_ipc {
+        Some(pico_orchestrator::start_ipc_server(runtime.clone(), None, None).await?)
+    } else {
+        None
+    };
+
     println!(
         "{}",
         "==================================================".cyan()
     );
     println!(
         "{}",
-        "      PICO NATIVE AUTONOMOUS VOICE ASSISTANT       "
-            .cyan()
-            .bold()
+        if enable_ipc {
+            "         PICO ASSISTANT DAEMON (LOCAL IPC)        "
+        } else {
+            "         PICO NATIVE AUTONOMOUS ASSISTANT         "
+        }
+        .cyan()
+        .bold()
     );
+    if let Some(ref handle) = ipc_handle {
+        println!("  IPC Endpoint: {}", handle.endpoint().green());
+    }
     println!(
         "{}",
-        "  [100% Voice-Driven] Listening continuously...    "
-            .green()
-            .bold()
+        if enable_voice {
+            "  [Voice Active] Listening for speech..."
+        } else {
+            "  [IPC Only] Voice capture disabled (--no-voice)."
+        }
+        .green()
+        .bold()
     );
-    println!(
-        "{}",
-        "  - Speak naturally. Stutter/thinking pause detector active.".dimmed()
-    );
-    println!(
-        "{}",
-        "  - Speak anytime during TTS output to barge-in (<15ms).".dimmed()
-    );
-    println!(
-        "{}",
-        "  - High-risk operations request verbal voice confirmation.".dimmed()
-    );
-    println!(
-        "{}",
-        "  - Press Ctrl+C to terminate voice session.".dimmed()
-    );
+    println!("{}", "  Press Ctrl+C to terminate.".dimmed());
     println!(
         "{}",
         "==================================================".cyan()
     );
 
     let (speech_tx, mut speech_rx) = tokio::sync::mpsc::channel::<String>(16);
-    let _capture = runtime.voice().start_listening(speech_tx)?;
+    let _capture = if enable_voice {
+        match runtime.voice().start_listening(speech_tx) {
+            Ok(cap) => Some(cap),
+            Err(e) => {
+                eprintln!("[WARN] Microphone unavailable ({}); continuing in IPC/text mode", e);
+                None
+            }
+        }
+    } else {
+        None
+    };
 
-    // Subscribe to runtime events to print diagnostic progress
+    // Subscribe to runtime events to print diagnostic progress & mirror confirmations to IPC snapshot
     let mut event_rx = runtime.subscribe_events();
+    let ipc_shared = ipc_handle.as_ref().map(|h| Arc::clone(h.shared_state()));
     tokio::spawn(async move {
         while let Ok(event) = event_rx.recv().await {
             match event {
                 PicoEvent::VoiceActivityStarted { .. } => {
-                    print!(
-                        "\r{} Listening...                 ",
-                        "🎙️ [VOICE]".green().bold()
-                    );
+                    print!("\r{} Listening...                 ", "[VOICE]".green().bold());
                     let _ = io::stdout().flush();
                 }
                 PicoEvent::PlaybackInterrupted { reason } => {
-                    println!("\n{} {}", "⚡ [BARGE-IN]".yellow().bold(), reason);
+                    println!("\n{} {}", "[BARGE-IN]".yellow().bold(), reason);
                 }
                 PicoEvent::DecisionSelected {
                     action,
@@ -395,7 +416,7 @@ async fn run_voice_loop(
                     let act = action.unwrap_or_else(|| "direct_conversation".into());
                     println!(
                         "{} Decision: {} ({:.0}% confidence, {}ms)",
-                        "🧠 [DECIDE]".cyan().bold(),
+                        "[DECIDE]".cyan().bold(),
                         act.bold(),
                         confidence * 100.0,
                         latency_ms
@@ -404,7 +425,7 @@ async fn run_voice_loop(
                 PicoEvent::ToolCallRequested { call } => {
                     println!(
                         "{} Executing tool: {} with {}",
-                        "⚙️ [TOOL]".yellow().bold(),
+                        "[TOOL]".yellow().bold(),
                         call.name.bold(),
                         call.arguments
                     );
@@ -426,16 +447,29 @@ async fn run_voice_loop(
                     evidence,
                 } => {
                     let tag = if verified {
-                        "✓ [VERIFIED]".green().bold()
+                        "[VERIFIED]".green().bold()
                     } else {
-                        "⚠️ [UNVERIFIED]".yellow().bold()
+                        "[UNVERIFIED]".yellow().bold()
                     };
                     println!("{} Objective for {}: {}", tag, tool, evidence);
                 }
-                PicoEvent::ToolPermissionPrompt { tool, reason, .. } => {
+                PicoEvent::ToolPermissionPrompt {
+                    call_id,
+                    tool,
+                    arguments,
+                    reason,
+                } => {
+                    if let Some(ref st) = ipc_shared {
+                        let mut lock = st.pending_confirmation.lock().await;
+                        *lock = Some(pico_core::PendingConfirmationView {
+                            request_id: call_id,
+                            tool_name: tool.clone(),
+                            arguments_preview: arguments.to_string(),
+                        });
+                    }
                     println!(
                         "\n{} Dangerous operation: {}\nReason: {}\nPlease confirm verbally: say 'confirm' to proceed, or 'cancel' to abort.",
-                        "⚠️ [VOICE CONFIRMATION REQUIRED]".magenta().bold(),
+                        "[CONFIRMATION REQUIRED]".magenta().bold(),
                         tool.bold(),
                         reason
                     );
@@ -447,15 +481,24 @@ async fn run_voice_loop(
 
     let rt = runtime.clone();
     let pending_clone = pending_confirm.clone();
+    let ipc_paused_ref = ipc_handle.as_ref().map(|h| Arc::clone(h.shared_state()));
 
     tokio::spawn(async move {
         while let Some(user_speech) = speech_rx.recv().await {
+            if let Some(ref st) = ipc_paused_ref {
+                if st
+                    .voice_paused
+                    .load(std::sync::atomic::Ordering::Relaxed)
+                {
+                    continue;
+                }
+            }
             let clean_speech = user_speech.trim();
             if clean_speech.is_empty() {
                 continue;
             }
 
-            println!("\n{} \"{}\"", "🎤 Heard:".green().bold(), clean_speech);
+            println!("\n{} \"{}\"", "Heard:".green().bold(), clean_speech);
 
             // 1. Check if there is an active voice confirmation prompt awaiting user response
             let pending_tx = {
@@ -503,12 +546,12 @@ async fn run_voice_loop(
             }
 
             // 2. Normal user voice command turn
-            print!("{} Processing intent...", "⚡".cyan());
+            print!("{} Processing intent...", "[THINK]".cyan());
             io::stdout().flush().ok();
 
             match rt.process_turn(clean_speech, true).await {
                 Ok(reply) => {
-                    println!("\n{} \"{}\"", "🔊 Spoke:".cyan().bold(), reply);
+                    println!("\n{} \"{}\"", "Spoke:".cyan().bold(), reply);
                 }
                 Err(e) => {
                     println!("\n{} {}", "[Voice turn error]".red(), e);

@@ -190,6 +190,24 @@ impl PicoRuntime {
         map.get(&session_id).is_some_and(|st| !st.is_expired())
     }
 
+    /// Returns a snapshot of any active clarification prompt for the specified session.
+    pub async fn pending_clarification_view(
+        &self,
+        session_id: SessionId,
+    ) -> Option<pico_core::ClarificationView> {
+        let map = self.clarifications.lock().await;
+        map.get(&session_id)
+            .filter(|st| !st.is_expired())
+            .map(|st| pico_core::ClarificationView {
+                question: format!("Clarify request: {}", st.original_request),
+                candidates: st
+                    .options
+                    .iter()
+                    .map(|c| format!("{}: {}", c.action_name, c.description))
+                    .collect(),
+            })
+    }
+
     /// Allows tests and diagnostics to inspect or adjust clarification state for a session.
     pub async fn set_session_clarification(
         &self,
