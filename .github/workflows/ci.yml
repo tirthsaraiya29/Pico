@@ -80,12 +80,9 @@ jobs:
               lines.append(line.rstrip("\r\n"))
           rc = proc.wait()
           if rc != 0:
-              bad = [l for l in lines if re.search(r"FAILED|panicked at|assertion|failures:|error(\[|:)", l)]
-              tail = bad[:20] if bad else lines[-20:]
-              for l in tail:
-                  print("::error::" + l[:300])
-              if not tail:
-                  print("::error::cargo test exited with code " + str(rc))
+              bad = [l for l in lines if re.search(r"FAILED|panicked at|assertion|failures:|error(\[|:)|process didn", l)]
+              print("::error::CI_TEST_BAD=" + " || ".join(bad[:12])[:3500])
+              print("::error::CI_TEST_TAIL=" + " || ".join(lines[-15:])[:3500])
               sys.exit(rc)
           '
 
