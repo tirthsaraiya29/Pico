@@ -1033,7 +1033,7 @@ impl SpeechSynthesizer for MockSpeechSynthesizer {
     }
 }
 
-#[cfg_attr(not(target_os = "linux"), allow(dead_code))]
+#[allow(dead_code)]
 enum ResolvedBackend {
     Piper(PiperSynthesizer),
     Windows(NativeWindowsSynthesizer),

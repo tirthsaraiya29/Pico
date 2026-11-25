@@ -1,6 +1,7 @@
 use crate::state::CompanionNotification;
 
 #[derive(Debug, Clone)]
+#[cfg_attr(not(target_os = "windows"), allow(dead_code))]
 pub enum TrayCommand {
     ToggleVisible,
     ToggleCompact,

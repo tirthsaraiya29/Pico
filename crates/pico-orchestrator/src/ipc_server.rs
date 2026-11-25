@@ -297,6 +297,50 @@ async fn dispatch_request(
 }
 
 #[cfg(target_os = "windows")]
+fn current_user_sid_string() -> Option<String> {
+    use windows::core::PWSTR;
+    use windows::Win32::Foundation::{CloseHandle, LocalFree, HANDLE, HLOCAL};
+    use windows::Win32::Security::Authorization::ConvertSidToStringSidW;
+    use windows::Win32::Security::{GetTokenInformation, TokenUser, TOKEN_QUERY, TOKEN_USER};
+    use windows::Win32::System::Threading::{GetCurrentProcess, OpenProcessToken};
+
+    unsafe {
+        let mut token = HANDLE::default();
+        if OpenProcessToken(GetCurrentProcess(), TOKEN_QUERY, &mut token).is_err() {
+            return None;
+        }
+        let mut needed = 0u32;
+        let _ = GetTokenInformation(token, TokenUser, None, 0, &mut needed);
+        if needed == 0 {
+            let _ = CloseHandle(token);
+            return None;
+        }
+        let mut buf = vec![0u8; needed as usize];
+        let ok = GetTokenInformation(
+            token,
+            TokenUser,
+            Some(buf.as_mut_ptr().cast()),
+            needed,
+            &mut needed,
+        )
+        .is_ok();
+        let _ = CloseHandle(token);
+        if !ok {
+            return None;
+        }
+        let token_user = &*(buf.as_ptr().cast::<TOKEN_USER>());
+        let mut raw_sid = PWSTR::null();
+        if ConvertSidToStringSidW(token_user.User.Sid, &mut raw_sid).is_err() || raw_sid.0.is_null()
+        {
+            return None;
+        }
+        let sid = raw_sid.to_string().ok();
+        let _ = LocalFree(HLOCAL(raw_sid.0.cast()));
+        sid
+    }
+}
+
+#[cfg(target_os = "windows")]
 fn create_owner_only_pipe_instance(
     endpoint: &str,
     first_instance: bool,
@@ -316,8 +360,12 @@ fn create_owner_only_pipe_instance(
         .in_buffer_size(MAX_IPC_FRAME_BYTES as u32)
         .out_buffer_size(MAX_IPC_FRAME_BYTES as u32);
 
-    // Owner Rights (Creator Owner) + LocalSystem DACL (blocks other local users & network guests).
-    let sddl: Vec<u16> = "D:(A;;GA;;;OW)(A;;GA;;;SY)\0".encode_utf16().collect();
+    // Explicit current-user SID (+ Owner Rights) + LocalSystem DACL (works elevated & standard; blocks other local users & network guests).
+    let sddl_str = match current_user_sid_string() {
+        Some(sid) => format!("D:(A;;GA;;;{})(A;;GA;;;OW)(A;;GA;;;SY)\0", sid),
+        None => "D:(A;;GA;;;OW)(A;;GA;;;SY)\0".to_string(),
+    };
+    let sddl: Vec<u16> = sddl_str.encode_utf16().collect();
     let mut sd = PSECURITY_DESCRIPTOR::default();
     let converted = unsafe {
         ConvertStringSecurityDescriptorToSecurityDescriptorW(
