@@ -97,3 +97,9 @@ pico-cli init-config   Generate default configs/pico.toml
 ## License
 
 Pico is open-source software licensed under the GNU General Public License v3.0 (`GPL-3.0-only`). See [LICENSE](LICENSE).
+
+---
+
+## Website
+
+[Visit my website](https://tirthsaraiya.vercel.app)
